@@ -67,7 +67,7 @@
   .navbtn:hover:not(:disabled){background:var(--surface-2); color:var(--ink);}
   .navbtn.active{background:var(--surface-2); color:var(--ink);}
   .navbtn:disabled{opacity:.35; cursor:not-allowed;}
-  @media (max-width:380px){ .brand .name{display:none;} .navlinks{gap:2px;} .navbtn{padding:6px 7px; font-size:11.5px;} }
+  @media (max-width:420px){ .brand .name{display:none;} .navlinks{gap:1px;} .navbtn{padding:5px 6px; font-size:11px;} }
   main{flex:1; padding:22px 18px 90px;}
   .eyebrow{font-size:11.5px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-400);}
   .card{background:var(--surface); border:1px solid var(--line); border-radius:var(--r-l); box-shadow:var(--shadow);}
@@ -167,6 +167,7 @@
   .pill{font-size:10.5px; font-weight:700; padding:2px 7px; border-radius:20px; text-transform:uppercase; letter-spacing:.04em;}
   .pill.good{color:var(--good); background:var(--good-soft);}
   .pill.warn{color:var(--accent-ink); background:var(--accent-soft);}
+  .pill.bad{color:var(--bad); background:var(--bad-soft);}
   .empty{text-align:center; padding:50px 20px; color:var(--ink-400);}
   .empty .big{font-size:34px; margin-bottom:8px;}
   .tabs{display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap;}
@@ -181,6 +182,18 @@
   /* pricing */
   .pricerow{display:flex; justify-content:space-between; align-items:baseline;}
   .pricetotal{font-family:var(--font-m); font-weight:800; font-size:18px;}
+
+  /* corrective actions */
+  .careow{display:flex; align-items:center; gap:8px; padding:8px 0; border-top:1px solid var(--line);}
+  .careow:first-child{border-top:none;}
+  .careow input[type="text"]{flex:1; border:none; border-bottom:1px dashed var(--line-strong); background:none; color:var(--ink); font-size:14px; padding:5px 2px;}
+  .careow input[type="date"]{border:1px solid var(--line-strong); border-radius:var(--r-s); padding:6px 8px; font-size:12.5px; background:var(--surface); color:var(--ink); width:132px; flex:none;}
+  .cacard2{padding:12px 16px; margin-bottom:10px;}
+  .gradebandrow{display:flex; align-items:center; gap:8px; padding:8px 0; border-top:1px solid var(--line);}
+  .gradebandrow:first-child{border-top:none;}
+  .gradebandrow input[type="number"]{width:64px; border:1px solid var(--line-strong); border-radius:var(--r-s); padding:6px 8px; font-size:13px; background:var(--surface); color:var(--ink); flex:none;}
+  .gradebandrow input[type="text"]{flex:1; border:none; border-bottom:1px dashed var(--line-strong); background:none; color:var(--ink); font-size:14px; padding:5px 2px;}
+  .gradebandrow select{border:1px solid var(--line-strong); border-radius:var(--r-s); padding:6px 8px; font-size:12.5px; background:var(--surface); color:var(--ink); flex:none;}
 
   /* editor */
   .edsection{padding:14px 16px; margin-bottom:12px;}
@@ -208,6 +221,7 @@
 (function(){
   "use strict";
   var LS_T = 'diagnosisroom_templates_v1', LS_H = 'diagnosisroom_history_v1', LS_D = 'diagnosisroom_draft_v1', LS_P = 'diagnosisroom_pricing_v1';
+  var LS_A = 'diagnosisroom_actions_v1', LS_SCHED = 'diagnosisroom_schedule_v1', LS_G = 'diagnosisroom_grades_v1';
 
   var DEFAULT_PRICING = {
     currency: '₹',
@@ -216,6 +230,18 @@
     lowScoreThresholdPct: 80,
     lowScoreSurcharge: 500
   };
+
+  var DEFAULT_SCHEDULE = {
+    dinein: { intervalDays: 30 },
+    qsr: { intervalDays: 14 }
+  };
+
+  var DEFAULT_GRADE_BANDS = [
+    { id:'g1', min:90, label:'A — Excellent', tone:'good' },
+    { id:'g2', min:75, label:'B — Good', tone:'good' },
+    { id:'g3', min:60, label:'C — Needs Improvement', tone:'warn' },
+    { id:'g4', min:0,  label:'D — Fail', tone:'bad' }
+  ];
 
   var DEFAULT_TEMPLATES = {
     dinein: { label:'Dine-In', sections:[
@@ -300,9 +326,14 @@
     history: loadJSON(LS_H, []),
     draft: loadJSON(LS_D, null),
     pricing: loadJSON(LS_P, null) || JSON.parse(JSON.stringify(DEFAULT_PRICING)),
+    correctiveActions: loadJSON(LS_A, []),
+    schedule: loadJSON(LS_SCHED, null) || JSON.parse(JSON.stringify(DEFAULT_SCHEDULE)),
+    gradeBands: loadJSON(LS_G, null) || JSON.parse(JSON.stringify(DEFAULT_GRADE_BANDS)),
     setup: { type:null, storeName:'', storeLocation:'', auditDate: todayISO(), auditTime: nowHHMM(), selectedSections:[], menuItemCount:'' },
     editorTab: 'dinein',
     historyTab: 'all',
+    actionsTab: 'corrective',
+    actionsShowDone: false,
     viewingAuditId: null,
     summaryReturnView: 'setup'
   };
@@ -311,6 +342,9 @@
   function persistTemplates(){ saveJSON(LS_T, state.templates); }
   function persistHistory(){ saveJSON(LS_H, state.history); }
   function persistPricing(){ saveJSON(LS_P, state.pricing); }
+  function persistActions(){ saveJSON(LS_A, state.correctiveActions); }
+  function persistSchedule(){ saveJSON(LS_SCHED, state.schedule); }
+  function persistGrades(){ saveJSON(LS_G, state.gradeBands); }
   function persistDraft(){ saveJSON(LS_D, state.draft); }
   function clearDraft(){ state.draft = null; try{ localStorage.removeItem(LS_D); }catch(e){} }
 
@@ -387,6 +421,37 @@
     return { base:cfg.baseFee||0, sectionsCost:sectionsCost, menuCost:menuCost, surcharge:surcharge, total:total, currency: state.pricing.currency||'' };
   }
 
+  // ---------- grading ----------
+  function computeGrade(pct){
+    var bands = state.gradeBands.slice().sort(function(a,b){ return b.min-a.min; });
+    for (var i=0;i<bands.length;i++){ if (pct>=bands[i].min) return bands[i]; }
+    return bands[bands.length-1] || { label:'—', tone:'warn' };
+  }
+  function gradeBadge(pct){
+    var g = computeGrade(pct);
+    return '<span class="pill '+esc(g.tone)+'">'+esc(g.label)+'</span>';
+  }
+
+  // ---------- re-audit schedule ----------
+  function computeDueList(){
+    var latestByStore = {};
+    state.history.forEach(function(h){
+      var key = (h.storeName||'Unnamed store').trim().toLowerCase();
+      if (!latestByStore[key] || h.finishedAt > latestByStore[key].finishedAt) latestByStore[key] = h;
+    });
+    var todayMs = Date.now();
+    return Object.keys(latestByStore).map(function(key){
+      var h = latestByStore[key];
+      var intervalDays = (state.schedule[h.type]||{}).intervalDays || 30;
+      var dueAt = h.finishedAt + intervalDays*86400000;
+      return {
+        storeName: h.storeName, storeLocation: h.storeLocation, type: h.type,
+        lastAuditAt: h.finishedAt, dueAt: dueAt,
+        daysUntil: Math.ceil((dueAt-todayMs)/86400000)
+      };
+    }).sort(function(a,b){ return a.dueAt-b.dueAt; });
+  }
+
   // ---------- build a fresh draft ----------
   function newDraft(type, storeName, storeLocation, auditDate, auditTime, selectedSectionIds, menuItemCount){
     var tmpl = state.templates[type];
@@ -397,6 +462,7 @@
       auditDate: auditDate||todayISO(), auditTime: auditTime||nowHHMM(),
       menuItemCount: Math.max(0, parseInt(menuItemCount,10)||0),
       startedAt: Date.now(), finishedAt: null, remark:'',
+      correctiveActions: [],
       overall: { accumMs:0, runningSince: Date.now(), paused:false },
       activeSectionId: null,
       sections: chosen.map(function(s){
@@ -418,19 +484,22 @@
     else if (v==='history') html = renderHistory();
     else if (v==='editor') html = renderEditor();
     else if (v==='pricing') html = renderPricingSettings();
+    else if (v==='actions') html = renderActionsView();
     app.innerHTML = topbar() + html;
   }
 
   function topbar(){
     var draftActive = !!state.draft;
     var lockAttr = draftActive?'disabled title="Finish or discard the current audit first"':'';
+    var openActions = state.correctiveActions.filter(function(a){ return !a.done; }).length;
     return '' +
       '<div class="topbar">' +
         '<button class="brand" data-action="go-setup"><span class="mark">dr</span><span class="name">Diagnosis Room</span></button>' +
         '<div class="navlinks">' +
           '<button class="navbtn '+(state.view==='history'?'active':'')+'" data-action="go-history" '+lockAttr+'>History</button>' +
           '<button class="navbtn '+(state.view==='editor'?'active':'')+'" data-action="go-editor" '+lockAttr+'>Checklist</button>' +
-          '<button class="navbtn '+(state.view==='pricing'?'active':'')+'" data-action="go-pricing" '+lockAttr+'>Pricing</button>' +
+          '<button class="navbtn '+(state.view==='pricing'?'active':'')+'" data-action="go-pricing" '+lockAttr+'>Settings</button>' +
+          '<button class="navbtn '+(state.view==='actions'?'active':'')+'" data-action="go-actions" '+lockAttr+'>Actions'+(openActions?' ('+openActions+')':'')+'</button>' +
         '</div>' +
       '</div>';
   }
@@ -545,7 +614,7 @@
       '<div class="eyebrow">Finishing Audit</div>' +
       '<h1 style="font-size:24px;margin-top:6px;">'+esc(d.storeName||'Unnamed store')+'</h1>' +
       '<div class="helper" style="margin-top:4px;">'+(d.storeLocation?esc(d.storeLocation)+' · ':'')+fmtAuditWhen(d.auditDate,d.auditTime)+'</div>' +
-      '<div class="helper" style="margin-top:2px;">'+tmpl.label+' · '+op.checked+'/'+op.total+' items checked ('+op.pct+'% score) · '+fmtTime(totalMs)+' total</div>' +
+      '<div class="helper" style="margin-top:2px;">'+tmpl.label+' · '+op.checked+'/'+op.total+' items checked ('+op.pct+'% score) '+gradeBadge(op.pct)+' · '+fmtTime(totalMs)+' total</div>' +
       '<div class="statgrid">' +
         d.sections.map(function(s){ return '<div class="stattile"><div class="v">'+fmtTime(s.accumMs)+'</div><div class="k">'+esc(s.name)+'</div></div>'; }).join('') +
       '</div>' +
@@ -557,6 +626,7 @@
         (price.surcharge ? '<div class="sumrow"><span class="k">Below '+state.pricing.lowScoreThresholdPct+'% score surcharge</span><span class="v">'+price.currency+price.surcharge+'</span></div>' : '') +
         '<div class="sumrow pricerow"><span class="k" style="font-weight:700;color:var(--ink);">Total</span><span class="pricetotal">'+price.currency+price.total+'</span></div>' +
       '</div>' +
+      renderCorrectiveEditor(d) +
       '<div class="field remarkwrap"><label for="remarkInput">Final remark <span style="color:var(--bad)">*</span></label>' +
         '<textarea id="remarkInput" data-bind="remark" placeholder="Summarise findings, corrective actions and overall condition of the floor…">'+esc(d.remark||'')+'</textarea>' +
         '<div class="helper">A remark is required to mark this audit complete.</div>' +
@@ -565,14 +635,47 @@
     '</main>';
   }
 
+  function renderCorrectiveEditor(d){
+    if (!d.correctiveActions) d.correctiveActions = [];
+    var uncheckedItems = [];
+    d.sections.forEach(function(s){
+      s.items.forEach(function(it){
+        if (it.state==='unchecked') uncheckedItems.push(it);
+      });
+    });
+    var addedIds = {};
+    (d.correctiveActions||[]).forEach(function(ca){ if (ca.sourceItemId) addedIds[ca.sourceItemId]=true; });
+    var chipsHtml = uncheckedItems.length ? (
+      '<div class="areagrid" style="margin-bottom:12px;">' +
+        uncheckedItems.map(function(it){
+          var on = !!addedIds[it.id];
+          return '<button type="button" class="areachip '+(on?'on':'')+'" data-action="toggle-ca-item" data-item="'+it.id+'">'+(on?'✓ ':'+ ')+esc(it.text)+'</button>';
+        }).join('') +
+      '</div>'
+    ) : '';
+    var rowsHtml = (d.correctiveActions||[]).map(function(ca){
+      return '<div class="careow">' +
+        '<input type="text" data-ca-field="description" data-ca="'+ca.id+'" value="'+esc(ca.description)+'" placeholder="What needs fixing?">' +
+        '<input type="date" data-ca-field="dueDate" data-ca="'+ca.id+'" value="'+esc(ca.dueDate||'')+'">' +
+        '<button class="iconbtn" data-action="ca-remove" data-ca="'+ca.id+'" title="Remove">✕</button>' +
+      '</div>';
+    }).join('');
+    return '<h2 style="font-size:15px;margin-bottom:6px;">Corrective actions</h2>' +
+      '<div class="helper" style="margin-top:0;margin-bottom:8px;">Tap an unchecked item to log a fix and due date for it.</div>' +
+      chipsHtml +
+      (rowsHtml ? '<div class="card" style="padding:4px 16px;margin-bottom:10px;">'+rowsHtml+'</div>' : '') +
+      '<button class="btn btn-ghost btn-sm" style="margin-bottom:20px;" data-action="add-custom-action">+ Add custom action</button>';
+  }
+
   function computeRecord(d){
     var op = overallProgress(d);
     var pricing = computePricing(d.type, d.sections.length, d.menuItemCount||0, op.pct);
+    var grade = computeGrade(op.pct);
     return { id:d.id, type:d.type, storeName:d.storeName, storeLocation:d.storeLocation,
       auditDate:d.auditDate, auditTime:d.auditTime, menuItemCount:d.menuItemCount||0,
       startedAt:d.startedAt, finishedAt:d.finishedAt, remark:d.remark,
       totalMs:d.overall.accumMs, completionPct:op.pct, checked:op.checked, total:op.total,
-      pricing: pricing,
+      pricing: pricing, grade: { label:grade.label, tone:grade.tone },
       sections: d.sections.map(function(s){ var p=sectionProgress(s); return { id:s.id, name:s.name, accumMs:s.accumMs, checked:p.checked, total:p.total, na:p.na, items:s.items.slice() }; })
     };
   }
@@ -591,6 +694,7 @@
         '<div class="stattile"><div class="v">'+rec.completionPct+'%</div><div class="k">Score</div></div>' +
         '<div class="stattile"><div class="v">'+rec.checked+'/'+rec.total+'</div><div class="k">Items Checked</div></div>' +
       '</div>' +
+      (rec.grade ? '<div style="margin:-10px 0 16px;">Grade: <span class="pill '+esc(rec.grade.tone)+'">'+esc(rec.grade.label)+'</span></div>' : '') +
       '<h2 style="font-size:15px;margin-bottom:6px;">Section timing</h2>' +
       '<div class="card" style="padding:4px 16px;margin-bottom:20px;">' +
         rec.sections.map(function(s){ return '<div class="sumrow"><span class="k">'+esc(s.name)+'</span><span class="v">'+fmtTime(s.accumMs)+' · '+s.checked+'/'+s.total+'</span></div>'; }).join('') +
@@ -604,6 +708,16 @@
         (rec.pricing.surcharge ? '<div class="sumrow"><span class="k">Low-score surcharge</span><span class="v">'+rec.pricing.currency+rec.pricing.surcharge+'</span></div>' : '') +
         '<div class="sumrow pricerow"><span class="k" style="font-weight:700;color:var(--ink);">Total</span><span class="pricetotal">'+rec.pricing.currency+rec.pricing.total+'</span></div>' +
       '</div>') : '') +
+      (function(){
+        var acts = state.correctiveActions.filter(function(a){ return a.auditId===rec.id; });
+        if (!acts.length) return '';
+        return '<h2 style="font-size:15px;margin-bottom:6px;">Corrective actions</h2>' +
+          '<div class="card" style="padding:4px 16px;margin-bottom:20px;">' +
+            acts.map(function(a){
+              return '<div class="sumrow"><span class="k">'+esc(a.description)+(a.done?' <span class="pill good">DONE</span>':'')+'</span><span class="v">'+(a.dueDate?fmtDateShort(new Date(a.dueDate+'T00:00:00').getTime()):'—')+'</span></div>';
+            }).join('') +
+          '</div>';
+      })() +
       '<h2 style="font-size:15px;margin-bottom:6px;">Final remark</h2>' +
       '<div class="remarkbox">'+esc(rec.remark||'—')+'</div>' +
     '</main>';
@@ -646,7 +760,7 @@
             '<div class="histtop"><span class="badge">'+esc(tmpl.label||h.type)+'</span><span class="histpct">'+fmtTime(h.totalMs)+'</span></div>' +
             '<div style="font-weight:700;margin-top:8px;">'+esc(h.storeName||'Unnamed store')+'</div>' +
             '<div class="histmeta">'+(h.storeLocation?esc(h.storeLocation)+' · ':'')+fmtAuditWhen(h.auditDate,h.auditTime)+'</div>' +
-            '<div class="histmeta">'+' <span class="pill '+(h.completionPct>=90?'good':'warn')+'">'+h.completionPct+'% score</span>'+(h.pricing?' · '+h.pricing.currency+h.pricing.total:'')+'</div>' +
+            '<div class="histmeta">'+h.completionPct+'% '+(h.grade?'<span class="pill '+esc(h.grade.tone)+'">'+esc(h.grade.label)+'</span>':'')+(h.pricing?' · '+h.pricing.currency+h.pricing.total:'')+'</div>' +
           '</div>';
         }).join('')
       ) +
@@ -659,13 +773,13 @@
     return v;
   }
   function buildHistoryCSV(){
-    var cols = ['Store Name','Store Location','Type','Audit Date','Day','Audit Time','Total Time','Score %','Items Checked','Items Total','Areas Audited','Menu Items','Section Breakdown','Estimated Pricing','Final Remark'];
+    var cols = ['Store Name','Store Location','Type','Audit Date','Day','Audit Time','Total Time','Score %','Grade','Items Checked','Items Total','Areas Audited','Menu Items','Section Breakdown','Estimated Pricing','Final Remark'];
     var rows = [cols.join(',')];
     state.history.slice().sort(function(a,b){ return b.finishedAt-a.finishedAt; }).forEach(function(h){
       var tmpl = state.templates[h.type] || { label: h.type };
       var sectionSummary = (h.sections||[]).map(function(s){ return s.name+': '+fmtTime(s.accumMs)+' ('+s.checked+'/'+s.total+')'; }).join(' | ');
       var priceStr = h.pricing ? (h.pricing.currency+h.pricing.total) : '';
-      var row = [h.storeName||'', h.storeLocation||'', tmpl.label||h.type, h.auditDate||'', dayName(h.auditDate), h.auditTime||'', fmtTime(h.totalMs), h.completionPct, h.checked, h.total, (h.sections||[]).length, h.menuItemCount||0, sectionSummary, priceStr, h.remark||''];
+      var row = [h.storeName||'', h.storeLocation||'', tmpl.label||h.type, h.auditDate||'', dayName(h.auditDate), h.auditTime||'', fmtTime(h.totalMs), h.completionPct, (h.grade?h.grade.label:''), h.checked, h.total, (h.sections||[]).length, h.menuItemCount||0, sectionSummary, priceStr, h.remark||''];
       rows.push(row.map(csvEscape).join(','));
     });
     return rows.join('\r\n');
@@ -746,9 +860,109 @@
         '<div class="field"><label>Apply when score is below (%)</label><input type="number" min="0" max="100" data-pricing="lowScoreThresholdPct" value="'+p.lowScoreThresholdPct+'"></div>' +
         '<div class="field"><label>Surcharge amount</label><input type="number" min="0" data-pricing="lowScoreSurcharge" value="'+p.lowScoreSurcharge+'"></div>' +
       '</div>' +
-      '<div class="helper" style="margin-bottom:14px;">Total price = base fee + (areas audited × area rate) + (menu items × item rate) + surcharge if the score falls below your threshold. Changes apply to audits completed from now on — past records keep the price they were given at the time.</div>' +
+      '<div class="helper" style="margin-bottom:24px;">Total price = base fee + (areas audited × area rate) + (menu items × item rate) + surcharge if the score falls below your threshold. Changes apply to audits completed from now on — past records keep the price they were given at the time.</div>' +
       '<button class="btn btn-text btn-danger" data-action="reset-pricing">Reset pricing to defaults</button>' +
+
+      '<h1 style="font-size:20px;margin:28px 0 4px;">Grade bands</h1>' +
+      '<div class="helper" style="margin-bottom:12px;">Turn the score % into a letter grade a store manager can read at a glance. Bands are checked highest-first.</div>' +
+      '<div class="card" style="padding:4px 16px;margin-bottom:12px;">' +
+        state.gradeBands.slice().sort(function(a,b){return b.min-a.min;}).map(function(gb){
+          return '<div class="gradebandrow">' +
+            '<input type="number" min="0" max="100" data-gb-field="min" data-gb="'+gb.id+'" value="'+gb.min+'" title="Minimum score %">' +
+            '<input type="text" data-gb-field="label" data-gb="'+gb.id+'" value="'+esc(gb.label)+'" placeholder="Label">' +
+            '<select data-gb-field="tone" data-gb="'+gb.id+'">' +
+              ['good','warn','bad'].map(function(tn){ return '<option value="'+tn+'" '+(gb.tone===tn?'selected':'')+'>'+tn+'</option>'; }).join('') +
+            '</select>' +
+            '<button class="iconbtn" data-action="grade-remove" data-gb="'+gb.id+'" title="Remove band">✕</button>' +
+          '</div>';
+        }).join('') +
+      '</div>' +
+      '<div style="display:flex;gap:8px;margin-bottom:24px;">' +
+        '<button class="btn btn-ghost btn-sm" data-action="grade-add">+ Add band</button>' +
+        '<button class="btn btn-text btn-danger" data-action="reset-grades">Reset to defaults</button>' +
+      '</div>' +
+
+      '<h1 style="font-size:20px;margin:0 0 4px;">Re-audit schedule</h1>' +
+      '<div class="helper" style="margin-bottom:12px;">How many days after an audit a store should be re-checked. Used to build the due list under Actions.</div>' +
+      '<div class="card edsection">' +
+        '<div class="field"><label>Dine-In — re-check every (days)</label><input type="number" min="1" data-schedule="dinein.intervalDays" value="'+state.schedule.dinein.intervalDays+'"></div>' +
+        '<div class="field"><label>QSR — re-check every (days)</label><input type="number" min="1" data-schedule="qsr.intervalDays" value="'+state.schedule.qsr.intervalDays+'"></div>' +
+      '</div>' +
     '</main>';
+  }
+
+  function renderActionsView(){
+    var tab = state.actionsTab;
+    return '<main>' +
+      '<div class="eyebrow">Actions</div>' +
+      '<h1 style="font-size:26px;margin-top:6px;margin-bottom:14px;">Follow-ups &amp; schedule</h1>' +
+      '<div class="tabs">' +
+        '<button class="tab '+(tab==='corrective'?'on':'')+'" data-action="actions-tab" data-tab="corrective">Corrective Actions</button>' +
+        '<button class="tab '+(tab==='schedule'?'on':'')+'" data-action="actions-tab" data-tab="schedule">Re-audit Due</button>' +
+      '</div>' +
+      (tab==='schedule' ? renderDueList() : renderCorrectiveList()) +
+    '</main>';
+  }
+
+  function renderCorrectiveList(){
+    var showDone = !!state.actionsShowDone;
+    var all = state.correctiveActions.slice().sort(function(a,b){
+      var ad = a.dueDate ? new Date(a.dueDate+'T00:00:00').getTime() : Infinity;
+      var bd = b.dueDate ? new Date(b.dueDate+'T00:00:00').getTime() : Infinity;
+      return ad-bd;
+    });
+    var open = all.filter(function(a){ return !a.done; });
+    var done = all.filter(function(a){ return a.done; });
+    var todayStr = todayISO();
+    var overdueCount = open.filter(function(a){ return a.dueDate && a.dueDate < todayStr; }).length;
+
+    function row(a, isDone){
+      var overdue = !isDone && a.dueDate && a.dueDate < todayStr;
+      return '<div class="card cacard2">' +
+        '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">' +
+          '<div style="font-weight:700;">'+esc(a.description||'(unspecified)')+'</div>' +
+          '<button class="btn btn-ghost btn-sm" data-action="'+(isDone?'reopen-action':'resolve-action')+'" data-id="'+a.id+'">'+(isDone?'Reopen':'Mark done')+'</button>' +
+        '</div>' +
+        '<div class="histmeta">'+esc(a.storeName||'Unnamed store')+(a.storeLocation?' · '+esc(a.storeLocation):'')+'</div>' +
+        '<div class="histmeta">'+(a.dueDate ? ('Due '+fmtDateShort(new Date(a.dueDate+'T00:00:00').getTime())) : 'No due date')+(overdue?' <span class="pill bad">OVERDUE</span>':'')+'</div>' +
+      '</div>';
+    }
+
+    return '<div class="statgrid">' +
+        '<div class="stattile"><div class="v">'+open.length+'</div><div class="k">Open</div></div>' +
+        '<div class="stattile"><div class="v">'+overdueCount+'</div><div class="k">Overdue</div></div>' +
+        '<div class="stattile"><div class="v">'+done.length+'</div><div class="k">Resolved</div></div>' +
+      '</div>' +
+      (open.length===0 ? '<div class="empty"><div class="big">✅</div>No open corrective actions.</div>' : open.map(function(a){ return row(a,false); }).join('')) +
+      (done.length ? (
+        '<button class="btn btn-text" style="margin-top:10px;" data-action="toggle-show-done">'+(showDone?'Hide':'Show')+' '+done.length+' resolved</button>' +
+        (showDone ? done.map(function(a){ return row(a,true); }).join('') : '')
+      ) : '');
+  }
+
+  function renderDueList(){
+    var list = computeDueList();
+    var todayMs = Date.now();
+    var overdue = list.filter(function(x){ return x.dueAt<todayMs; }).length;
+    var stat = '<div class="statgrid">' +
+      '<div class="stattile"><div class="v">'+list.length+'</div><div class="k">Stores Tracked</div></div>' +
+      '<div class="stattile"><div class="v">'+overdue+'</div><div class="k">Overdue</div></div>' +
+      '<div class="stattile"><div class="v">'+(list.length-overdue)+'</div><div class="k">On Schedule</div></div>' +
+    '</div>';
+    if (!list.length) return stat + '<div class="empty"><div class="big">🗓️</div>Complete an audit to start tracking re-audit schedules.</div>';
+    return stat + list.map(function(x){
+      var isOverdue = x.dueAt < todayMs;
+      var daysAbs = Math.abs(x.daysUntil);
+      var statusText = isOverdue ? ('Overdue by '+daysAbs+'d') : (x.daysUntil===0 ? 'Due today' : 'Due in '+x.daysUntil+'d');
+      var tone = isOverdue ? 'bad' : (x.daysUntil<=7 ? 'warn' : 'good');
+      var tmpl = state.templates[x.type] || { label: x.type };
+      return '<div class="card histcard">' +
+        '<div class="histtop"><span class="badge">'+esc(tmpl.label||x.type)+'</span><span class="pill '+tone+'">'+statusText+'</span></div>' +
+        '<div style="font-weight:700;margin-top:8px;">'+esc(x.storeName||'Unnamed store')+'</div>' +
+        '<div class="histmeta">'+(x.storeLocation?esc(x.storeLocation)+' · ':'')+'Last audited '+fmtDateShort(x.lastAuditAt)+'</div>' +
+        '<div class="histmeta">Next due '+fmtDateShort(x.dueAt)+'</div>' +
+      '</div>';
+    }).join('');
   }
 
   // ---------- ticking ----------
@@ -779,11 +993,13 @@
     if (!t) return;
     var action = t.dataset.action;
     var d = state.draft;
+    if (d && !d.correctiveActions) d.correctiveActions = [];
 
     if (action==='go-setup'){ if(!state.draft) { state.view='setup'; render(); } }
     else if (action==='go-history'){ if(!state.draft){ state.view='history'; render(); } }
     else if (action==='go-editor'){ if(!state.draft){ state.view='editor'; render(); } }
     else if (action==='go-pricing'){ if(!state.draft){ state.view='pricing'; render(); } }
+    else if (action==='go-actions'){ if(!state.draft){ state.view='actions'; render(); } }
     else if (action==='pick-type'){
       state.setup.type = t.dataset.type;
       state.setup.selectedSections = state.templates[t.dataset.type].sections.map(function(s){ return s.id; });
@@ -835,14 +1051,53 @@
     else if (action==='resume-checklist'){
       d.finishedAt = null; persistDraft(); render();
     }
+    else if (action==='toggle-ca-item'){
+      var itemId = t.dataset.item;
+      var existingIdx = -1;
+      (d.correctiveActions||[]).forEach(function(ca,i){ if (ca.sourceItemId===itemId) existingIdx=i; });
+      if (existingIdx!==-1){
+        d.correctiveActions.splice(existingIdx,1);
+      } else {
+        var text = '';
+        d.sections.forEach(function(s){ s.items.forEach(function(it){ if (it.id===itemId) text = it.text; }); });
+        d.correctiveActions.push({ id: uid(), sourceItemId: itemId, description: text, dueDate: '' });
+      }
+      persistDraft(); render();
+    }
+    else if (action==='add-custom-action'){
+      d.correctiveActions.push({ id: uid(), sourceItemId: null, description: '', dueDate: '' });
+      persistDraft(); render();
+    }
+    else if (action==='ca-remove'){
+      d.correctiveActions = d.correctiveActions.filter(function(ca){ return ca.id!==t.dataset.ca; });
+      persistDraft(); render();
+    }
     else if (action==='complete-audit'){
       if (!(d.remark||'').trim()) return;
       var rec = computeRecord(d);
       state.history.push(rec); persistHistory();
+      (d.correctiveActions||[]).forEach(function(ca){
+        state.correctiveActions.push({
+          id: ca.id, auditId: rec.id, storeName: d.storeName, storeLocation: d.storeLocation,
+          type: d.type, description: (ca.description||'').trim() || '(unspecified)', dueDate: ca.dueDate||'',
+          done: false, createdAt: Date.now()
+        });
+      });
+      persistActions();
       clearDraft();
       state.viewingAuditId = rec.id; state.summaryReturnView='setup';
       state.view='summary'; render();
     }
+    else if (action==='resolve-action'){
+      var act = state.correctiveActions.filter(function(a){ return a.id===t.dataset.id; })[0];
+      if (act){ act.done = true; act.resolvedAt = Date.now(); persistActions(); render(); }
+    }
+    else if (action==='reopen-action'){
+      var act2 = state.correctiveActions.filter(function(a){ return a.id===t.dataset.id; })[0];
+      if (act2){ act2.done = false; persistActions(); render(); }
+    }
+    else if (action==='toggle-show-done'){ state.actionsShowDone = !state.actionsShowDone; render(); }
+    else if (action==='actions-tab'){ state.actionsTab = t.dataset.tab; render(); }
     else if (action==='export-csv'){
       var csv = buildHistoryCSV();
       downloadCSV(csv, 'diagnosis-room-audits-'+todayISO()+'.csv');
@@ -892,6 +1147,20 @@
         persistPricing(); render();
       }
     }
+    else if (action==='grade-add'){
+      state.gradeBands.push({ id: uid(), min: 50, label: 'New band', tone: 'warn' });
+      persistGrades(); render();
+    }
+    else if (action==='grade-remove'){
+      state.gradeBands = state.gradeBands.filter(function(gb){ return gb.id!==t.dataset.gb; });
+      persistGrades(); render();
+    }
+    else if (action==='reset-grades'){
+      if (window.confirm('Reset grade bands to defaults?')){
+        state.gradeBands = JSON.parse(JSON.stringify(DEFAULT_GRADE_BANDS));
+        persistGrades(); render();
+      }
+    }
   });
 
   app.addEventListener('input', function(e){
@@ -928,6 +1197,24 @@
         state.pricing[path[0]] = num2;
       }
       persistPricing();
+    }
+    else if (el.dataset.caField && state.draft){
+      var ca = state.draft.correctiveActions.filter(function(c){ return c.id===el.dataset.ca; })[0];
+      if (ca){ ca[el.dataset.caField] = el.value; persistDraft(); }
+    }
+    else if (el.dataset.gbField){
+      var gb = state.gradeBands.filter(function(g){ return g.id===el.dataset.gb; })[0];
+      if (gb){
+        if (el.dataset.gbField==='min'){ var m = parseFloat(el.value); gb.min = isNaN(m)?0:m; }
+        else { gb[el.dataset.gbField] = el.value; }
+        persistGrades();
+      }
+    }
+    else if (el.dataset.schedule){
+      var spath = el.dataset.schedule.split('.');
+      var sday = parseInt(el.value,10); if (isNaN(sday) || sday<1) sday = 1;
+      state.schedule[spath[0]][spath[1]] = sday;
+      persistSchedule();
     }
   });
 
