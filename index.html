@@ -67,6 +67,7 @@
   .navbtn:hover:not(:disabled){background:var(--surface-2); color:var(--ink);}
   .navbtn.active{background:var(--surface-2); color:var(--ink);}
   .navbtn:disabled{opacity:.35; cursor:not-allowed;}
+  @media (max-width:380px){ .brand .name{display:none;} .navlinks{gap:2px;} .navbtn{padding:6px 7px; font-size:11.5px;} }
   main{flex:1; padding:22px 18px 90px;}
   .eyebrow{font-size:11.5px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-400);}
   .card{background:var(--surface); border:1px solid var(--line); border-radius:var(--r-l); box-shadow:var(--shadow);}
@@ -168,9 +169,18 @@
   .pill.warn{color:var(--accent-ink); background:var(--accent-soft);}
   .empty{text-align:center; padding:50px 20px; color:var(--ink-400);}
   .empty .big{font-size:34px; margin-bottom:8px;}
-  .tabs{display:flex; gap:6px; margin-bottom:16px;}
+  .tabs{display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap;}
   .tab{border:1px solid var(--line-strong); background:var(--surface); border-radius:20px; padding:6px 13px; font-size:13px; font-weight:600; color:var(--ink-600);}
   .tab.on{background:var(--ink); color:var(--paper); border-color:var(--ink);}
+
+  /* area filter */
+  .areagrid{display:flex; flex-wrap:wrap; gap:8px; margin-top:4px;}
+  .areachip{border:1px solid var(--line-strong); background:var(--surface); border-radius:20px; padding:8px 14px; font-size:13px; font-weight:600; color:var(--ink-600);}
+  .areachip.on{background:var(--ink); color:var(--paper); border-color:var(--ink);}
+
+  /* pricing */
+  .pricerow{display:flex; justify-content:space-between; align-items:baseline;}
+  .pricetotal{font-family:var(--font-m); font-weight:800; font-size:18px;}
 
   /* editor */
   .edsection{padding:14px 16px; margin-bottom:12px;}
@@ -197,7 +207,15 @@
 <script>
 (function(){
   "use strict";
-  var LS_T = 'diagnosisroom_templates_v1', LS_H = 'diagnosisroom_history_v1', LS_D = 'diagnosisroom_draft_v1';
+  var LS_T = 'diagnosisroom_templates_v1', LS_H = 'diagnosisroom_history_v1', LS_D = 'diagnosisroom_draft_v1', LS_P = 'diagnosisroom_pricing_v1';
+
+  var DEFAULT_PRICING = {
+    currency: '₹',
+    dinein: { baseFee: 1500, perSection: 300, perMenuItem: 5 },
+    qsr: { baseFee: 1000, perSection: 250, perMenuItem: 3 },
+    lowScoreThresholdPct: 80,
+    lowScoreSurcharge: 500
+  };
 
   var DEFAULT_TEMPLATES = {
     dinein: { label:'Dine-In', sections:[
@@ -281,7 +299,8 @@
     templates: (function(){ var t = loadJSON(LS_T, null); return t ? t : seedTemplates(DEFAULT_TEMPLATES); })(),
     history: loadJSON(LS_H, []),
     draft: loadJSON(LS_D, null),
-    setup: { type:null, storeName:'', storeLocation:'', auditDate: todayISO(), auditTime: nowHHMM() },
+    pricing: loadJSON(LS_P, null) || JSON.parse(JSON.stringify(DEFAULT_PRICING)),
+    setup: { type:null, storeName:'', storeLocation:'', auditDate: todayISO(), auditTime: nowHHMM(), selectedSections:[], menuItemCount:'' },
     editorTab: 'dinein',
     historyTab: 'all',
     viewingAuditId: null,
@@ -291,6 +310,7 @@
 
   function persistTemplates(){ saveJSON(LS_T, state.templates); }
   function persistHistory(){ saveJSON(LS_H, state.history); }
+  function persistPricing(){ saveJSON(LS_P, state.pricing); }
   function persistDraft(){ saveJSON(LS_D, state.draft); }
   function clearDraft(){ state.draft = null; try{ localStorage.removeItem(LS_D); }catch(e){} }
 
@@ -357,16 +377,29 @@
     return { checked:checked, total:total, pct: total===0?100:Math.round(checked/total*100) };
   }
 
+  // ---------- pricing ----------
+  function computePricing(type, sectionCount, menuItemCount, completionPct){
+    var cfg = state.pricing[type] || { baseFee:0, perSection:0, perMenuItem:0 };
+    var sectionsCost = sectionCount * (cfg.perSection||0);
+    var menuCost = (menuItemCount||0) * (cfg.perMenuItem||0);
+    var surcharge = completionPct < state.pricing.lowScoreThresholdPct ? (state.pricing.lowScoreSurcharge||0) : 0;
+    var total = (cfg.baseFee||0) + sectionsCost + menuCost + surcharge;
+    return { base:cfg.baseFee||0, sectionsCost:sectionsCost, menuCost:menuCost, surcharge:surcharge, total:total, currency: state.pricing.currency||'' };
+  }
+
   // ---------- build a fresh draft ----------
-  function newDraft(type, storeName, storeLocation, auditDate, auditTime){
+  function newDraft(type, storeName, storeLocation, auditDate, auditTime, selectedSectionIds, menuItemCount){
     var tmpl = state.templates[type];
+    var chosen = tmpl.sections.filter(function(s){ return selectedSectionIds.indexOf(s.id) !== -1; });
+    if (!chosen.length) chosen = tmpl.sections;
     return {
       id: uid(), type: type, storeName: storeName||'', storeLocation: storeLocation||'',
       auditDate: auditDate||todayISO(), auditTime: auditTime||nowHHMM(),
+      menuItemCount: Math.max(0, parseInt(menuItemCount,10)||0),
       startedAt: Date.now(), finishedAt: null, remark:'',
       overall: { accumMs:0, runningSince: Date.now(), paused:false },
       activeSectionId: null,
-      sections: tmpl.sections.map(function(s){
+      sections: chosen.map(function(s){
         return { id:s.id, name:s.name, accumMs:0, runningSince:null,
           items: s.items.map(function(it){ return { id:it.id, text:it.text, state:'unchecked' }; }) };
       })
@@ -384,17 +417,20 @@
     else if (v==='summary') html = renderSummaryView();
     else if (v==='history') html = renderHistory();
     else if (v==='editor') html = renderEditor();
+    else if (v==='pricing') html = renderPricingSettings();
     app.innerHTML = topbar() + html;
   }
 
   function topbar(){
     var draftActive = !!state.draft;
+    var lockAttr = draftActive?'disabled title="Finish or discard the current audit first"':'';
     return '' +
       '<div class="topbar">' +
         '<button class="brand" data-action="go-setup"><span class="mark">dr</span><span class="name">Diagnosis Room</span></button>' +
         '<div class="navlinks">' +
-          '<button class="navbtn '+(state.view==='history'?'active':'')+'" data-action="go-history" '+(draftActive?'disabled title="Finish or discard the current audit first"':'')+'>History</button>' +
-          '<button class="navbtn '+(state.view==='editor'?'active':'')+'" data-action="go-editor" '+(draftActive?'disabled title="Finish or discard the current audit first"':'')+'>Checklist</button>' +
+          '<button class="navbtn '+(state.view==='history'?'active':'')+'" data-action="go-history" '+lockAttr+'>History</button>' +
+          '<button class="navbtn '+(state.view==='editor'?'active':'')+'" data-action="go-editor" '+lockAttr+'>Checklist</button>' +
+          '<button class="navbtn '+(state.view==='pricing'?'active':'')+'" data-action="go-pricing" '+lockAttr+'>Pricing</button>' +
         '</div>' +
       '</div>';
   }
@@ -419,6 +455,7 @@
           '</button>';
         }).join('') +
       '</div>' +
+      (s.type ? renderAreaFilter(s) : '') +
       '<div class="formstack">' +
         '<div class="field"><label for="storeName">Store name</label><input id="storeName" data-bind="storeName" placeholder="e.g. Northside Grill" value="'+esc(s.storeName)+'"></div>' +
         '<div class="field"><label for="storeLocation">Store location</label><input id="storeLocation" data-bind="storeLocation" placeholder="e.g. 44 Riverside Ave, Unit 2" value="'+esc(s.storeLocation)+'"></div>' +
@@ -427,10 +464,25 @@
           '<div class="field" style="flex:1;"><label for="auditTime">Audit time</label><input id="auditTime" type="time" data-bind="auditTime" value="'+esc(s.auditTime)+'"></div>' +
         '</div>' +
         '<div class="helper" data-dayname style="margin-top:-6px;">'+esc(dayName(s.auditDate))+'</div>' +
+        '<div class="field"><label for="menuItemCount">Number of menu items</label><input id="menuItemCount" type="number" min="0" inputmode="numeric" data-bind="menuItemCount" placeholder="e.g. 42" value="'+esc(s.menuItemCount)+'"></div>' +
       '</div>' +
-      '<button class="btn btn-primary" style="width:100%;padding:14px;" data-action="start-audit" '+(s.type?'':'disabled')+'>Start Audit &amp; Timer</button>' +
-      '<div class="helper" style="text-align:center;margin-top:10px;">The overall timer starts the moment you begin — tap a section below to time it individually.</div>' +
+      '<button class="btn btn-primary" style="width:100%;padding:14px;" data-action="start-audit" '+(s.type && s.selectedSections.length ? '' : 'disabled')+'>Start Audit &amp; Timer</button>' +
+      '<div class="helper" style="text-align:center;margin-top:10px;">'+(s.type && !s.selectedSections.length ? 'Select at least one area to audit.' : 'The overall timer starts the moment you begin — tap a section below to time it individually.')+'</div>' +
     '</main>';
+  }
+
+  function renderAreaFilter(s){
+    var tmpl = state.templates[s.type];
+    return '<div class="field" style="margin-bottom:20px;">' +
+      '<label>Select areas to audit</label>' +
+      '<div class="areagrid">' +
+        tmpl.sections.map(function(sec){
+          var on = s.selectedSections.indexOf(sec.id) !== -1;
+          return '<button type="button" class="areachip '+(on?'on':'')+'" data-action="toggle-area" data-sec="'+sec.id+'">'+(on?'✓ ':'')+esc(sec.name)+'</button>';
+        }).join('') +
+      '</div>' +
+      '<div class="helper">Untick a section to run a shorter, focused audit on just the areas you pick.</div>' +
+    '</div>';
   }
 
   function renderAudit(d){
@@ -487,14 +539,23 @@
     var op = overallProgress(d);
     var totalMs = d.overall.accumMs;
     var canComplete = (d.remark||'').trim().length > 0;
+    var price = computePricing(d.type, d.sections.length, d.menuItemCount||0, op.pct);
     return '<main>' +
       '<button class="backrow" data-action="resume-checklist">← Back to checklist</button>' +
       '<div class="eyebrow">Finishing Audit</div>' +
       '<h1 style="font-size:24px;margin-top:6px;">'+esc(d.storeName||'Unnamed store')+'</h1>' +
       '<div class="helper" style="margin-top:4px;">'+(d.storeLocation?esc(d.storeLocation)+' · ':'')+fmtAuditWhen(d.auditDate,d.auditTime)+'</div>' +
-      '<div class="helper" style="margin-top:2px;">'+tmpl.label+' · '+op.checked+'/'+op.total+' items checked ('+op.pct+'%) · '+fmtTime(totalMs)+' total</div>' +
+      '<div class="helper" style="margin-top:2px;">'+tmpl.label+' · '+op.checked+'/'+op.total+' items checked ('+op.pct+'% score) · '+fmtTime(totalMs)+' total</div>' +
       '<div class="statgrid">' +
         d.sections.map(function(s){ return '<div class="stattile"><div class="v">'+fmtTime(s.accumMs)+'</div><div class="k">'+esc(s.name)+'</div></div>'; }).join('') +
+      '</div>' +
+      '<h2 style="font-size:15px;margin-bottom:6px;">Estimated pricing</h2>' +
+      '<div class="card" style="padding:4px 16px;margin-bottom:20px;">' +
+        '<div class="sumrow"><span class="k">Base fee ('+tmpl.label+')</span><span class="v">'+price.currency+price.base+'</span></div>' +
+        '<div class="sumrow"><span class="k">Areas audited ('+d.sections.length+')</span><span class="v">'+price.currency+price.sectionsCost+'</span></div>' +
+        '<div class="sumrow"><span class="k">Menu items ('+(d.menuItemCount||0)+')</span><span class="v">'+price.currency+price.menuCost+'</span></div>' +
+        (price.surcharge ? '<div class="sumrow"><span class="k">Below '+state.pricing.lowScoreThresholdPct+'% score surcharge</span><span class="v">'+price.currency+price.surcharge+'</span></div>' : '') +
+        '<div class="sumrow pricerow"><span class="k" style="font-weight:700;color:var(--ink);">Total</span><span class="pricetotal">'+price.currency+price.total+'</span></div>' +
       '</div>' +
       '<div class="field remarkwrap"><label for="remarkInput">Final remark <span style="color:var(--bad)">*</span></label>' +
         '<textarea id="remarkInput" data-bind="remark" placeholder="Summarise findings, corrective actions and overall condition of the floor…">'+esc(d.remark||'')+'</textarea>' +
@@ -506,10 +567,12 @@
 
   function computeRecord(d){
     var op = overallProgress(d);
+    var pricing = computePricing(d.type, d.sections.length, d.menuItemCount||0, op.pct);
     return { id:d.id, type:d.type, storeName:d.storeName, storeLocation:d.storeLocation,
-      auditDate:d.auditDate, auditTime:d.auditTime,
+      auditDate:d.auditDate, auditTime:d.auditTime, menuItemCount:d.menuItemCount||0,
       startedAt:d.startedAt, finishedAt:d.finishedAt, remark:d.remark,
       totalMs:d.overall.accumMs, completionPct:op.pct, checked:op.checked, total:op.total,
+      pricing: pricing,
       sections: d.sections.map(function(s){ var p=sectionProgress(s); return { id:s.id, name:s.name, accumMs:s.accumMs, checked:p.checked, total:p.total, na:p.na, items:s.items.slice() }; })
     };
   }
@@ -525,13 +588,22 @@
       '<div class="helper" style="margin-bottom:16px;">'+(rec.storeLocation?esc(rec.storeLocation)+' · ':'')+fmtAuditWhen(rec.auditDate,rec.auditTime)+'</div>' +
       '<div class="statgrid">' +
         '<div class="stattile"><div class="v">'+fmtTime(rec.totalMs)+'</div><div class="k">Total Time</div></div>' +
-        '<div class="stattile"><div class="v">'+rec.completionPct+'%</div><div class="k">Completion</div></div>' +
+        '<div class="stattile"><div class="v">'+rec.completionPct+'%</div><div class="k">Score</div></div>' +
         '<div class="stattile"><div class="v">'+rec.checked+'/'+rec.total+'</div><div class="k">Items Checked</div></div>' +
       '</div>' +
       '<h2 style="font-size:15px;margin-bottom:6px;">Section timing</h2>' +
       '<div class="card" style="padding:4px 16px;margin-bottom:20px;">' +
         rec.sections.map(function(s){ return '<div class="sumrow"><span class="k">'+esc(s.name)+'</span><span class="v">'+fmtTime(s.accumMs)+' · '+s.checked+'/'+s.total+'</span></div>'; }).join('') +
       '</div>' +
+      (rec.pricing ? (
+      '<h2 style="font-size:15px;margin-bottom:6px;">Pricing</h2>' +
+      '<div class="card" style="padding:4px 16px;margin-bottom:20px;">' +
+        '<div class="sumrow"><span class="k">Base fee</span><span class="v">'+rec.pricing.currency+rec.pricing.base+'</span></div>' +
+        '<div class="sumrow"><span class="k">Areas audited ('+rec.sections.length+')</span><span class="v">'+rec.pricing.currency+rec.pricing.sectionsCost+'</span></div>' +
+        '<div class="sumrow"><span class="k">Menu items ('+(rec.menuItemCount||0)+')</span><span class="v">'+rec.pricing.currency+rec.pricing.menuCost+'</span></div>' +
+        (rec.pricing.surcharge ? '<div class="sumrow"><span class="k">Low-score surcharge</span><span class="v">'+rec.pricing.currency+rec.pricing.surcharge+'</span></div>' : '') +
+        '<div class="sumrow pricerow"><span class="k" style="font-weight:700;color:var(--ink);">Total</span><span class="pricetotal">'+rec.pricing.currency+rec.pricing.total+'</span></div>' +
+      '</div>') : '') +
       '<h2 style="font-size:15px;margin-bottom:6px;">Final remark</h2>' +
       '<div class="remarkbox">'+esc(rec.remark||'—')+'</div>' +
     '</main>';
@@ -547,11 +619,14 @@
     if (list.length){
       var avgMs = Math.round(list.reduce(function(n,h){ return n+h.totalMs; },0)/list.length);
       var avgPct = Math.round(list.reduce(function(n,h){ return n+h.completionPct; },0)/list.length);
+      var totalRevenue = list.reduce(function(n,h){ return n+(h.pricing?h.pricing.total:0); },0);
+      var curr = state.pricing.currency||'';
       stats = '<div class="statgrid">' +
         '<div class="stattile"><div class="v">'+list.length+'</div><div class="k">Audits Logged</div></div>' +
         '<div class="stattile"><div class="v">'+fmtTime(avgMs)+'</div><div class="k">Avg. Duration</div></div>' +
-        '<div class="stattile"><div class="v">'+avgPct+'%</div><div class="k">Avg. Completion</div></div>' +
-      '</div>';
+        '<div class="stattile"><div class="v">'+avgPct+'%</div><div class="k">Avg. Score</div></div>' +
+      '</div>' +
+      '<div class="stattile" style="margin-bottom:16px;"><div class="v">'+curr+totalRevenue+'</div><div class="k">Total Estimated Pricing</div></div>';
     }
 
     return '<main>' +
@@ -571,7 +646,7 @@
             '<div class="histtop"><span class="badge">'+esc(tmpl.label||h.type)+'</span><span class="histpct">'+fmtTime(h.totalMs)+'</span></div>' +
             '<div style="font-weight:700;margin-top:8px;">'+esc(h.storeName||'Unnamed store')+'</div>' +
             '<div class="histmeta">'+(h.storeLocation?esc(h.storeLocation)+' · ':'')+fmtAuditWhen(h.auditDate,h.auditTime)+'</div>' +
-            '<div class="histmeta">'+' <span class="pill '+(h.completionPct>=90?'good':'warn')+'">'+h.completionPct+'% complete</span></div>' +
+            '<div class="histmeta">'+' <span class="pill '+(h.completionPct>=90?'good':'warn')+'">'+h.completionPct+'% score</span>'+(h.pricing?' · '+h.pricing.currency+h.pricing.total:'')+'</div>' +
           '</div>';
         }).join('')
       ) +
@@ -584,12 +659,13 @@
     return v;
   }
   function buildHistoryCSV(){
-    var cols = ['Store Name','Store Location','Type','Audit Date','Day','Audit Time','Total Time','Completion %','Items Checked','Items Total','Section Breakdown','Final Remark'];
+    var cols = ['Store Name','Store Location','Type','Audit Date','Day','Audit Time','Total Time','Score %','Items Checked','Items Total','Areas Audited','Menu Items','Section Breakdown','Estimated Pricing','Final Remark'];
     var rows = [cols.join(',')];
     state.history.slice().sort(function(a,b){ return b.finishedAt-a.finishedAt; }).forEach(function(h){
       var tmpl = state.templates[h.type] || { label: h.type };
       var sectionSummary = (h.sections||[]).map(function(s){ return s.name+': '+fmtTime(s.accumMs)+' ('+s.checked+'/'+s.total+')'; }).join(' | ');
-      var row = [h.storeName||'', h.storeLocation||'', tmpl.label||h.type, h.auditDate||'', dayName(h.auditDate), h.auditTime||'', fmtTime(h.totalMs), h.completionPct, h.checked, h.total, sectionSummary, h.remark||''];
+      var priceStr = h.pricing ? (h.pricing.currency+h.pricing.total) : '';
+      var row = [h.storeName||'', h.storeLocation||'', tmpl.label||h.type, h.auditDate||'', dayName(h.auditDate), h.auditTime||'', fmtTime(h.totalMs), h.completionPct, h.checked, h.total, (h.sections||[]).length, h.menuItemCount||0, sectionSummary, priceStr, h.remark||''];
       rows.push(row.map(csvEscape).join(','));
     });
     return rows.join('\r\n');
@@ -648,6 +724,33 @@
     '</main>';
   }
 
+  function renderPricingSettings(){
+    var p = state.pricing;
+    function typeBlock(type){
+      var cfg = p[type];
+      var label = state.templates[type].label;
+      return '<div class="card edsection">' +
+        '<div class="edhead"><div style="font-family:var(--font-d);font-weight:800;font-size:15px;">'+label+'</div></div>' +
+        '<div class="field"><label>Base fee</label><input type="number" min="0" data-pricing="'+type+'.baseFee" value="'+cfg.baseFee+'"></div>' +
+        '<div class="field"><label>Rate per area audited</label><input type="number" min="0" data-pricing="'+type+'.perSection" value="'+cfg.perSection+'"></div>' +
+        '<div class="field"><label>Rate per menu item</label><input type="number" min="0" data-pricing="'+type+'.perMenuItem" value="'+cfg.perMenuItem+'"></div>' +
+      '</div>';
+    }
+    return '<main>' +
+      '<div class="eyebrow">Pricing Settings</div>' +
+      '<h1 style="font-size:26px;margin-top:6px;margin-bottom:14px;">Set your rates</h1>' +
+      '<div class="field" style="margin-bottom:16px;"><label>Currency symbol</label><input type="text" maxlength="3" data-pricing="currency" value="'+esc(p.currency)+'" style="max-width:90px;"></div>' +
+      typeBlock('dinein') + typeBlock('qsr') +
+      '<div class="card edsection">' +
+        '<div class="edhead"><div style="font-family:var(--font-d);font-weight:800;font-size:15px;">Low-score surcharge</div></div>' +
+        '<div class="field"><label>Apply when score is below (%)</label><input type="number" min="0" max="100" data-pricing="lowScoreThresholdPct" value="'+p.lowScoreThresholdPct+'"></div>' +
+        '<div class="field"><label>Surcharge amount</label><input type="number" min="0" data-pricing="lowScoreSurcharge" value="'+p.lowScoreSurcharge+'"></div>' +
+      '</div>' +
+      '<div class="helper" style="margin-bottom:14px;">Total price = base fee + (areas audited × area rate) + (menu items × item rate) + surcharge if the score falls below your threshold. Changes apply to audits completed from now on — past records keep the price they were given at the time.</div>' +
+      '<button class="btn btn-text btn-danger" data-action="reset-pricing">Reset pricing to defaults</button>' +
+    '</main>';
+  }
+
   // ---------- ticking ----------
   setInterval(function(){
     if (state.view!=='audit' || !state.draft || state.draft.finishedAt) return;
@@ -680,10 +783,21 @@
     if (action==='go-setup'){ if(!state.draft) { state.view='setup'; render(); } }
     else if (action==='go-history'){ if(!state.draft){ state.view='history'; render(); } }
     else if (action==='go-editor'){ if(!state.draft){ state.view='editor'; render(); } }
-    else if (action==='pick-type'){ state.setup.type = t.dataset.type; render(); }
+    else if (action==='go-pricing'){ if(!state.draft){ state.view='pricing'; render(); } }
+    else if (action==='pick-type'){
+      state.setup.type = t.dataset.type;
+      state.setup.selectedSections = state.templates[t.dataset.type].sections.map(function(s){ return s.id; });
+      render();
+    }
+    else if (action==='toggle-area'){
+      var areaId = t.dataset.sec;
+      var idx = state.setup.selectedSections.indexOf(areaId);
+      if (idx===-1) state.setup.selectedSections.push(areaId); else state.setup.selectedSections.splice(idx,1);
+      render();
+    }
     else if (action==='start-audit'){
-      if (!state.setup.type) return;
-      state.draft = newDraft(state.setup.type, state.setup.storeName, state.setup.storeLocation, state.setup.auditDate, state.setup.auditTime);
+      if (!state.setup.type || !state.setup.selectedSections.length) return;
+      state.draft = newDraft(state.setup.type, state.setup.storeName, state.setup.storeLocation, state.setup.auditDate, state.setup.auditTime, state.setup.selectedSections, state.setup.menuItemCount);
       persistDraft();
       state.view='audit'; render();
     }
@@ -772,6 +886,12 @@
         persistTemplates(); render();
       }
     }
+    else if (action==='reset-pricing'){
+      if (window.confirm('Reset pricing settings to defaults?')){
+        state.pricing = JSON.parse(JSON.stringify(DEFAULT_PRICING));
+        persistPricing(); render();
+      }
+    }
   });
 
   app.addEventListener('input', function(e){
@@ -780,6 +900,7 @@
     else if (el.dataset.bind === 'storeLocation'){ state.setup.storeLocation = el.value; }
     else if (el.dataset.bind === 'auditDate'){ state.setup.auditDate = el.value; var dn = app.querySelector('[data-dayname]'); if (dn) dn.textContent = dayName(el.value); }
     else if (el.dataset.bind === 'auditTime'){ state.setup.auditTime = el.value; }
+    else if (el.dataset.bind === 'menuItemCount'){ state.setup.menuItemCount = el.value; }
     else if (el.dataset.bind === 'remark' && state.draft){ state.draft.remark = el.value; persistDraft();
       var btn = app.querySelector('[data-action="complete-audit"]');
       if (btn) btn.disabled = !el.value.trim();
@@ -794,6 +915,19 @@
       var sec2 = tmpl2.sections.filter(function(s){return s.id===el.dataset.sec;})[0];
       var it = sec2 && sec2.items.filter(function(i){return i.id===el.dataset.item;})[0];
       if (it){ it.text = el.value; persistTemplates(); }
+    }
+    else if (el.dataset.pricing){
+      var path = el.dataset.pricing.split('.');
+      if (path.length>1){
+        var num = parseFloat(el.value); if (isNaN(num)) num = 0;
+        state.pricing[path[0]][path[1]] = num;
+      } else if (path[0] === 'currency'){
+        state.pricing.currency = el.value;
+      } else {
+        var num2 = parseFloat(el.value); if (isNaN(num2)) num2 = 0;
+        state.pricing[path[0]] = num2;
+      }
+      persistPricing();
     }
   });
 
