@@ -134,9 +134,11 @@
   .chk{width:22px; height:22px; border-radius:6px; border:1.5px solid var(--line-strong); background:var(--surface); flex:none; margin-top:1px; display:flex; align-items:center; justify-content:center; transition:background .12s, border-color .12s;}
   .chk.checked{background:var(--good); border-color:var(--good); color:#fff;}
   .chk.na{background:var(--surface-2); border-color:var(--line-strong); color:var(--ink-400);}
-  .itemtext{flex:1; font-size:14.5px; line-height:1.4; padding-top:2px; cursor:default;}
+  .itemcol{flex:1; min-width:0;}
+  .itemtext{font-size:14.5px; line-height:1.4; padding-top:2px; cursor:default;}
   .itemtext.checked{color:var(--ink-600);}
   .itemtext.na{color:var(--ink-400); text-decoration:line-through;}
+  .itemvalue{display:block; margin-top:6px; width:100%; border:1px solid var(--line-strong); border-radius:var(--r-s); padding:6px 10px; font-size:13px; background:var(--surface); color:var(--ink);}
   .naBtn{font-size:11px; font-weight:700; color:var(--ink-400); background:none; border:1px solid var(--line-strong); border-radius:20px; padding:4px 9px; flex:none;}
   .naBtn.on{color:var(--accent-ink); border-color:var(--accent); background:var(--accent-soft);}
 
@@ -205,6 +207,8 @@
   .iconbtn:hover{color:var(--bad); background:var(--bad-soft);}
   .addrow{display:flex; gap:8px; margin-top:6px;}
   .addrow input{flex:1; border:1px solid var(--line-strong); border-radius:var(--r-s); padding:8px 10px; font-size:13.5px; background:var(--surface); color:var(--ink);}
+  .editem-sub{display:flex; align-items:center; gap:8px; padding:0 0 8px; flex-wrap:wrap;}
+  .iteminfolabel{flex:1; min-width:140px; border:1px solid var(--line-strong); border-radius:var(--r-s); padding:6px 8px; font-size:12.5px; background:var(--surface); color:var(--ink);}
 
   .backrow{display:flex; align-items:center; gap:8px; margin-bottom:14px; color:var(--ink-600); font-size:13px; font-weight:600; cursor:pointer; border:none; background:none; padding:0;}
   .backrow:hover{color:var(--ink);}
@@ -399,11 +403,11 @@
   }
 
   function sectionProgress(sec){
-    var countable = sec.items.filter(function(i){ return i.state !== 'na'; });
-    var checked = countable.filter(function(i){ return i.state === 'checked'; });
-    var total = countable.length;
+    var total = sec.items.length;
+    var checked = sec.items.filter(function(i){ return i.state === 'checked'; });
+    var na = sec.items.filter(function(i){ return i.state === 'na'; });
     var pct = total === 0 ? 100 : Math.round(checked.length/total*100);
-    return { checked: checked.length, total: total, na: sec.items.length-total, pct: pct };
+    return { checked: checked.length, total: total, na: na.length, pct: pct };
   }
   function overallProgress(d){
     var checked=0, total=0;
@@ -467,7 +471,7 @@
       activeSectionId: null,
       sections: chosen.map(function(s){
         return { id:s.id, name:s.name, accumMs:0, runningSince:null,
-          items: s.items.map(function(it){ return { id:it.id, text:it.text, state:'unchecked' }; }) };
+          items: s.items.map(function(it){ return { id:it.id, text:it.text, state:'unchecked', requiresInfo:!!it.requiresInfo, infoLabel:it.infoLabel||'', value:'' }; }) };
       })
     };
   }
@@ -569,8 +573,11 @@
           '<button class="chk '+(checked?'checked':'')+' '+(na?'na':'')+'" data-action="toggle-item" data-sec="'+sec.id+'" data-item="'+it.id+'" aria-label="Toggle item">' +
             (checked?'✓':(na?'–':'')) +
           '</button>' +
-          '<div class="itemtext '+(checked?'checked':'')+' '+(na?'na':'')+'">'+esc(it.text)+'</div>' +
-          '<button class="naBtn '+(na?'on':'')+'" data-action="toggle-na" data-sec="'+sec.id+'" data-item="'+it.id+'">N/A</button>' +
+          '<div class="itemcol">' +
+            '<div class="itemtext '+(checked?'checked':'')+' '+(na?'na':'')+'">'+esc(it.text)+'</div>' +
+            (it.requiresInfo ? '<input type="text" class="itemvalue" data-bind-item="value" data-sec="'+sec.id+'" data-item="'+it.id+'" placeholder="'+esc(it.infoLabel||'Enter value')+'" value="'+esc(it.value||'')+'">' : '') +
+          '</div>' +
+          '<button class="naBtn '+(na?'on':'')+'" data-action="toggle-na" data-sec="'+sec.id+'" data-item="'+it.id+'" title="Not Available — counts against the score">N/A</button>' +
         '</div>';
       }).join('');
       return '<div class="section '+(active?'active':'')+'">' +
@@ -640,7 +647,7 @@
     var uncheckedItems = [];
     d.sections.forEach(function(s){
       s.items.forEach(function(it){
-        if (it.state==='unchecked') uncheckedItems.push(it);
+        if (it.state==='unchecked' || it.state==='na') uncheckedItems.push(it);
       });
     });
     var addedIds = {};
@@ -703,6 +710,15 @@
       '<div class="card" style="padding:4px 16px;margin-bottom:20px;">' +
         rec.sections.map(function(s){ return '<div class="sumrow"><span class="k">'+esc(s.name)+' '+(s.grade?'<span class="pill '+esc(s.grade.tone)+'">'+esc(s.grade.label)+'</span>':'')+'</span><span class="v">'+fmtTime(s.accumMs)+' · '+s.checked+'/'+s.total+'</span></div>'; }).join('') +
       '</div>' +
+      (function(){
+        var recorded = [];
+        rec.sections.forEach(function(s){ s.items.forEach(function(it){ if (it.requiresInfo && (it.value||'').trim()) recorded.push({ text: it.text, value: it.value }); }); });
+        if (!recorded.length) return '';
+        return '<h2 style="font-size:15px;margin-bottom:6px;">Recorded values</h2>' +
+          '<div class="card" style="padding:4px 16px;margin-bottom:20px;">' +
+            recorded.map(function(r){ return '<div class="sumrow"><span class="k">'+esc(r.text)+'</span><span class="v">'+esc(r.value)+'</span></div>'; }).join('') +
+          '</div>';
+      })() +
       (rec.pricing ? (
       '<h2 style="font-size:15px;margin-bottom:6px;">Pricing</h2>' +
       '<div class="card" style="padding:4px 16px;margin-bottom:20px;">' +
@@ -832,6 +848,10 @@
             return '<div class="editem">' +
               '<input value="'+esc(it.text)+'" data-action="rename-item" data-sec="'+sec.id+'" data-item="'+it.id+'">' +
               '<button class="iconbtn" data-action="delete-item" data-sec="'+sec.id+'" data-item="'+it.id+'" title="Delete item">✕</button>' +
+            '</div>' +
+            '<div class="editem-sub">' +
+              '<button type="button" class="naBtn '+(it.requiresInfo?'on':'')+'" data-action="toggle-requires-info" data-sec="'+sec.id+'" data-item="'+it.id+'">Needs value</button>' +
+              (it.requiresInfo ? '<input type="text" class="iteminfolabel" data-action="edit-info-label" data-sec="'+sec.id+'" data-item="'+it.id+'" value="'+esc(it.infoLabel||'')+'" placeholder="e.g. Fridge temp °C">' : '') +
             '</div>';
           }).join('') +
           '<div class="addrow"><input placeholder="Add a checklist item…" data-newitem-for="'+sec.id+'"><button class="btn btn-ghost btn-sm" data-action="add-item" data-sec="'+sec.id+'">Add</button></div>' +
@@ -1121,6 +1141,12 @@
       sec4.items = sec4.items.filter(function(i){ return i.id!==t.dataset.item; });
       persistTemplates(); render();
     }
+    else if (action==='toggle-requires-info'){
+      var tmplRI = state.templates[state.editorTab];
+      var secRI = tmplRI.sections.filter(function(s){return s.id===t.dataset.sec;})[0];
+      var itRI = secRI && secRI.items.filter(function(i){return i.id===t.dataset.item;})[0];
+      if (itRI){ itRI.requiresInfo = !itRI.requiresInfo; persistTemplates(); render(); }
+    }
     else if (action==='add-item'){
       var input = app.querySelector('[data-newitem-for="'+t.dataset.sec+'"]');
       var text = (input.value||'').trim();
@@ -1188,6 +1214,17 @@
       var sec2 = tmpl2.sections.filter(function(s){return s.id===el.dataset.sec;})[0];
       var it = sec2 && sec2.items.filter(function(i){return i.id===el.dataset.item;})[0];
       if (it){ it.text = el.value; persistTemplates(); }
+    }
+    else if (el.dataset.action === 'edit-info-label'){
+      var tmplIL = state.templates[state.editorTab];
+      var secIL = tmplIL.sections.filter(function(s){return s.id===el.dataset.sec;})[0];
+      var itIL = secIL && secIL.items.filter(function(i){return i.id===el.dataset.item;})[0];
+      if (itIL){ itIL.infoLabel = el.value; persistTemplates(); }
+    }
+    else if (el.dataset.bindItem === 'value' && state.draft){
+      var secV = state.draft.sections.filter(function(s){return s.id===el.dataset.sec;})[0];
+      var itV = secV && secV.items.filter(function(i){return i.id===el.dataset.item;})[0];
+      if (itV){ itV.value = el.value; persistDraft(); }
     }
     else if (el.dataset.pricing){
       var path = el.dataset.pricing.split('.');
