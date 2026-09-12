@@ -576,7 +576,7 @@
       return '<div class="section '+(active?'active':'')+'">' +
         '<button class="sechead" data-action="toggle-section" data-sec="'+sec.id+'">' +
           '<div class="secnum mono">'+String(idx+1).padStart(2,'0')+'</div>' +
-          '<div class="sectitle"><div class="sname">'+esc(sec.name)+'</div><div class="smeta">'+p.checked+'/'+p.total+' checked'+(p.na?' · '+p.na+' N/A':'')+'</div></div>' +
+          '<div class="sectitle"><div class="sname">'+esc(sec.name)+'</div><div class="smeta">'+p.checked+'/'+p.total+' checked'+(p.na?' · '+p.na+' N/A':'')+' '+gradeBadge(p.pct)+'</div></div>' +
           '<div class="sectimer '+(running?'running':'')+'"><span class="dot '+(running?'running':'')+'"></span><span data-timer="sec-'+sec.id+'">'+fmtTime(sectionElapsed(sec))+'</span></div>' +
           '<div class="chev">▼</div>' +
         '</button>' +
@@ -616,7 +616,7 @@
       '<div class="helper" style="margin-top:4px;">'+(d.storeLocation?esc(d.storeLocation)+' · ':'')+fmtAuditWhen(d.auditDate,d.auditTime)+'</div>' +
       '<div class="helper" style="margin-top:2px;">'+tmpl.label+' · '+op.checked+'/'+op.total+' items checked ('+op.pct+'% score) '+gradeBadge(op.pct)+' · '+fmtTime(totalMs)+' total</div>' +
       '<div class="statgrid">' +
-        d.sections.map(function(s){ return '<div class="stattile"><div class="v">'+fmtTime(s.accumMs)+'</div><div class="k">'+esc(s.name)+'</div></div>'; }).join('') +
+        d.sections.map(function(s){ return '<div class="stattile"><div class="v">'+fmtTime(s.accumMs)+'</div><div class="k">'+esc(s.name)+'</div><div style="margin-top:5px;">'+gradeBadge(sectionProgress(s).pct)+'</div></div>'; }).join('') +
       '</div>' +
       '<h2 style="font-size:15px;margin-bottom:6px;">Estimated pricing</h2>' +
       '<div class="card" style="padding:4px 16px;margin-bottom:20px;">' +
@@ -676,7 +676,11 @@
       startedAt:d.startedAt, finishedAt:d.finishedAt, remark:d.remark,
       totalMs:d.overall.accumMs, completionPct:op.pct, checked:op.checked, total:op.total,
       pricing: pricing, grade: { label:grade.label, tone:grade.tone },
-      sections: d.sections.map(function(s){ var p=sectionProgress(s); return { id:s.id, name:s.name, accumMs:s.accumMs, checked:p.checked, total:p.total, na:p.na, items:s.items.slice() }; })
+      sections: d.sections.map(function(s){
+        var p=sectionProgress(s);
+        var sg = computeGrade(p.pct);
+        return { id:s.id, name:s.name, accumMs:s.accumMs, checked:p.checked, total:p.total, na:p.na, items:s.items.slice(), grade:{label:sg.label,tone:sg.tone} };
+      })
     };
   }
 
@@ -697,7 +701,7 @@
       (rec.grade ? '<div style="margin:-10px 0 16px;">Grade: <span class="pill '+esc(rec.grade.tone)+'">'+esc(rec.grade.label)+'</span></div>' : '') +
       '<h2 style="font-size:15px;margin-bottom:6px;">Section timing</h2>' +
       '<div class="card" style="padding:4px 16px;margin-bottom:20px;">' +
-        rec.sections.map(function(s){ return '<div class="sumrow"><span class="k">'+esc(s.name)+'</span><span class="v">'+fmtTime(s.accumMs)+' · '+s.checked+'/'+s.total+'</span></div>'; }).join('') +
+        rec.sections.map(function(s){ return '<div class="sumrow"><span class="k">'+esc(s.name)+' '+(s.grade?'<span class="pill '+esc(s.grade.tone)+'">'+esc(s.grade.label)+'</span>':'')+'</span><span class="v">'+fmtTime(s.accumMs)+' · '+s.checked+'/'+s.total+'</span></div>'; }).join('') +
       '</div>' +
       (rec.pricing ? (
       '<h2 style="font-size:15px;margin-bottom:6px;">Pricing</h2>' +
