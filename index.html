@@ -226,6 +226,7 @@
   "use strict";
   var LS_T = 'diagnosisroom_templates_v1', LS_H = 'diagnosisroom_history_v1', LS_D = 'diagnosisroom_draft_v1', LS_P = 'diagnosisroom_pricing_v1';
   var LS_A = 'diagnosisroom_actions_v1', LS_SCHED = 'diagnosisroom_schedule_v1', LS_G = 'diagnosisroom_grades_v1';
+  var LS_PR = 'diagnosisroom_prospects_v1';
 
   var DEFAULT_PRICING = {
     currency: '₹',
@@ -333,6 +334,11 @@
     correctiveActions: loadJSON(LS_A, []),
     schedule: loadJSON(LS_SCHED, null) || JSON.parse(JSON.stringify(DEFAULT_SCHEDULE)),
     gradeBands: loadJSON(LS_G, null) || JSON.parse(JSON.stringify(DEFAULT_GRADE_BANDS)),
+    prospects: loadJSON(LS_PR, []),
+    activeProspectId: null,
+    pendingProspectId: null,
+    prospectsFilterLocation: 'all',
+    prospectsFilterCategory: 'all',
     setup: { type:null, storeName:'', storeLocation:'', contactName:'', contactDesignation:'', contactMobile:'', auditDate: todayISO(), auditTime: nowHHMM(), selectedSections:[], menuItemCount:'' },
     editorTab: 'dinein',
     historyTab: 'all',
@@ -349,6 +355,7 @@
   function persistActions(){ saveJSON(LS_A, state.correctiveActions); }
   function persistSchedule(){ saveJSON(LS_SCHED, state.schedule); }
   function persistGrades(){ saveJSON(LS_G, state.gradeBands); }
+  function persistProspects(){ saveJSON(LS_PR, state.prospects); }
   function persistDraft(){ saveJSON(LS_D, state.draft); }
   function clearDraft(){ state.draft = null; try{ localStorage.removeItem(LS_D); }catch(e){} }
 
@@ -490,6 +497,7 @@
     else if (v==='editor') html = renderEditor();
     else if (v==='pricing') html = renderPricingSettings();
     else if (v==='actions') html = renderActionsView();
+    else if (v==='prospects') html = renderProspects();
     app.innerHTML = topbar() + html;
   }
 
@@ -502,6 +510,7 @@
         '<button class="brand" data-action="go-setup"><span class="mark">dr</span><span class="name">Diagnosis Room</span></button>' +
         '<div class="navlinks">' +
           '<button class="navbtn '+(state.view==='history'?'active':'')+'" data-action="go-history" '+lockAttr+'>History</button>' +
+          '<button class="navbtn '+(state.view==='prospects'?'active':'')+'" data-action="go-prospects" '+lockAttr+'>Prospects</button>' +
           '<button class="navbtn '+(state.view==='editor'?'active':'')+'" data-action="go-editor" '+lockAttr+'>Checklist</button>' +
           '<button class="navbtn '+(state.view==='pricing'?'active':'')+'" data-action="go-pricing" '+lockAttr+'>Settings</button>' +
           '<button class="navbtn '+(state.view==='actions'?'active':'')+'" data-action="go-actions" '+lockAttr+'>Actions'+(openActions?' ('+openActions+')':'')+'</button>' +
@@ -1004,6 +1013,108 @@
     }).join('');
   }
 
+  // ---------- prospects ----------
+  function prospectStatus(p){
+    if (p.converted) return { label:'CONVERTED', tone:'good' };
+    if (p.auditId && (p.proposed||'').trim()) return { label:'PROPOSED', tone:'warn' };
+    if (p.auditId) return { label:'AUDITED', tone:'warn' };
+    return { label:'NOT AUDITED', tone:'bad' };
+  }
+
+  function findProspect(id){ return state.prospects.filter(function(p){ return p.id===id; })[0]; }
+
+  function renderProspects(){
+    if (state.activeProspectId) return renderProspectDetail();
+    var locs = [], cats = [];
+    state.prospects.forEach(function(p){
+      if (p.location && locs.indexOf(p.location)===-1) locs.push(p.location);
+      if (p.category && cats.indexOf(p.category)===-1) cats.push(p.category);
+    });
+    locs.sort(); cats.sort();
+    var fl = state.prospectsFilterLocation||'all', fc = state.prospectsFilterCategory||'all';
+    var list = state.prospects.filter(function(p){
+      return (fl==='all' || p.location===fl) && (fc==='all' || p.category===fc);
+    }).sort(function(a,b){ return (b.createdAt||0)-(a.createdAt||0); });
+
+    var auditedCount = state.prospects.filter(function(p){ return !!p.auditId; }).length;
+    var convertedCount = state.prospects.filter(function(p){ return p.converted; }).length;
+
+    return '<main>' +
+      '<div style="display:flex; justify-content:space-between; align-items:flex-end; gap:10px; flex-wrap:wrap;">' +
+        '<div><div class="eyebrow">Sales Pipeline</div><h1 style="font-size:26px;margin-top:6px;">Prospects</h1></div>' +
+        '<button class="btn btn-primary btn-sm" data-action="add-prospect">+ Add Prospect</button>' +
+      '</div>' +
+      '<div class="statgrid" style="margin-top:16px;">' +
+        '<div class="stattile"><div class="v">'+state.prospects.length+'</div><div class="k">Total</div></div>' +
+        '<div class="stattile"><div class="v">'+auditedCount+'</div><div class="k">Audited</div></div>' +
+        '<div class="stattile"><div class="v">'+convertedCount+'</div><div class="k">Converted</div></div>' +
+      '</div>' +
+      (locs.length || cats.length ? (
+        '<div style="display:flex; gap:12px; flex-wrap:wrap; margin:14px 0;">' +
+          (locs.length ? '<div class="field" style="flex:1; min-width:150px; margin-bottom:0;"><label>Location</label><select data-prospect-filter="location"><option value="all">All locations</option>'+locs.map(function(l){ return '<option value="'+esc(l)+'" '+(fl===l?'selected':'')+'>'+esc(l)+'</option>'; }).join('')+'</select></div>' : '') +
+          (cats.length ? '<div class="field" style="flex:1; min-width:150px; margin-bottom:0;"><label>Category</label><select data-prospect-filter="category"><option value="all">All categories</option>'+cats.map(function(c){ return '<option value="'+esc(c)+'" '+(fc===c?'selected':'')+'>'+esc(c)+'</option>'; }).join('')+'</select></div>' : '') +
+        '</div>'
+      ) : '') +
+      (list.length===0 ? '<div class="empty"><div class="big">🎯</div>No prospects yet.<br>Add one to start tracking your pipeline.</div>' :
+        list.map(function(p){
+          var st = prospectStatus(p);
+          var priceStr = p.converted ? (p.finalPrice ? (state.pricing.currency||'')+p.finalPrice : '') :
+            ((p.priceMin||p.priceMax) ? (state.pricing.currency||'')+(p.priceMin||'0')+'–'+(state.pricing.currency||'')+(p.priceMax||'0') : '');
+          return '<div class="card histcard" data-action="open-prospect" data-id="'+p.id+'">' +
+            '<div class="histtop"><span class="badge">'+esc(p.category||'Uncategorised')+'</span><span class="pill '+st.tone+'">'+st.label+'</span></div>' +
+            '<div style="font-weight:700;margin-top:8px;">'+(p.converted ? esc(p.name||'Unnamed prospect') : '🔒 Hidden until converted')+'</div>' +
+            '<div class="histmeta">'+esc(p.location||'—')+(p.address?' · '+esc(p.address):'')+'</div>' +
+            (priceStr || p.timeline ? '<div class="histmeta">'+priceStr+(priceStr && p.timeline?' · ':'')+(p.timeline?esc(p.timeline):'')+'</div>' : '') +
+          '</div>';
+        }).join('')
+      ) +
+    '</main>';
+  }
+
+  function renderProspectDetail(){
+    var p = findProspect(state.activeProspectId);
+    if (!p){ state.activeProspectId = null; return renderProspects(); }
+    var linkedAudit = p.auditId ? state.history.filter(function(h){ return h.id===p.auditId; })[0] : null;
+    return '<main>' +
+      '<button class="backrow" data-action="back-to-prospects">← Back to prospects</button>' +
+      '<div class="eyebrow">Prospect</div>' +
+      '<h1 style="font-size:24px;margin-top:6px;margin-bottom:16px;">'+esc(p.name||'Unnamed prospect')+'</h1>' +
+      '<div class="formstack">' +
+        '<div class="field"><label for="pName">Prospect / store name</label><input id="pName" data-bind-prospect="name" value="'+esc(p.name)+'" placeholder="e.g. Northside Grill"></div>' +
+        '<div style="display:flex; gap:12px;">' +
+          '<div class="field" style="flex:1;"><label for="pLocation">Location</label><input id="pLocation" data-bind-prospect="location" value="'+esc(p.location)+'" placeholder="e.g. Bandra West"></div>' +
+          '<div class="field" style="flex:1;"><label for="pCategory">Category</label><input id="pCategory" data-bind-prospect="category" value="'+esc(p.category)+'" placeholder="e.g. QSR, Cafe, Fine Dining"></div>' +
+        '</div>' +
+        '<div class="field"><label for="pAddress">Address</label><input id="pAddress" data-bind-prospect="address" value="'+esc(p.address)+'" placeholder="Full address"></div>' +
+      '</div>' +
+      (linkedAudit ? (
+        '<h2 style="font-size:15px;margin-bottom:6px;">Audit</h2>' +
+        '<div class="card histcard" style="margin-bottom:20px;" data-action="view-audit" data-id="'+linkedAudit.id+'">' +
+          '<div class="histtop"><span class="badge">'+esc((state.templates[linkedAudit.type]||{}).label||linkedAudit.type)+'</span><span class="histpct">'+linkedAudit.completionPct+'%'+(linkedAudit.grade?' · <span class="pill '+esc(linkedAudit.grade.tone)+'">'+esc(linkedAudit.grade.label)+'</span>':'')+'</span></div>' +
+          '<div class="histmeta" style="margin-top:8px;">Audited '+fmtAuditWhen(linkedAudit.auditDate,linkedAudit.auditTime)+' · Tap to view full report</div>' +
+        '</div>' +
+        '<h2 style="font-size:15px;margin-bottom:6px;">Proposal &amp; conversion</h2>' +
+        '<div class="formstack">' +
+          '<div class="field"><label for="pProposed">What was proposed</label><textarea id="pProposed" data-bind-prospect="proposed" placeholder="e.g. Monthly floor-audit retainer">'+esc(p.proposed)+'</textarea></div>' +
+          '<div style="display:flex; gap:12px;">' +
+            '<div class="field" style="flex:1;"><label for="pPriceMin">Price range — from</label><input id="pPriceMin" type="number" min="0" inputmode="numeric" data-bind-prospect="priceMin" value="'+esc(p.priceMin)+'" placeholder="e.g. 5000"></div>' +
+            '<div class="field" style="flex:1;"><label for="pPriceMax">Price range — to</label><input id="pPriceMax" type="number" min="0" inputmode="numeric" data-bind-prospect="priceMax" value="'+esc(p.priceMax)+'" placeholder="e.g. 8000"></div>' +
+          '</div>' +
+          '<div class="field"><label for="pTimeline">Timeline</label><input id="pTimeline" data-bind-prospect="timeline" value="'+esc(p.timeline)+'" placeholder="e.g. Start from Dec 2026, 3-month contract"></div>' +
+        '</div>' +
+        '<div class="field">' +
+          '<label>Converted?</label>' +
+          '<button type="button" class="naBtn '+(p.converted?'on':'')+'" data-action="toggle-prospect-converted" style="padding:8px 14px;">'+(p.converted?'✓ Converted':'Mark as converted')+'</button>' +
+        '</div>' +
+        (p.converted ? '<div class="field" style="max-width:220px;"><label for="pFinalPrice">Final price</label><input id="pFinalPrice" type="number" min="0" inputmode="numeric" data-bind-prospect="finalPrice" value="'+esc(p.finalPrice)+'" placeholder="e.g. 6500"></div>' : '')
+      ) : (
+        '<button class="btn btn-primary" style="width:100%;padding:14px;margin-bottom:20px;" data-action="start-audit-from-prospect" '+(p.name&&p.name.trim()?'':'disabled')+'>Start Audit for this Prospect</button>' +
+        '<div class="helper" style="text-align:center;margin-top:-14px;margin-bottom:20px;">'+(p.name&&p.name.trim()?'Runs the normal audit checklist, then brings you back here to log the proposal.':'Enter a name above to start the audit.')+'</div>'
+      )) +
+      '<button class="btn btn-text btn-danger" style="margin-top:10px;" data-action="delete-prospect" data-id="'+p.id+'">Delete prospect</button>' +
+    '</main>';
+  }
+
   // ---------- ticking ----------
   setInterval(function(){
     if (state.view!=='audit' || !state.draft || state.draft.finishedAt) return;
@@ -1039,6 +1150,38 @@
     else if (action==='go-editor'){ if(!state.draft){ state.view='editor'; render(); } }
     else if (action==='go-pricing'){ if(!state.draft){ state.view='pricing'; render(); } }
     else if (action==='go-actions'){ if(!state.draft){ state.view='actions'; render(); } }
+    else if (action==='go-prospects'){ if(!state.draft){ state.activeProspectId=null; state.view='prospects'; render(); } }
+    else if (action==='add-prospect'){
+      var newP = { id: uid(), name:'', location:'', address:'', category:'', auditId:null,
+        proposed:'', priceMin:'', priceMax:'', converted:false, finalPrice:'', timeline:'', createdAt: Date.now() };
+      state.prospects.push(newP); persistProspects();
+      state.activeProspectId = newP.id; render();
+    }
+    else if (action==='open-prospect'){ state.activeProspectId = t.dataset.id; render(); }
+    else if (action==='back-to-prospects'){ state.activeProspectId = null; render(); }
+    else if (action==='delete-prospect'){
+      if (window.confirm('Delete this prospect? This cannot be undone.')){
+        state.prospects = state.prospects.filter(function(p){ return p.id!==t.dataset.id; });
+        persistProspects();
+        state.activeProspectId = null; render();
+      }
+    }
+    else if (action==='start-audit-from-prospect'){
+      var sp = findProspect(state.activeProspectId);
+      if (!sp || !(sp.name||'').trim()) return;
+      state.setup.type = null;
+      state.setup.storeName = sp.name;
+      state.setup.storeLocation = [sp.location, sp.address].filter(Boolean).join(', ');
+      state.setup.contactName = ''; state.setup.contactDesignation = ''; state.setup.contactMobile = '';
+      state.setup.selectedSections = [];
+      state.setup.menuItemCount = '';
+      state.pendingProspectId = sp.id;
+      state.view = 'setup'; render();
+    }
+    else if (action==='toggle-prospect-converted'){
+      var cp = findProspect(state.activeProspectId);
+      if (cp){ cp.converted = !cp.converted; persistProspects(); render(); }
+    }
     else if (action==='pick-type'){
       state.setup.type = t.dataset.type;
       state.setup.selectedSections = state.templates[t.dataset.type].sections.map(function(s){ return s.id; });
@@ -1124,8 +1267,16 @@
       });
       persistActions();
       clearDraft();
-      state.viewingAuditId = rec.id; state.summaryReturnView='setup';
-      state.view='summary'; render();
+      if (state.pendingProspectId){
+        var linkedP = findProspect(state.pendingProspectId);
+        if (linkedP){ linkedP.auditId = rec.id; persistProspects(); }
+        state.activeProspectId = state.pendingProspectId;
+        state.pendingProspectId = null;
+        state.view = 'prospects'; render();
+      } else {
+        state.viewingAuditId = rec.id; state.summaryReturnView='setup';
+        state.view='summary'; render();
+      }
     }
     else if (action==='resolve-action'){
       var act = state.correctiveActions.filter(function(a){ return a.id===t.dataset.id; })[0];
@@ -1141,7 +1292,7 @@
       var csv = buildHistoryCSV();
       downloadCSV(csv, 'diagnosis-room-audits-'+todayISO()+'.csv');
     }
-    else if (action==='view-audit'){ state.viewingAuditId = t.dataset.id; state.summaryReturnView='history'; state.view='summary'; render(); }
+    else if (action==='view-audit'){ state.viewingAuditId = t.dataset.id; state.summaryReturnView=state.view; state.view='summary'; render(); }
     else if (action==='back-from-summary'){ state.view = state.summaryReturnView; render(); }
     else if (action==='hist-tab'){ state.historyTab = t.dataset.tab; render(); }
     else if (action==='editor-tab'){ state.editorTab = t.dataset.tab; render(); }
@@ -1269,6 +1420,18 @@
         persistGrades();
       }
     }
+    else if (el.dataset.bindProspect){
+      var bp = findProspect(state.activeProspectId);
+      if (bp){
+        bp[el.dataset.bindProspect] = el.value; persistProspects();
+        if (el.dataset.bindProspect==='name'){
+          var sabtn = app.querySelector('[data-action="start-audit-from-prospect"]');
+          if (sabtn) sabtn.disabled = !el.value.trim();
+        }
+      }
+    }
+    else if (el.dataset.prospectFilter==='location'){ state.prospectsFilterLocation = el.value; render(); }
+    else if (el.dataset.prospectFilter==='category'){ state.prospectsFilterCategory = el.value; render(); }
     else if (el.dataset.schedule){
       var spath = el.dataset.schedule.split('.');
       var sday = parseInt(el.value,10); if (isNaN(sday) || sday<1) sday = 1;
