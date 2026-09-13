@@ -14,7 +14,7 @@
 <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0A0A0A" media="(prefers-color-scheme: dark)">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,600;0,700;0,800;1,800&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400;0,500;0,600;0,700;0,800;1,700;1,800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <style>
   :root{
     --paper:#FFFFFF; --surface:#FFFFFF; --surface-2:#F2F2F2;
@@ -25,8 +25,8 @@
     --bad:#C1392B; --bad-soft:#F6DFDA;
     --shadow:0 1px 2px rgba(0,0,0,.06),0 6px 20px rgba(0,0,0,.06);
     --r-s:8px; --r-m:12px; --r-l:18px;
-    --font-d:'Archivo',"Arial Narrow",sans-serif;
-    --font-b:'Public Sans',-apple-system,"Segoe UI",sans-serif;
+    --font-d:'Poppins',"Segoe UI",sans-serif;
+    --font-b:'Poppins',-apple-system,"Segoe UI",sans-serif;
     --font-m:'IBM Plex Mono',"SFMono-Regular",Consolas,monospace;
   }
   @media (prefers-color-scheme: dark){
@@ -60,7 +60,7 @@
   .shell{max-width:640px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column; background:var(--paper);}
   .topbar{position:sticky; top:0; z-index:10; background:var(--paper); border-bottom:1px solid var(--line); padding:14px 18px; display:flex; align-items:center; justify-content:space-between; gap:10px;}
   .brand{display:flex; align-items:center; gap:9px; cursor:pointer; border:none; background:none; padding:0;}
-  .brand .mark{width:32px; height:32px; border-radius:9px; background:#000; color:#fff; display:flex; align-items:center; justify-content:center; font-family:var(--font-d); font-weight:800; font-style:italic; font-size:16px; letter-spacing:-0.03em; flex:none;}
+  .brand .mark{width:32px; height:32px; border-radius:50%; background:#000; color:#fff; display:flex; align-items:center; justify-content:center; font-family:var(--font-d); font-weight:800; font-style:italic; font-size:15px; letter-spacing:-0.03em; flex:none; overflow:hidden;}
   .brand .name{font-family:var(--font-d); font-weight:800; font-size:18px; color:var(--ink);}
   .navlinks{display:flex; gap:6px;}
   .navbtn{border:1px solid transparent; background:none; color:var(--ink-600); font-size:13px; font-weight:600; padding:7px 10px; border-radius:var(--r-s);}
@@ -333,7 +333,7 @@
     correctiveActions: loadJSON(LS_A, []),
     schedule: loadJSON(LS_SCHED, null) || JSON.parse(JSON.stringify(DEFAULT_SCHEDULE)),
     gradeBands: loadJSON(LS_G, null) || JSON.parse(JSON.stringify(DEFAULT_GRADE_BANDS)),
-    setup: { type:null, storeName:'', storeLocation:'', auditDate: todayISO(), auditTime: nowHHMM(), selectedSections:[], menuItemCount:'' },
+    setup: { type:null, storeName:'', storeLocation:'', contactName:'', contactDesignation:'', contactMobile:'', auditDate: todayISO(), auditTime: nowHHMM(), selectedSections:[], menuItemCount:'' },
     editorTab: 'dinein',
     historyTab: 'all',
     actionsTab: 'corrective',
@@ -457,12 +457,13 @@
   }
 
   // ---------- build a fresh draft ----------
-  function newDraft(type, storeName, storeLocation, auditDate, auditTime, selectedSectionIds, menuItemCount){
+  function newDraft(type, storeName, storeLocation, contactName, contactDesignation, contactMobile, auditDate, auditTime, selectedSectionIds, menuItemCount){
     var tmpl = state.templates[type];
     var chosen = tmpl.sections.filter(function(s){ return selectedSectionIds.indexOf(s.id) !== -1; });
     if (!chosen.length) chosen = tmpl.sections;
     return {
       id: uid(), type: type, storeName: storeName||'', storeLocation: storeLocation||'',
+      contactName: contactName||'', contactDesignation: contactDesignation||'', contactMobile: contactMobile||'',
       auditDate: auditDate||todayISO(), auditTime: auditTime||nowHHMM(),
       menuItemCount: Math.max(0, parseInt(menuItemCount,10)||0),
       startedAt: Date.now(), finishedAt: null, remark:'',
@@ -516,6 +517,13 @@
     return '<main>' +
       '<div class="eyebrow">New Audit</div>' +
       '<h1 style="font-size:26px;margin-top:6px;">Start a floor check</h1>' +
+      '<div class="formstack" style="margin-top:16px;margin-bottom:8px;">' +
+        '<div class="field"><label for="contactName">Point of contact — name</label><input id="contactName" data-bind="contactName" placeholder="e.g. Priya Sharma" value="'+esc(s.contactName)+'"></div>' +
+        '<div style="display:flex; gap:12px;">' +
+          '<div class="field" style="flex:1;"><label for="contactDesignation">Designation</label><input id="contactDesignation" data-bind="contactDesignation" placeholder="e.g. Store Manager" value="'+esc(s.contactDesignation)+'"></div>' +
+          '<div class="field" style="flex:1;"><label for="contactMobile">Mobile number</label><input id="contactMobile" type="tel" inputmode="tel" data-bind="contactMobile" placeholder="e.g. 98765 43210" value="'+esc(s.contactMobile)+'"></div>' +
+        '</div>' +
+      '</div>' +
       '<div class="typegrid">' +
         types.map(function(t){
           var tmpl = state.templates[t];
@@ -679,6 +687,7 @@
     var pricing = computePricing(d.type, d.sections.length, d.menuItemCount||0, op.pct);
     var grade = computeGrade(op.pct);
     return { id:d.id, type:d.type, storeName:d.storeName, storeLocation:d.storeLocation,
+      contactName:d.contactName||'', contactDesignation:d.contactDesignation||'', contactMobile:d.contactMobile||'',
       auditDate:d.auditDate, auditTime:d.auditTime, menuItemCount:d.menuItemCount||0,
       startedAt:d.startedAt, finishedAt:d.finishedAt, remark:d.remark,
       totalMs:d.overall.accumMs, completionPct:op.pct, checked:op.checked, total:op.total,
@@ -700,6 +709,12 @@
       '<div class="sumhead"><div><span class="badge">'+esc(tmpl.label||rec.type)+'</span>' +
         '<h1 style="font-size:24px;margin-top:8px;">'+esc(rec.storeName||'Unnamed store')+'</h1></div></div>' +
       '<div class="helper" style="margin-bottom:16px;">'+(rec.storeLocation?esc(rec.storeLocation)+' · ':'')+fmtAuditWhen(rec.auditDate,rec.auditTime)+'</div>' +
+      (rec.contactName || rec.contactMobile ? (
+        '<div class="card" style="padding:4px 16px;margin-bottom:16px;">' +
+          '<div class="sumrow"><span class="k">Point of contact</span><span class="v">'+esc(rec.contactName||'—')+(rec.contactDesignation?' ('+esc(rec.contactDesignation)+')':'')+'</span></div>' +
+          (rec.contactMobile ? '<div class="sumrow"><span class="k">Mobile</span><span class="v">'+esc(rec.contactMobile)+'</span></div>' : '') +
+        '</div>'
+      ) : '') +
       '<div class="statgrid">' +
         '<div class="stattile"><div class="v">'+fmtTime(rec.totalMs)+'</div><div class="k">Total Time</div></div>' +
         '<div class="stattile"><div class="v">'+rec.completionPct+'%</div><div class="k">Score</div></div>' +
@@ -793,13 +808,13 @@
     return v;
   }
   function buildHistoryCSV(){
-    var cols = ['Store Name','Store Location','Type','Audit Date','Day','Audit Time','Total Time','Score %','Grade','Items Checked','Items Total','Areas Audited','Menu Items','Section Breakdown','Estimated Pricing','Final Remark'];
+    var cols = ['Store Name','Store Location','Contact Name','Contact Designation','Contact Mobile','Type','Audit Date','Day','Audit Time','Total Time','Score %','Grade','Items Checked','Items Total','Areas Audited','Menu Items','Section Breakdown','Estimated Pricing','Final Remark'];
     var rows = [cols.join(',')];
     state.history.slice().sort(function(a,b){ return b.finishedAt-a.finishedAt; }).forEach(function(h){
       var tmpl = state.templates[h.type] || { label: h.type };
       var sectionSummary = (h.sections||[]).map(function(s){ return s.name+': '+fmtTime(s.accumMs)+' ('+s.checked+'/'+s.total+')'; }).join(' | ');
       var priceStr = h.pricing ? (h.pricing.currency+h.pricing.total) : '';
-      var row = [h.storeName||'', h.storeLocation||'', tmpl.label||h.type, h.auditDate||'', dayName(h.auditDate), h.auditTime||'', fmtTime(h.totalMs), h.completionPct, (h.grade?h.grade.label:''), h.checked, h.total, (h.sections||[]).length, h.menuItemCount||0, sectionSummary, priceStr, h.remark||''];
+      var row = [h.storeName||'', h.storeLocation||'', h.contactName||'', h.contactDesignation||'', h.contactMobile||'', tmpl.label||h.type, h.auditDate||'', dayName(h.auditDate), h.auditTime||'', fmtTime(h.totalMs), h.completionPct, (h.grade?h.grade.label:''), h.checked, h.total, (h.sections||[]).length, h.menuItemCount||0, sectionSummary, priceStr, h.remark||''];
       rows.push(row.map(csvEscape).join(','));
     });
     return rows.join('\r\n');
@@ -1037,7 +1052,7 @@
     }
     else if (action==='start-audit'){
       if (!state.setup.type || !state.setup.selectedSections.length) return;
-      state.draft = newDraft(state.setup.type, state.setup.storeName, state.setup.storeLocation, state.setup.auditDate, state.setup.auditTime, state.setup.selectedSections, state.setup.menuItemCount);
+      state.draft = newDraft(state.setup.type, state.setup.storeName, state.setup.storeLocation, state.setup.contactName, state.setup.contactDesignation, state.setup.contactMobile, state.setup.auditDate, state.setup.auditTime, state.setup.selectedSections, state.setup.menuItemCount);
       persistDraft();
       state.view='audit'; render();
     }
@@ -1197,6 +1212,9 @@
     var el = e.target;
     if (el.dataset.bind === 'storeName'){ state.setup.storeName = el.value; }
     else if (el.dataset.bind === 'storeLocation'){ state.setup.storeLocation = el.value; }
+    else if (el.dataset.bind === 'contactName'){ state.setup.contactName = el.value; }
+    else if (el.dataset.bind === 'contactDesignation'){ state.setup.contactDesignation = el.value; }
+    else if (el.dataset.bind === 'contactMobile'){ state.setup.contactMobile = el.value; }
     else if (el.dataset.bind === 'auditDate'){ state.setup.auditDate = el.value; var dn = app.querySelector('[data-dayname]'); if (dn) dn.textContent = dayName(el.value); }
     else if (el.dataset.bind === 'auditTime'){ state.setup.auditTime = el.value; }
     else if (el.dataset.bind === 'menuItemCount'){ state.setup.menuItemCount = el.value; }
