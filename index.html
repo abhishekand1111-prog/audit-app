@@ -58,16 +58,22 @@
   button{font-family:var(--font-b); cursor:pointer;}
   input,textarea{font-family:var(--font-b);}
   .shell{max-width:640px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column; background:var(--paper);}
-  .topbar{position:sticky; top:0; z-index:10; background:var(--paper); border-bottom:1px solid var(--line); padding:14px 18px; display:flex; align-items:center; justify-content:space-between; gap:10px;}
+  .topbar{position:sticky; top:0; z-index:10; background:var(--paper); border-bottom:1px solid var(--line); padding:14px 18px; display:flex; align-items:center; gap:12px;}
   .brand{display:flex; align-items:center; gap:9px; cursor:pointer; border:none; background:none; padding:0;}
-  .brand .mark{width:32px; height:32px; border-radius:50%; background:#000; color:#fff; display:flex; align-items:center; justify-content:center; font-family:var(--font-d); font-weight:800; font-style:italic; font-size:15px; letter-spacing:-0.03em; flex:none; overflow:hidden;}
-  .brand .name{font-family:var(--font-d); font-weight:800; font-size:18px; color:var(--ink);}
-  .navlinks{display:flex; gap:6px;}
-  .navbtn{border:1px solid transparent; background:none; color:var(--ink-600); font-size:13px; font-weight:600; padding:7px 10px; border-radius:var(--r-s);}
-  .navbtn:hover:not(:disabled){background:var(--surface-2); color:var(--ink);}
-  .navbtn.active{background:var(--surface-2); color:var(--ink);}
-  .navbtn:disabled{opacity:.35; cursor:not-allowed;}
-  @media (max-width:420px){ .brand .name{display:none;} .navlinks{gap:1px;} .navbtn{padding:5px 6px; font-size:11px;} }
+  .brand .mark, .sidebar-brand .mark{width:32px; height:32px; border-radius:50%; background:#000; color:#fff; display:flex; align-items:center; justify-content:center; font-family:var(--font-d); font-weight:800; font-style:italic; font-size:15px; letter-spacing:-0.03em; flex:none; overflow:hidden;}
+  .brand .name, .sidebar-brand .name{font-family:var(--font-d); font-weight:800; font-size:18px; color:var(--ink);}
+  .hamburger{width:36px; height:36px; flex:none; border:1px solid var(--line-strong); background:var(--surface); color:var(--ink); border-radius:var(--r-s); font-size:16px; display:flex; align-items:center; justify-content:center; padding:0;}
+  .hamburger:hover{background:var(--surface-2);}
+  .sidebar-overlay{position:fixed; inset:0; background:rgba(0,0,0,.4); opacity:0; pointer-events:none; transition:opacity .2s ease; z-index:19;}
+  .sidebar-overlay.show{opacity:1; pointer-events:auto;}
+  .sidebar{position:fixed; top:0; left:0; bottom:0; width:250px; max-width:82vw; background:var(--surface); border-right:1px solid var(--line); z-index:20; transform:translateX(-100%); transition:transform .25s ease; display:flex; flex-direction:column; padding:16px 12px; overflow-y:auto;}
+  .sidebar.open{transform:translateX(0);}
+  .sidebar-brand{display:flex; align-items:center; gap:9px; padding:6px 8px 16px; border-bottom:1px solid var(--line); margin-bottom:10px;}
+  .sidebarbtn{display:flex; align-items:center; justify-content:space-between; gap:8px; text-align:left; width:100%; border:none; background:none; color:var(--ink-600); font-size:14.5px; font-weight:600; padding:11px 10px; border-radius:var(--r-s); margin-bottom:2px;}
+  .sidebarbtn:hover:not(:disabled){background:var(--surface-2); color:var(--ink);}
+  .sidebarbtn.active{background:var(--ink); color:var(--paper);}
+  .sidebarbtn:disabled{opacity:.35; cursor:not-allowed;}
+  .sidebarbtn .count{font-size:11.5px; font-family:var(--font-m); opacity:.75;}
   main{flex:1; padding:22px 18px 90px;}
   .eyebrow{font-size:11.5px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-400);}
   .card{background:var(--surface); border:1px solid var(--line); border-radius:var(--r-l); box-shadow:var(--shadow);}
@@ -326,7 +332,8 @@
   function nowHHMM(){ var d = new Date(); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
 
   var state = {
-    view: 'setup',
+    view: 'dashboard',
+    sidebarOpen: false,
     templates: (function(){ var t = loadJSON(LS_T, null); return t ? t : seedTemplates(DEFAULT_TEMPLATES); })(),
     history: loadJSON(LS_H, []),
     draft: loadJSON(LS_D, null),
@@ -498,6 +505,7 @@
     else if (v==='pricing') html = renderPricingSettings();
     else if (v==='actions') html = renderActionsView();
     else if (v==='prospects') html = renderProspects();
+    else if (v==='dashboard') html = renderDashboard();
     app.innerHTML = topbar() + html;
   }
 
@@ -505,17 +513,25 @@
     var draftActive = !!state.draft;
     var lockAttr = draftActive?'disabled title="Finish or discard the current audit first"':'';
     var openActions = state.correctiveActions.filter(function(a){ return !a.done; }).length;
+    function item(view, action, label, extra){
+      return '<button class="sidebarbtn '+(state.view===view?'active':'')+'" data-action="'+action+'" '+lockAttr+'><span>'+label+'</span>'+(extra?'<span class="count">'+extra+'</span>':'')+'</button>';
+    }
     return '' +
       '<div class="topbar">' +
-        '<button class="brand" data-action="go-setup"><span class="mark">dr</span><span class="name">Diagnosis Room</span></button>' +
-        '<div class="navlinks">' +
-          '<button class="navbtn '+(state.view==='history'?'active':'')+'" data-action="go-history" '+lockAttr+'>History</button>' +
-          '<button class="navbtn '+(state.view==='prospects'?'active':'')+'" data-action="go-prospects" '+lockAttr+'>Prospects</button>' +
-          '<button class="navbtn '+(state.view==='editor'?'active':'')+'" data-action="go-editor" '+lockAttr+'>Checklist</button>' +
-          '<button class="navbtn '+(state.view==='pricing'?'active':'')+'" data-action="go-pricing" '+lockAttr+'>Settings</button>' +
-          '<button class="navbtn '+(state.view==='actions'?'active':'')+'" data-action="go-actions" '+lockAttr+'>Actions'+(openActions?' ('+openActions+')':'')+'</button>' +
-        '</div>' +
-      '</div>';
+        '<button class="hamburger" data-action="toggle-sidebar" aria-label="Menu">☰</button>' +
+        '<button class="brand" data-action="go-dashboard"><span class="mark">dr</span><span class="name">Diagnosis Room</span></button>' +
+      '</div>' +
+      '<div class="sidebar-overlay '+(state.sidebarOpen?'show':'')+'" data-action="close-sidebar"></div>' +
+      '<nav class="sidebar '+(state.sidebarOpen?'open':'')+'">' +
+        '<div class="sidebar-brand"><span class="mark">dr</span><span class="name">Diagnosis Room</span></div>' +
+        item('dashboard','go-dashboard','Dashboard') +
+        item('setup','go-setup','New Audit') +
+        item('history','go-history','History') +
+        item('prospects','go-prospects','Prospects') +
+        item('editor','go-editor','Checklist') +
+        item('pricing','go-pricing','Settings') +
+        item('actions','go-actions','Actions', openActions?String(openActions):'') +
+      '</nav>';
   }
 
   function renderSetup(){
@@ -1115,6 +1131,67 @@
     '</main>';
   }
 
+  function renderDashboard(){
+    var now = Date.now();
+    var weekAgo = now - 7*24*60*60*1000;
+    var weekAhead = now + 7*24*60*60*1000;
+
+    var auditsWeek = state.history.filter(function(h){ return h.finishedAt>=weekAgo; });
+    var avgScore = auditsWeek.length ? Math.round(auditsWeek.reduce(function(n,h){ return n+h.completionPct; },0)/auditsWeek.length) : null;
+    var revenueWeek = auditsWeek.reduce(function(n,h){ return n+(h.pricing?h.pricing.total:0); },0);
+
+    var actionsOpenedWeek = state.correctiveActions.filter(function(a){ return (a.createdAt||0)>=weekAgo; }).length;
+    var actionsResolvedWeek = state.correctiveActions.filter(function(a){ return a.done && (a.resolvedAt||0)>=weekAgo; }).length;
+    var openActionsNow = state.correctiveActions.filter(function(a){ return !a.done; }).length;
+    var todayStr = todayISO();
+    var overdueActions = state.correctiveActions.filter(function(a){ return !a.done && a.dueDate && a.dueDate<todayStr; }).length;
+
+    var prospectsAddedWeek = state.prospects.filter(function(p){ return (p.createdAt||0)>=weekAgo; }).length;
+    var prospectsConvertedWeek = state.prospects.filter(function(p){ return p.converted && (p.convertedAt||0)>=weekAgo; }).length;
+    var openPipeline = state.prospects.filter(function(p){ return !p.converted; }).length;
+
+    var due = computeDueList();
+    var dueSoon = due.filter(function(x){ return x.dueAt<=weekAhead; });
+    var overdueDue = due.filter(function(x){ return x.dueAt<now; }).length;
+
+    return '<main>' +
+      '<div class="eyebrow">Last 7 Days</div>' +
+      '<h1 style="font-size:26px;margin-top:6px;margin-bottom:16px;">Welcome back</h1>' +
+      '<button class="btn btn-primary" style="width:100%;padding:14px;margin-bottom:22px;" data-action="go-setup">+ Start New Audit</button>' +
+
+      '<h2 style="font-size:15px;margin-bottom:8px;">Audits</h2>' +
+      '<div class="statgrid" style="margin-bottom:20px;">' +
+        '<div class="stattile"><div class="v">'+auditsWeek.length+'</div><div class="k">Completed</div></div>' +
+        '<div class="stattile"><div class="v">'+(avgScore===null?'—':avgScore+'%')+'</div><div class="k">Avg. Score</div></div>' +
+        '<div class="stattile"><div class="v">'+(state.pricing.currency||'')+revenueWeek+'</div><div class="k">Est. Revenue</div></div>' +
+      '</div>' +
+
+      '<h2 style="font-size:15px;margin-bottom:8px;">Corrective Actions</h2>' +
+      '<div class="statgrid" style="margin-bottom:20px;">' +
+        '<div class="stattile"><div class="v">'+actionsOpenedWeek+'</div><div class="k">Opened</div></div>' +
+        '<div class="stattile"><div class="v">'+actionsResolvedWeek+'</div><div class="k">Resolved</div></div>' +
+        '<div class="stattile"><div class="v">'+openActionsNow+'</div><div class="k">Open Now</div></div>' +
+        '<div class="stattile"><div class="v">'+overdueActions+'</div><div class="k">Overdue</div></div>' +
+      '</div>' +
+
+      '<h2 style="font-size:15px;margin-bottom:8px;">Prospects</h2>' +
+      '<div class="statgrid" style="margin-bottom:20px;">' +
+        '<div class="stattile"><div class="v">'+prospectsAddedWeek+'</div><div class="k">Added</div></div>' +
+        '<div class="stattile"><div class="v">'+prospectsConvertedWeek+'</div><div class="k">Converted</div></div>' +
+        '<div class="stattile"><div class="v">'+openPipeline+'</div><div class="k">Open Pipeline</div></div>' +
+      '</div>' +
+
+      '<h2 style="font-size:15px;margin-bottom:8px;">Re-audits Due (next 7 days)</h2>' +
+      (dueSoon.length===0 ? '<div class="empty" style="padding:24px 0;"><div class="big">🗓️</div>Nothing due this week.</div>' :
+        '<div class="statgrid" style="margin-bottom:8px;">' +
+          '<div class="stattile"><div class="v">'+dueSoon.length+'</div><div class="k">Due Soon</div></div>' +
+          '<div class="stattile"><div class="v">'+overdueDue+'</div><div class="k">Overdue</div></div>' +
+        '</div>' +
+        '<button class="btn btn-ghost btn-sm" data-action="go-actions">View schedule →</button>'
+      ) +
+    '</main>';
+  }
+
   // ---------- ticking ----------
   setInterval(function(){
     if (state.view!=='audit' || !state.draft || state.draft.finishedAt) return;
@@ -1144,8 +1221,12 @@
     var action = t.dataset.action;
     var d = state.draft;
     if (d && !d.correctiveActions) d.correctiveActions = [];
+    if (action.indexOf('go-')===0) state.sidebarOpen = false;
 
-    if (action==='go-setup'){ if(!state.draft) { state.view='setup'; render(); } }
+    if (action==='toggle-sidebar'){ state.sidebarOpen = !state.sidebarOpen; render(); }
+    else if (action==='close-sidebar'){ state.sidebarOpen = false; render(); }
+    else if (action==='go-dashboard'){ if(!state.draft){ state.view='dashboard'; render(); } }
+    else if (action==='go-setup'){ if(!state.draft) { state.view='setup'; render(); } }
     else if (action==='go-history'){ if(!state.draft){ state.view='history'; render(); } }
     else if (action==='go-editor'){ if(!state.draft){ state.view='editor'; render(); } }
     else if (action==='go-pricing'){ if(!state.draft){ state.view='pricing'; render(); } }
@@ -1153,7 +1234,7 @@
     else if (action==='go-prospects'){ if(!state.draft){ state.activeProspectId=null; state.view='prospects'; render(); } }
     else if (action==='add-prospect'){
       var newP = { id: uid(), name:'', location:'', address:'', category:'', auditId:null,
-        proposed:'', priceMin:'', priceMax:'', converted:false, finalPrice:'', timeline:'', createdAt: Date.now() };
+        proposed:'', priceMin:'', priceMax:'', converted:false, convertedAt:null, finalPrice:'', timeline:'', createdAt: Date.now() };
       state.prospects.push(newP); persistProspects();
       state.activeProspectId = newP.id; render();
     }
@@ -1180,7 +1261,7 @@
     }
     else if (action==='toggle-prospect-converted'){
       var cp = findProspect(state.activeProspectId);
-      if (cp){ cp.converted = !cp.converted; persistProspects(); render(); }
+      if (cp){ cp.converted = !cp.converted; cp.convertedAt = cp.converted ? Date.now() : null; persistProspects(); render(); }
     }
     else if (action==='pick-type'){
       state.setup.type = t.dataset.type;
