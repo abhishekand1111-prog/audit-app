@@ -994,11 +994,14 @@
       var overdue = !isDone && a.dueDate && a.dueDate < todayStr;
       return '<div class="card cacard2">' +
         '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">' +
-          '<div style="font-weight:700;">'+esc(a.description||'(unspecified)')+'</div>' +
-          '<button class="btn btn-ghost btn-sm" data-action="'+(isDone?'reopen-action':'resolve-action')+'" data-id="'+a.id+'">'+(isDone?'Reopen':'Mark done')+'</button>' +
+          '<input type="text" data-ca-edit-field="description" data-ca-edit-id="'+a.id+'" value="'+esc(a.description||'')+'" placeholder="What needs fixing?" style="flex:1;border:none;background:none;font-weight:700;color:var(--ink);font-size:15px;padding:2px 0;">' +
+          '<button class="btn btn-ghost btn-sm" style="flex:none;" data-action="'+(isDone?'reopen-action':'resolve-action')+'" data-id="'+a.id+'">'+(isDone?'Reopen':'Mark done')+'</button>' +
         '</div>' +
         '<div class="histmeta">'+esc(a.storeName||'Unnamed store')+(a.storeLocation?' · '+esc(a.storeLocation):'')+'</div>' +
-        '<div class="histmeta">'+(a.dueDate ? ('Due '+fmtDateShort(new Date(a.dueDate+'T00:00:00').getTime())) : 'No due date')+(overdue?' <span class="pill bad">OVERDUE</span>':'')+'</div>' +
+        '<div style="display:flex; align-items:center; gap:8px; margin-top:6px; flex-wrap:wrap;">' +
+          '<input type="date" data-ca-edit-field="dueDate" data-ca-edit-id="'+a.id+'" value="'+esc(a.dueDate||'')+'" style="border:1px solid var(--line-strong); border-radius:var(--r-s); padding:5px 7px; font-size:12.5px; background:var(--surface); color:var(--ink);">' +
+          (overdue?'<span class="pill bad">OVERDUE</span>':'') +
+        '</div>' +
       '</div>';
     }
 
@@ -1934,6 +1937,14 @@
         state.pricing[path[0]] = num2;
       }
       persistPricing();
+    }
+    else if (el.dataset.caEditField){
+      var caEdit = state.correctiveActions.filter(function(a){ return a.id===el.dataset.caEditId; })[0];
+      if (caEdit){
+        caEdit[el.dataset.caEditField] = el.value;
+        persistActions();
+        if (el.dataset.caEditField==='dueDate') render();
+      }
     }
     else if (el.dataset.caField && state.draft){
       var ca = state.draft.correctiveActions.filter(function(c){ return c.id===el.dataset.ca; })[0];
