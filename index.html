@@ -1100,8 +1100,43 @@
     return '<span class="badge" style="margin-left:6px;">'+esc(p.servicesOffered.trim())+' Client</span>';
   }
 
+  function renderProspectsDaily(){
+    var days = [];
+    for (var di=13; di>=0; di--){
+      var dd = new Date(); dd.setHours(0,0,0,0); dd.setDate(dd.getDate()-di);
+      var dayStart = dd.getTime(), dayEnd = dayStart + 24*60*60*1000;
+      var audits = state.history.filter(function(h){ return h.finishedAt>=dayStart && h.finishedAt<dayEnd; })
+        .sort(function(a,b){ return b.finishedAt-a.finishedAt; });
+      days.push({ iso: dayStart, label: dd.toLocaleDateString(undefined,{weekday:'short'}).slice(0,2), dayNum: dd.getDate(), audits: audits });
+    }
+    var maxBar = Math.max.apply(null, days.map(function(d){ return d.audits.length; })) || 1;
+    var barChartHtml = '<div class="barchart">' + days.map(function(d){
+      var h = d.audits.length===0 ? 0 : Math.max(10, Math.round((d.audits.length/maxBar)*100));
+      return '<div class="bar-col"><div class="bar-track"><div class="bar-fill" style="height:'+h+'%"></div></div><div class="bar-val">'+d.audits.length+'</div><div class="bar-lbl">'+d.label+' '+d.dayNum+'</div></div>';
+    }).join('') + '</div>';
+
+    var daysWithAudits = days.slice().reverse().filter(function(d){ return d.audits.length>0; });
+
+    return '<div class="card dashcard" style="margin-bottom:20px;"><div class="dashcard-title">Audits per day (last 14 days)</div>'+barChartHtml+'</div>' +
+      (daysWithAudits.length===0 ? '<div class="empty"><div class="big">📅</div>No audits logged in the last 14 days.</div>' :
+        daysWithAudits.map(function(d){
+          return '<h2 style="font-size:13px;margin-bottom:6px;color:var(--ink-400);">'+new Date(d.iso).toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'})+' · '+d.audits.length+' audit'+(d.audits.length>1?'s':'')+'</h2>' +
+          '<div style="margin-bottom:16px;">' +
+            d.audits.map(function(h){
+              return '<div class="card histcard" data-action="view-audit" data-id="'+h.id+'">' +
+                '<div class="histtop"><span class="badge">'+esc((state.templates[h.type]||{}).label||h.type)+'</span><span class="histpct">'+h.completionPct+'%'+(h.grade?' · <span class="pill '+esc(h.grade.tone)+'">'+esc(h.grade.label)+'</span>':'')+'</span></div>' +
+                '<div style="font-weight:700;margin-top:8px;">'+esc(h.storeName||'Unnamed store')+'</div>' +
+                '<div class="histmeta">'+fmtAuditWhen(h.auditDate,h.auditTime)+' · Tap to view full report</div>' +
+              '</div>';
+            }).join('') +
+          '</div>';
+        }).join('')
+      );
+  }
+
   function renderProspects(){
     if (state.activeProspectId) return renderProspectDetail();
+    var pTab = state.prospectsTab || 'pipeline';
     var locs = [], cats = [];
     state.prospects.forEach(function(p){
       if (p.location && locs.indexOf(p.location)===-1) locs.push(p.location);
@@ -1144,6 +1179,11 @@
           '<button class="btn btn-primary btn-sm" data-action="add-prospect">+ Add Prospect</button>' +
         '</div>' +
       '</div>' +
+      '<div class="tabs" style="margin-top:14px;">' +
+        '<button class="tab '+(pTab==='pipeline'?'on':'')+'" data-action="prospects-tab" data-tab="pipeline">Pipeline</button>' +
+        '<button class="tab '+(pTab==='daily'?'on':'')+'" data-action="prospects-tab" data-tab="daily">Daily Activity</button>' +
+      '</div>' +
+      (pTab==='daily' ? renderProspectsDaily() : (
       '<div class="statgrid" style="margin-top:16px;">' +
         '<div class="stattile"><div class="v">'+state.prospects.length+'</div><div class="k">Total</div></div>' +
         '<div class="stattile"><div class="v">'+auditedCount+'</div><div class="k">Audited</div></div>' +
@@ -1170,7 +1210,8 @@
             (p.declined && p.followUpDate ? '<div class="histmeta">Follow up: '+fmtDateShort(new Date(p.followUpDate+'T00:00:00').getTime())+'</div>' : '') +
           '</div>';
         }).join('')
-      ) +
+      )
+      )) +
     '</main>';
   }
 
@@ -1402,22 +1443,16 @@
     var dueSoon = due.filter(function(x){ return x.dueAt<=weekAhead; });
     var overdueDue = due.filter(function(x){ return x.dueAt<now; }).length;
 
-    var dayBars = [];
-    for (var di=6; di>=0; di--){
-      var dd = new Date(); dd.setHours(0,0,0,0); dd.setDate(dd.getDate()-di);
-      var dayStart = dd.getTime(), dayEnd = dayStart + 24*60*60*1000;
-      var cnt = state.history.filter(function(h){ return h.finishedAt>=dayStart && h.finishedAt<dayEnd; }).length;
-      dayBars.push({ label: dd.toLocaleDateString(undefined,{weekday:'short'}).slice(0,2), count: cnt });
-    }
-    var maxBar = Math.max.apply(null, dayBars.map(function(b){ return b.count; })) || 1;
-    var barChartHtml = '<div class="barchart">' + dayBars.map(function(b){
-      var h = b.count===0 ? 0 : Math.max(10, Math.round((b.count/maxBar)*100));
-      return '<div class="bar-col"><div class="bar-track"><div class="bar-fill" style="height:'+h+'%"></div></div><div class="bar-val">'+b.count+'</div><div class="bar-lbl">'+b.label+'</div></div>';
-    }).join('') + '</div>';
+    var topOpenActions = state.correctiveActions.filter(function(a){ return !a.done; }).sort(function(a,b){
+      var aOver = !!(a.dueDate && a.dueDate<todayStr), bOver = !!(b.dueDate && b.dueDate<todayStr);
+      if (aOver!==bOver) return aOver?-1:1;
+      var ad = a.dueDate||'9999-99-99', bd = b.dueDate||'9999-99-99';
+      if (ad!==bd) return ad<bd?-1:1;
+      return (b.createdAt||0)-(a.createdAt||0);
+    }).slice(0,5);
 
     var totalProspects = state.prospects.length;
     var totalConverted = state.prospects.filter(function(p){ return p.converted; }).length;
-    var convPct = totalProspects ? Math.round(totalConverted/totalProspects*100) : 0;
 
     var totalActionsAll = state.correctiveActions.length;
     var resolvedTotal = state.correctiveActions.filter(function(a){ return a.done; }).length;
@@ -1506,36 +1541,31 @@
       '<h1 style="font-size:26px;margin-top:6px;margin-bottom:16px;">Welcome back</h1>' +
       '<button class="btn btn-primary" style="width:100%;padding:14px;margin-bottom:22px;" data-action="go-setup">+ Start New Audit</button>' +
 
-      '<div class="dashgrid">' +
-        '<div class="card dashcard"><div class="dashcard-title">Audits per day</div>'+barChartHtml+'</div>' +
-        '<div class="card dashcard"><div class="dashcard-title">Pipeline conversion</div>' +
-          '<div class="donutrow">' +
-            '<div class="donut" style="--pct:'+convPct+';--donutcolor:var(--good);"><div class="donut-inner"><div class="donut-val">'+convPct+'%</div><div class="donut-lbl">Won</div></div></div>' +
-            '<div class="donutstats">' +
-              '<div class="row">Total <b>'+totalProspects+'</b></div>' +
-              '<div class="row">Converted <b>'+totalConverted+'</b></div>' +
-            '</div>' +
-          '</div>' +
-        '</div>' +
-      '</div>' +
-
       sparkHtml +
 
       '<h2 style="font-size:15px;margin-bottom:8px;">Shoot Days This Week</h2>' +
       weekCalHtml +
 
       '<h2 style="font-size:15px;margin-bottom:8px;">Corrective Actions</h2>' +
-      '<div class="card dashcard" style="margin-bottom:20px;">' +
-        '<div class="donutrow">' +
-          '<div class="donut" style="--pct:'+resolutionPct+';--donutcolor:var(--good);"><div class="donut-inner"><div class="donut-val">'+resolutionPct+'%</div><div class="donut-lbl">Resolved</div></div></div>' +
-          '<div class="donutstats">' +
-            '<div class="row">Open now <b>'+openActionsNow+'</b></div>' +
-            '<div class="row">Overdue <b'+(overdueActions?' class="bad"':'')+'>'+overdueActions+'</b></div>' +
-            '<div class="row">Resolved (7d) <b>'+actionsResolvedWeek+'</b></div>' +
-            '<div class="row">Opened (7d) <b>'+actionsOpenedWeek+'</b></div>' +
-          '</div>' +
-        '</div>' +
+      '<div class="statgrid" style="margin-top:0;margin-bottom:12px;">' +
+        '<div class="stattile"><div class="v">'+openActionsNow+'</div><div class="k">Open</div></div>' +
+        '<div class="stattile"><div class="v" style="'+(overdueActions?'color:var(--bad);':'')+'">'+overdueActions+'</div><div class="k">Overdue</div></div>' +
+        '<div class="stattile"><div class="v">'+actionsResolvedWeek+'</div><div class="k">Resolved (7d)</div></div>' +
+        '<div class="stattile"><div class="v">'+resolutionPct+'%</div><div class="k">Resolved All-time</div></div>' +
       '</div>' +
+      (topOpenActions.length===0 ? '<div class="helper" style="margin-bottom:20px;">No open corrective actions.</div>' :
+        '<div style="margin-bottom:'+(openActionsNow>topOpenActions.length?'8px':'20px')+';">' +
+          topOpenActions.map(function(a){
+            var overdue = a.dueDate && a.dueDate<todayStr;
+            return '<div class="card histcard">' +
+              '<div class="histtop"><span class="badge">'+esc(a.storeName||'Unnamed store')+'</span>'+(a.dueDate ? '<span class="pill '+(overdue?'bad':'warn')+'">'+(overdue?'Overdue':fmtDateShort(new Date(a.dueDate+'T00:00:00').getTime()))+'</span>' : '')+'</div>' +
+              '<div style="font-weight:700;margin-top:8px;">'+esc(a.description||'(unspecified)')+'</div>' +
+              '<button type="button" class="btn btn-ghost btn-sm" style="margin-top:8px;" data-action="resolve-action" data-id="'+a.id+'">Mark done</button>' +
+            '</div>';
+          }).join('') +
+        '</div>' +
+        (openActionsNow>topOpenActions.length ? '<button class="btn btn-ghost btn-sm" style="margin-bottom:20px;" data-action="go-actions">View all '+openActionsNow+' open actions →</button>' : '')
+      ) +
 
       '<h2 style="font-size:15px;margin-bottom:8px;">Prospects</h2>' +
       '<div class="card dashcard" style="margin-bottom:20px;">' +
@@ -1848,6 +1878,7 @@
     }
     else if (action==='toggle-show-done'){ state.actionsShowDone = !state.actionsShowDone; render(); }
     else if (action==='actions-tab'){ state.actionsTab = t.dataset.tab; render(); }
+    else if (action==='prospects-tab'){ state.prospectsTab = t.dataset.tab; render(); }
     else if (action==='export-csv'){
       var csv = buildHistoryCSV();
       downloadCSV(csv, 'diagnosis-room-audits-'+todayISO()+'.csv');
