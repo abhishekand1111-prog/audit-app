@@ -576,12 +576,12 @@
         item('dashboard','go-dashboard','Dashboard') +
         item('setup','go-setup','New Audit') +
         item('history','go-history','History') +
-        item('prospects','go-prospects','Prospects') +
-        item('lookup','go-lookup','Lookup', (function(){ var n=state.lookups.filter(function(l){ return !l.done; }).length; return n?String(n):''; })()) +
-        item('content','go-content','Content', state.contentIdeas.length?String(state.contentIdeas.length):'') +
         item('editor','go-editor','Checklist') +
-        item('pricing','go-pricing','Settings') +
+        item('prospects','go-prospects','Prospects') +
+        item('content','go-content','Content', state.contentIdeas.length?String(state.contentIdeas.length):'') +
+        item('lookup','go-lookup','Lookup', (function(){ var n=state.lookups.filter(function(l){ return !l.done; }).length; return n?String(n):''; })()) +
         item('actions','go-actions','Actions', openActions?String(openActions):'') +
+        item('pricing','go-pricing','Settings') +
       '</nav>';
   }
 
@@ -1055,17 +1055,36 @@
       ) : '');
   }
 
+  function renderScheduledAudits(){
+    var todayStr = todayISO();
+    var scheduled = state.prospects.filter(function(p){ return p.plannedAuditDate && !p.auditId; })
+      .sort(function(a,b){ return a.plannedAuditDate<b.plannedAuditDate?-1:1; });
+    if (!scheduled.length) return '';
+    return '<h2 style="font-size:15px;margin-bottom:8px;">⭐ Scheduled Audits — High Priority</h2>' +
+      '<div style="margin-bottom:20px;">' +
+        scheduled.map(function(p){
+          var overdue = p.plannedAuditDate < todayStr;
+          return '<div class="card histcard" data-action="goto-prospect" data-id="'+p.id+'" style="border-color:var(--accent);">' +
+            '<div class="histtop"><span class="badge">⭐ Scheduled</span><span class="pill '+(overdue?'bad':'warn')+'">'+(overdue?'Overdue':fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime()))+'</span></div>' +
+            '<div style="font-weight:700;margin-top:8px;">'+esc(p.name||'Unnamed prospect')+'</div>' +
+            '<div class="histmeta">'+esc(p.location||'—')+' · Audit planned for '+fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime())+'</div>' +
+          '</div>';
+        }).join('') +
+      '</div>';
+  }
+
   function renderDueList(){
     var list = computeDueList();
     var todayMs = Date.now();
     var overdue = list.filter(function(x){ return x.dueAt<todayMs; }).length;
+    var scheduledHtml = renderScheduledAudits();
     var stat = '<div class="statgrid">' +
       '<div class="stattile"><div class="v">'+list.length+'</div><div class="k">Stores Tracked</div></div>' +
       '<div class="stattile"><div class="v">'+overdue+'</div><div class="k">Overdue</div></div>' +
       '<div class="stattile"><div class="v">'+(list.length-overdue)+'</div><div class="k">On Schedule</div></div>' +
     '</div>';
-    if (!list.length) return stat + '<div class="empty"><div class="big">🗓️</div>Complete an audit to start tracking re-audit schedules.</div>';
-    return stat + list.map(function(x){
+    if (!list.length) return scheduledHtml + stat + '<div class="empty"><div class="big">🗓️</div>Complete an audit to start tracking re-audit schedules.</div>';
+    return scheduledHtml + stat + list.map(function(x){
       var isOverdue = x.dueAt < todayMs;
       var daysAbs = Math.abs(x.daysUntil);
       var statusText = isOverdue ? ('Overdue by '+daysAbs+'d') : (x.daysUntil===0 ? 'Due today' : 'Due in '+x.daysUntil+'d');
@@ -1083,8 +1102,10 @@
   // ---------- prospects ----------
   function prospectStatus(p){
     if (p.converted) return { label:'CONVERTED', tone:'good' };
+    if (p.declined) return { label:'NOT CONVERTED', tone:'bad' };
     if (p.auditId && (p.proposed||'').trim()) return { label:'PROPOSED', tone:'warn' };
     if (p.auditId) return { label:'AUDITED', tone:'warn' };
+    if (p.plannedAuditDate) return { label:'⭐ SCHEDULED', tone:'warn' };
     return { label:'NOT AUDITED', tone:'bad' };
   }
 
@@ -1101,7 +1122,10 @@
     var fl = state.prospectsFilterLocation||'all', fc = state.prospectsFilterCategory||'all';
     var list = state.prospects.filter(function(p){
       return (fl==='all' || p.location===fl) && (fc==='all' || p.category===fc);
-    }).sort(function(a,b){ return (b.createdAt||0)-(a.createdAt||0); });
+    }).sort(function(a,b){
+      if (!!a.declined !== !!b.declined) return a.declined ? 1 : -1;
+      return (b.createdAt||0)-(a.createdAt||0);
+    });
 
     var auditedCount = state.prospects.filter(function(p){ return !!p.auditId; }).length;
     var convertedCount = state.prospects.filter(function(p){ return p.converted; }).length;
@@ -1127,11 +1151,13 @@
           var st = prospectStatus(p);
           var priceStr = p.converted ? (p.finalPrice ? (state.pricing.currency||'')+p.finalPrice : '') :
             ((p.priceMin||p.priceMax) ? (state.pricing.currency||'')+(p.priceMin||'0')+'–'+(state.pricing.currency||'')+(p.priceMax||'0') : '');
+          var revealName = p.converted || p.declined;
           return '<div class="card histcard" data-action="open-prospect" data-id="'+p.id+'">' +
             '<div class="histtop"><span class="badge">'+esc(p.category||'Uncategorised')+'</span><span class="pill '+st.tone+'">'+st.label+'</span></div>' +
-            '<div style="font-weight:700;margin-top:8px;">'+(p.converted ? esc(p.name||'Unnamed prospect') : '🔒 Hidden until converted')+'</div>' +
+            '<div style="font-weight:700;margin-top:8px;'+(p.declined?'text-decoration:line-through;color:var(--ink-400);':'')+'">'+(revealName ? esc(p.name||'Unnamed prospect') : '🔒 Hidden until converted')+'</div>' +
             '<div class="histmeta">'+esc(p.location||'—')+(p.address?' · '+esc(p.address):'')+'</div>' +
             (priceStr || p.timeline ? '<div class="histmeta">'+priceStr+(priceStr && p.timeline?' · ':'')+(p.timeline?esc(p.timeline):'')+'</div>' : '') +
+            (p.declined && p.followUpDate ? '<div class="histmeta">Follow up: '+fmtDateShort(new Date(p.followUpDate+'T00:00:00').getTime())+'</div>' : '') +
           '</div>';
         }).join('')
       ) +
@@ -1153,6 +1179,7 @@
           '<div class="field" style="flex:1;"><label for="pCategory">Category</label><input id="pCategory" data-bind-prospect="category" value="'+esc(p.category)+'" placeholder="e.g. QSR, Cafe, Fine Dining"></div>' +
         '</div>' +
         '<div class="field"><label for="pAddress">Address</label><input id="pAddress" data-bind-prospect="address" value="'+esc(p.address)+'" placeholder="Full address"></div>' +
+        (!p.auditId ? '<div class="field"><label for="pPlannedDate">Schedule audit for later (optional)</label><input id="pPlannedDate" type="date" data-bind-prospect="plannedAuditDate" value="'+esc(p.plannedAuditDate||'')+'"></div>' : '') +
       '</div>' +
       (linkedAudit ? (
         '<h2 style="font-size:15px;margin-bottom:6px;">Audit</h2>' +
@@ -1170,10 +1197,17 @@
           '<div class="field"><label for="pTimeline">Timeline</label><input id="pTimeline" data-bind-prospect="timeline" value="'+esc(p.timeline)+'" placeholder="e.g. Start from Dec 2026, 3-month contract"></div>' +
         '</div>' +
         '<div class="field">' +
-          '<label>Converted?</label>' +
-          '<button type="button" class="naBtn '+(p.converted?'on':'')+'" data-action="toggle-prospect-converted" style="padding:8px 14px;">'+(p.converted?'✓ Converted':'Mark as converted')+'</button>' +
+          '<label>Outcome</label>' +
+          '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
+            '<button type="button" class="naBtn '+(p.converted?'on':'')+'" data-action="toggle-prospect-converted" style="padding:8px 14px;">'+(p.converted?'✓ Converted':'Mark as converted')+'</button>' +
+            '<button type="button" class="naBtn '+(p.declined?'on':'')+'" data-action="toggle-prospect-declined" style="padding:8px 14px;">'+(p.declined?'✗ Not converted':'Mark as not converted')+'</button>' +
+          '</div>' +
         '</div>' +
-        (p.converted ? '<div class="field" style="max-width:220px;"><label for="pFinalPrice">Final price</label><input id="pFinalPrice" type="number" min="0" inputmode="numeric" data-bind-prospect="finalPrice" value="'+esc(p.finalPrice)+'" placeholder="e.g. 6500"></div>' : '')
+        (p.converted ? '<div class="field" style="max-width:220px;"><label for="pFinalPrice">Final price</label><input id="pFinalPrice" type="number" min="0" inputmode="numeric" data-bind-prospect="finalPrice" value="'+esc(p.finalPrice)+'" placeholder="e.g. 6500"></div>' : '') +
+        (p.declined ? (
+          '<div class="field"><label for="pFollowUp">Reschedule — follow up on</label><input id="pFollowUp" type="date" data-bind-prospect="followUpDate" value="'+esc(p.followUpDate||'')+'"></div>' +
+          '<button type="button" class="btn btn-ghost btn-sm" style="margin-bottom:16px;" data-action="reactivate-prospect">↺ Reactivate — back to pipeline</button>'
+        ) : '')
       ) : (
         '<button class="btn btn-primary" style="width:100%;padding:14px;margin-bottom:20px;" data-action="start-audit-from-prospect" '+(p.name&&p.name.trim()?'':'disabled')+'>Start Audit for this Prospect</button>' +
         '<div class="helper" style="text-align:center;margin-top:-14px;margin-bottom:20px;">'+(p.name&&p.name.trim()?'Runs the normal audit checklist, then brings you back here to log the proposal.':'Enter a name above to start the audit.')+'</div>'
@@ -1539,11 +1573,13 @@
     }
     else if (action==='add-prospect'){
       var newP = { id: uid(), name:'', location:'', address:'', category:'', auditId:null,
-        proposed:'', priceMin:'', priceMax:'', converted:false, convertedAt:null, finalPrice:'', timeline:'', createdAt: Date.now() };
+        plannedAuditDate:'', proposed:'', priceMin:'', priceMax:'', converted:false, convertedAt:null,
+        declined:false, declinedAt:null, followUpDate:'', finalPrice:'', timeline:'', createdAt: Date.now() };
       state.prospects.push(newP); persistProspects();
       state.activeProspectId = newP.id; render();
     }
     else if (action==='open-prospect'){ state.activeProspectId = t.dataset.id; render(); }
+    else if (action==='goto-prospect'){ if(!state.draft){ state.activeProspectId = t.dataset.id; state.view='prospects'; render(); } }
     else if (action==='back-to-prospects'){ state.activeProspectId = null; render(); }
     else if (action==='delete-prospect'){
       if (window.confirm('Delete this prospect? This cannot be undone.')){
@@ -1566,7 +1602,23 @@
     }
     else if (action==='toggle-prospect-converted'){
       var cp = findProspect(state.activeProspectId);
-      if (cp){ cp.converted = !cp.converted; cp.convertedAt = cp.converted ? Date.now() : null; persistProspects(); render(); }
+      if (cp){
+        cp.converted = !cp.converted; cp.convertedAt = cp.converted ? Date.now() : null;
+        if (cp.converted){ cp.declined = false; cp.declinedAt = null; }
+        persistProspects(); render();
+      }
+    }
+    else if (action==='toggle-prospect-declined'){
+      var dp = findProspect(state.activeProspectId);
+      if (dp){
+        dp.declined = !dp.declined; dp.declinedAt = dp.declined ? Date.now() : null;
+        if (dp.declined){ dp.converted = false; dp.convertedAt = null; }
+        persistProspects(); render();
+      }
+    }
+    else if (action==='reactivate-prospect'){
+      var rp = findProspect(state.activeProspectId);
+      if (rp){ rp.declined = false; rp.declinedAt = null; persistProspects(); render(); }
     }
     else if (action==='pick-type'){
       state.setup.type = t.dataset.type;
