@@ -1062,6 +1062,7 @@
           (x.overridden ? '<button type="button" class="btn btn-ghost btn-sm" data-action="clear-reaudit-override" data-key="'+esc(x.key)+'">Reopen schedule</button>' : '') +
           '<button type="button" class="btn btn-primary btn-sm" data-action="start-reaudit" data-name="'+esc(x.storeName)+'" data-location="'+esc(x.storeLocation||'')+'" data-type="'+esc(x.type)+'" style="margin-left:auto;">Start Audit</button>' +
         '</div>' +
+        '<button type="button" class="btn btn-text btn-danger btn-sm" style="margin-top:4px;" data-action="delete-store-audits" data-key="'+esc(x.key)+'" data-name="'+esc(x.storeName)+'">Delete audit history for this store</button>' +
       '</div>';
     }).join('');
   }
@@ -1187,7 +1188,6 @@
           '</div></div>' +
         '</div>' +
         '<div class="field"><label for="pAddress">Address</label><input id="pAddress" data-bind-prospect="address" value="'+esc(p.address)+'" placeholder="Full address"></div>' +
-        (!audits.length ? '<div class="field"><label for="pPlannedDate">Schedule audit for later (optional)</label><input id="pPlannedDate" type="date" data-bind-prospect="plannedAuditDate" value="'+esc(p.plannedAuditDate||'')+'"></div>' : '') +
       '</div>' +
       '<h2 style="font-size:15px;margin-bottom:6px;">Point of Contact</h2>' +
       '<div class="formstack">' +
@@ -1249,8 +1249,34 @@
           '<button type="button" class="btn btn-ghost btn-sm" style="margin-bottom:16px;" data-action="reactivate-prospect">↺ Reactivate — back to pipeline</button>'
         ) : '')
       ) : (
-        '<button class="btn btn-primary" style="width:100%;padding:14px;margin-bottom:20px;" data-action="start-audit-from-prospect" '+(p.name&&p.name.trim()?'':'disabled')+'>Start Audit for this Prospect</button>' +
-        '<div class="helper" style="text-align:center;margin-top:-14px;margin-bottom:20px;">'+(p.name&&p.name.trim()?'Runs the normal audit checklist, then brings you back here to log the proposal.':'Enter a name above to start the audit.')+'</div>'
+        p.declined ? (
+          '<h2 style="font-size:15px;margin-bottom:6px;">Outcome</h2>' +
+          '<div class="card" style="padding:14px 16px;margin-bottom:20px;">' +
+            '<span class="pill bad" style="margin-bottom:8px;display:inline-block;">NOT CONVERTED</span>' +
+            '<div class="helper" style="margin:0 0 10px;">Marked as not converted before the audit was carried out.</div>' +
+            '<div class="field"><label for="pFollowUp">Reschedule — follow up on</label><input id="pFollowUp" type="date" data-bind-prospect="followUpDate" value="'+esc(p.followUpDate||'')+'"></div>' +
+            '<button type="button" class="btn btn-ghost btn-sm" data-action="reactivate-prospect">↺ Reactivate — back to pipeline</button>' +
+          '</div>'
+        ) : (
+          (p.plannedAuditDate && p.plannedAuditDate<=todayISO() ? (
+            '<div class="card" style="padding:14px 16px;margin-bottom:16px;border:1.5px solid var(--bad);background:var(--bad-soft);">' +
+              '<div style="font-weight:700;margin-bottom:6px;">Scheduled audit check-in</div>' +
+              '<div class="helper" style="margin:0 0 10px;">This audit was scheduled for '+fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime())+'. Was it done?</div>' +
+              '<button type="button" class="btn btn-primary btn-sm" style="margin-bottom:10px;" data-action="start-audit-from-prospect">✓ Yes — start it now</button>' +
+              '<div class="field" style="margin-bottom:0;"><label for="pCheckin">If not done — next action</label><textarea id="pCheckin" data-bind-prospect="checkinNote" placeholder="e.g. Call back next week, reschedule for Friday">'+esc(p.checkinNote||'')+'</textarea></div>' +
+            '</div>'
+          ) : '') +
+          '<h2 style="font-size:15px;margin-bottom:6px;">Audit</h2>' +
+          '<div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;">' +
+            '<button class="btn btn-primary" style="flex:1; min-width:150px; padding:13px;" data-action="start-audit-from-prospect" '+(p.name&&p.name.trim()?'':'disabled')+'>▶ Start Audit Now</button>' +
+          '</div>' +
+          '<div class="field"><label for="pPlannedDate">📅 Schedule audit for later</label><input id="pPlannedDate" type="date" data-bind-prospect="plannedAuditDate" value="'+esc(p.plannedAuditDate||'')+'"></div>' +
+          '<div class="helper" style="margin-top:-10px;margin-bottom:16px;">'+(p.name&&p.name.trim()?'Starting runs the normal audit checklist and brings you back here to log the proposal.':'Enter a name above to start the audit.')+'</div>' +
+          '<div class="field">' +
+            '<label>Not interested?</label>' +
+            '<button type="button" class="naBtn" data-action="toggle-prospect-declined" style="padding:8px 14px;">Mark as not converted</button>' +
+          '</div>'
+        )
       )) +
       '<button class="btn btn-text btn-danger" style="margin-top:10px;" data-action="delete-prospect" data-id="'+p.id+'">Delete prospect</button>' +
     '</main>';
@@ -1612,7 +1638,7 @@
     }
     else if (action==='add-prospect'){
       var newP = { id: uid(), name:'', location:'', address:'', category:'', auditId:null,
-        plannedAuditDate:'', proposed:'', priceMin:'', priceMax:'', converted:false, convertedAt:null,
+        plannedAuditDate:'', checkinNote:'', proposed:'', priceMin:'', priceMax:'', converted:false, convertedAt:null,
         declined:false, declinedAt:null, followUpDate:'', finalPrice:'', timeline:'', createdAt: Date.now(),
         servicesOffered:'', pricingType:'', proposalStatus:'', proposalMeetingDate:'',
         contactName:'', contactDesignation:'', contactMobile:'' };
@@ -1659,6 +1685,16 @@
     else if (action==='clear-reaudit-override'){
       delete state.reauditOverrides[t.dataset.key];
       persistReauditOverrides(); render();
+    }
+    else if (action==='delete-store-audits'){
+      if (window.confirm('Delete ALL audit history for "'+t.dataset.name+'"? This cannot be undone.')){
+        var dkey = t.dataset.key;
+        state.history = state.history.filter(function(h){ return (h.storeName||'').trim().toLowerCase()!==dkey; });
+        persistHistory();
+        delete state.reauditOverrides[dkey];
+        persistReauditOverrides();
+        render();
+      }
     }
     else if (action==='toggle-prospect-converted'){
       var cp = findProspect(state.activeProspectId);
@@ -1966,6 +2002,7 @@
           var sabtn = app.querySelector('[data-action="start-audit-from-prospect"]');
           if (sabtn) sabtn.disabled = !el.value.trim();
         }
+        if (el.dataset.bindProspect==='plannedAuditDate') render();
       }
     }
     else if (el.dataset.reauditKey){
