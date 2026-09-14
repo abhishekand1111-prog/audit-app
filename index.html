@@ -274,6 +274,7 @@
   var LS_A = 'diagnosisroom_actions_v1', LS_SCHED = 'diagnosisroom_schedule_v1', LS_G = 'diagnosisroom_grades_v1';
   var LS_PR = 'diagnosisroom_prospects_v1';
   var LS_LK = 'diagnosisroom_lookups_v1';
+  var LS_RO = 'diagnosisroom_reaudit_overrides_v1';
   var LS_CI = 'diagnosisroom_content_v1';
 
   var DEFAULT_PRICING = {
@@ -390,6 +391,7 @@
     prospectsFilterCategory: 'all',
     lookups: loadJSON(LS_LK, []),
     contentIdeas: loadJSON(LS_CI, []),
+    reauditOverrides: loadJSON(LS_RO, {}),
     activeContentId: null,
     setup: { type:null, storeName:'', storeLocation:'', contactName:'', contactDesignation:'', contactMobile:'', auditDate: todayISO(), auditTime: nowHHMM(), selectedSections:[], menuItemCount:'' },
     editorTab: 'dinein',
@@ -410,6 +412,7 @@
   function persistProspects(){ saveJSON(LS_PR, state.prospects); }
   function persistLookups(){ saveJSON(LS_LK, state.lookups); }
   function persistContentIdeas(){ saveJSON(LS_CI, state.contentIdeas); }
+  function persistReauditOverrides(){ saveJSON(LS_RO, state.reauditOverrides); }
   function persistDraft(){ saveJSON(LS_D, state.draft); }
   function clearDraft(){ state.draft = null; try{ localStorage.removeItem(LS_D); }catch(e){} }
 
@@ -508,10 +511,12 @@
     return Object.keys(latestByStore).map(function(key){
       var h = latestByStore[key];
       var intervalDays = (state.schedule[h.type]||{}).intervalDays || 30;
-      var dueAt = h.finishedAt + intervalDays*86400000;
+      var computedDueAt = h.finishedAt + intervalDays*86400000;
+      var override = state.reauditOverrides[key];
+      var dueAt = override ? new Date(override+'T00:00:00').getTime() : computedDueAt;
       return {
-        storeName: h.storeName, storeLocation: h.storeLocation, type: h.type,
-        lastAuditAt: h.finishedAt, dueAt: dueAt,
+        key: key, storeName: h.storeName, storeLocation: h.storeLocation, type: h.type,
+        lastAuditAt: h.finishedAt, dueAt: dueAt, overridden: !!override, overrideDate: override||'',
         daysUntil: Math.ceil((dueAt-todayMs)/86400000)
       };
     }).sort(function(a,b){ return a.dueAt-b.dueAt; });
@@ -547,7 +552,6 @@
     if (v==='setup') html = renderSetup();
     else if (v==='audit') html = state.draft ? renderAudit(state.draft) : renderSetup();
     else if (v==='summary') html = renderSummaryView();
-    else if (v==='history') html = renderHistory();
     else if (v==='editor') html = renderEditor();
     else if (v==='pricing') html = renderPricingSettings();
     else if (v==='actions') html = renderActionsView();
@@ -575,7 +579,6 @@
         '<div class="sidebar-brand"><span class="mark">dr</span><span class="name">Diagnosis Room</span></div>' +
         item('dashboard','go-dashboard','Dashboard') +
         item('setup','go-setup','New Audit') +
-        item('history','go-history','History') +
         item('editor','go-editor','Checklist') +
         item('prospects','go-prospects','Prospects') +
         item('content','go-content','Content', state.contentIdeas.length?String(state.contentIdeas.length):'') +
@@ -781,7 +784,7 @@
     if (!rec) return renderSetup();
     var tmpl = state.templates[rec.type] || {label:rec.type};
     return '<main>' +
-      '<button class="backrow" data-action="back-from-summary">← '+(state.summaryReturnView==='history'?'Back to history':'Back')+'</button>' +
+      '<button class="backrow" data-action="back-from-summary">← '+(state.summaryReturnView==='prospects'?'Back to prospect':'Back')+'</button>' +
       '<div class="sumhead"><div><span class="badge">'+esc(tmpl.label||rec.type)+'</span>' +
         '<h1 style="font-size:24px;margin-top:8px;">'+esc(rec.storeName||'Unnamed store')+'</h1></div></div>' +
       '<div class="helper" style="margin-bottom:16px;">'+(rec.storeLocation?esc(rec.storeLocation)+' · ':'')+fmtAuditWhen(rec.auditDate,rec.auditTime)+'</div>' +
@@ -831,50 +834,6 @@
       })() +
       '<h2 style="font-size:15px;margin-bottom:6px;">Final remark</h2>' +
       '<div class="remarkbox">'+esc(rec.remark||'—')+'</div>' +
-    '</main>';
-  }
-
-  function renderHistory(){
-    var tab = state.historyTab;
-    var list = state.history.filter(function(h){ return tab==='all' || h.type===tab; }).sort(function(a,b){ return b.finishedAt-a.finishedAt; });
-    var allSorted = state.history.slice().sort(function(a,b){ return a.finishedAt-b.finishedAt; });
-    var filteredForTrend = allSorted.filter(function(h){ return tab==='all' || h.type===tab; });
-
-    var stats = '';
-    if (list.length){
-      var avgMs = Math.round(list.reduce(function(n,h){ return n+h.totalMs; },0)/list.length);
-      var avgPct = Math.round(list.reduce(function(n,h){ return n+h.completionPct; },0)/list.length);
-      var totalRevenue = list.reduce(function(n,h){ return n+(h.pricing?h.pricing.total:0); },0);
-      var curr = state.pricing.currency||'';
-      stats = '<div class="statgrid">' +
-        '<div class="stattile"><div class="v">'+list.length+'</div><div class="k">Audits Logged</div></div>' +
-        '<div class="stattile"><div class="v">'+fmtTime(avgMs)+'</div><div class="k">Avg. Duration</div></div>' +
-        '<div class="stattile"><div class="v">'+avgPct+'%</div><div class="k">Avg. Score</div></div>' +
-      '</div>' +
-      '<div class="stattile" style="margin-bottom:16px;"><div class="v">'+curr+totalRevenue+'</div><div class="k">Total Estimated Pricing</div></div>';
-    }
-
-    return '<main>' +
-      '<div style="display:flex; justify-content:space-between; align-items:flex-end; gap:10px; flex-wrap:wrap;">' +
-        '<div><div class="eyebrow">Audit History</div><h1 style="font-size:26px;margin-top:6px;">Trends & past checks</h1></div>' +
-        (list.length ? '<button class="btn btn-ghost btn-sm" data-action="export-csv">Export CSV</button>' : '') +
-      '</div>' +
-      '<div class="helper" style="margin:8px 0 14px;">Saved on this device only.</div>' +
-      '<div class="tabs">' +
-        ['all','dinein','qsr'].map(function(t){ var lbl = t==='all'?'All':state.templates[t].label; return '<button class="tab '+(tab===t?'on':'')+'" data-action="hist-tab" data-tab="'+t+'">'+lbl+'</button>'; }).join('') +
-      '</div>' +
-      (list.length===0 ? '<div class="empty"><div class="big">📋</div>No audits logged yet for this view.<br>Complete a floor check to see it here.</div>' :
-        stats + renderTrend(filteredForTrend) +
-        list.map(function(h){
-          var tmpl = state.templates[h.type] || {label:h.type};
-          return '<div class="card histcard" data-action="view-audit" data-id="'+h.id+'">' +
-            '<div class="histtop"><span class="badge">'+esc(tmpl.label||h.type)+'</span><span class="histpct">'+fmtTime(h.totalMs)+'</span></div>' +
-            '<div style="font-weight:700;margin-top:8px;">'+esc(h.storeName||'Unnamed store')+'</div>' +
-            '<div class="histmeta">'+(h.storeLocation?esc(h.storeLocation)+' · ':'')+fmtAuditWhen(h.auditDate,h.auditTime)+'</div>' +
-            '<div class="histmeta">'+h.completionPct+'% '+(h.grade?'<span class="pill '+esc(h.grade.tone)+'">'+esc(h.grade.label)+'</span>':'')+(h.pricing?' · '+h.pricing.currency+h.pricing.total:'')+'</div>' +
-          '</div>';
-        }).join('')
-      ) +
     '</main>';
   }
 
@@ -1094,7 +1053,12 @@
         '<div class="histtop"><span class="badge">'+esc(tmpl.label||x.type)+'</span><span class="pill '+tone+'">'+statusText+'</span></div>' +
         '<div style="font-weight:700;margin-top:8px;">'+esc(x.storeName||'Unnamed store')+'</div>' +
         '<div class="histmeta">'+(x.storeLocation?esc(x.storeLocation)+' · ':'')+'Last audited '+fmtDateShort(x.lastAuditAt)+'</div>' +
-        '<div class="histmeta">Next due '+fmtDateShort(x.dueAt)+'</div>' +
+        '<div class="histmeta">Next due '+fmtDateShort(x.dueAt)+(x.overridden?' (manually set)':'')+'</div>' +
+        '<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:10px;">' +
+          '<input type="date" data-reaudit-key="'+esc(x.key)+'" value="'+esc(x.overrideDate)+'" style="border:1px solid var(--line-strong); border-radius:var(--r-s); padding:6px 8px; font-size:12.5px; background:var(--surface); color:var(--ink);" title="Reschedule this re-audit">' +
+          (x.overridden ? '<button type="button" class="btn btn-ghost btn-sm" data-action="clear-reaudit-override" data-key="'+esc(x.key)+'">Reopen schedule</button>' : '') +
+          '<button type="button" class="btn btn-primary btn-sm" data-action="start-reaudit" data-name="'+esc(x.storeName)+'" data-location="'+esc(x.storeLocation||'')+'" data-type="'+esc(x.type)+'" style="margin-left:auto;">Start Audit</button>' +
+        '</div>' +
       '</div>';
     }).join('');
   }
@@ -1106,10 +1070,27 @@
     if (p.auditId && (p.proposed||'').trim()) return { label:'PROPOSED', tone:'warn' };
     if (p.auditId) return { label:'AUDITED', tone:'warn' };
     if (p.plannedAuditDate) return { label:'⭐ SCHEDULED', tone:'warn' };
-    return { label:'NOT AUDITED', tone:'bad' };
+    return { label:'FRESH LEAD', tone:'warn' };
   }
 
   function findProspect(id){ return state.prospects.filter(function(p){ return p.id===id; })[0]; }
+
+  function prospectAudits(p){
+    var key = (p.name||'').trim().toLowerCase();
+    if (!key) return [];
+    return state.history.filter(function(h){ return (h.storeName||'').trim().toLowerCase()===key; })
+      .sort(function(a,b){ return b.finishedAt-a.finishedAt; });
+  }
+
+  function prospectCategoryLabel(p){
+    if (p.category && state.templates[p.category]) return state.templates[p.category].label;
+    return p.category || 'Uncategorised';
+  }
+
+  function serviceBadgeHtml(p){
+    if (!p.servicesOffered || !p.servicesOffered.trim()) return '';
+    return '<span class="badge" style="margin-left:6px;">'+esc(p.servicesOffered.trim())+' Client</span>';
+  }
 
   function renderProspects(){
     if (state.activeProspectId) return renderProspectDetail();
@@ -1130,20 +1111,41 @@
     var auditedCount = state.prospects.filter(function(p){ return !!p.auditId; }).length;
     var convertedCount = state.prospects.filter(function(p){ return p.converted; }).length;
 
+    var sortedHist = state.history.slice().sort(function(a,b){ return a.finishedAt-b.finishedAt; });
+    var histSummaryHtml = '';
+    if (state.history.length){
+      var avgMs = Math.round(sortedHist.reduce(function(n,h){ return n+h.totalMs; },0)/sortedHist.length);
+      var avgPct = Math.round(sortedHist.reduce(function(n,h){ return n+h.completionPct; },0)/sortedHist.length);
+      var totalRevenue = sortedHist.reduce(function(n,h){ return n+(h.pricing?h.pricing.total:0); },0);
+      var curr = state.pricing.currency||'';
+      histSummaryHtml = '<h2 style="font-size:15px;margin-bottom:8px;">Audit Activity</h2>' +
+        '<div class="statgrid" style="margin-top:0;">' +
+          '<div class="stattile"><div class="v">'+sortedHist.length+'</div><div class="k">Audits Logged</div></div>' +
+          '<div class="stattile"><div class="v">'+fmtTime(avgMs)+'</div><div class="k">Avg. Duration</div></div>' +
+          '<div class="stattile"><div class="v">'+avgPct+'%</div><div class="k">Avg. Score</div></div>' +
+        '</div>' +
+        '<div class="stattile" style="margin-bottom:16px;"><div class="v">'+curr+totalRevenue+'</div><div class="k">Total Estimated Pricing</div></div>' +
+        renderTrend(sortedHist);
+    }
+
     return '<main>' +
       '<div style="display:flex; justify-content:space-between; align-items:flex-end; gap:10px; flex-wrap:wrap;">' +
-        '<div><div class="eyebrow">Sales Pipeline</div><h1 style="font-size:26px;margin-top:6px;">Prospects</h1></div>' +
-        '<button class="btn btn-primary btn-sm" data-action="add-prospect">+ Add Prospect</button>' +
+        '<div><div class="eyebrow">Sales Pipeline &amp; Audit History</div><h1 style="font-size:26px;margin-top:6px;">Prospects</h1></div>' +
+        '<div style="display:flex; gap:8px;">' +
+          (state.history.length ? '<button class="btn btn-ghost btn-sm" data-action="export-csv">Export CSV</button>' : '') +
+          '<button class="btn btn-primary btn-sm" data-action="add-prospect">+ Add Prospect</button>' +
+        '</div>' +
       '</div>' +
       '<div class="statgrid" style="margin-top:16px;">' +
         '<div class="stattile"><div class="v">'+state.prospects.length+'</div><div class="k">Total</div></div>' +
         '<div class="stattile"><div class="v">'+auditedCount+'</div><div class="k">Audited</div></div>' +
         '<div class="stattile"><div class="v">'+convertedCount+'</div><div class="k">Converted</div></div>' +
       '</div>' +
+      histSummaryHtml +
       (locs.length || cats.length ? (
         '<div style="display:flex; gap:12px; flex-wrap:wrap; margin:14px 0;">' +
           (locs.length ? '<div class="field" style="flex:1; min-width:150px; margin-bottom:0;"><label>Location</label><select data-prospect-filter="location"><option value="all">All locations</option>'+locs.map(function(l){ return '<option value="'+esc(l)+'" '+(fl===l?'selected':'')+'>'+esc(l)+'</option>'; }).join('')+'</select></div>' : '') +
-          (cats.length ? '<div class="field" style="flex:1; min-width:150px; margin-bottom:0;"><label>Category</label><select data-prospect-filter="category"><option value="all">All categories</option>'+cats.map(function(c){ return '<option value="'+esc(c)+'" '+(fc===c?'selected':'')+'>'+esc(c)+'</option>'; }).join('')+'</select></div>' : '') +
+          (cats.length ? '<div class="field" style="flex:1; min-width:150px; margin-bottom:0;"><label>Category</label><select data-prospect-filter="category"><option value="all">All categories</option>'+cats.map(function(c){ return '<option value="'+esc(c)+'" '+(fc===c?'selected':'')+'>'+esc(state.templates[c]?state.templates[c].label:c)+'</option>'; }).join('')+'</select></div>' : '') +
         '</div>'
       ) : '') +
       (list.length===0 ? '<div class="empty"><div class="big">🎯</div>No prospects yet.<br>Add one to start tracking your pipeline.</div>' :
@@ -1153,7 +1155,7 @@
             ((p.priceMin||p.priceMax) ? (state.pricing.currency||'')+(p.priceMin||'0')+'–'+(state.pricing.currency||'')+(p.priceMax||'0') : '');
           var revealName = p.converted || p.declined;
           return '<div class="card histcard" data-action="open-prospect" data-id="'+p.id+'">' +
-            '<div class="histtop"><span class="badge">'+esc(p.category||'Uncategorised')+'</span><span class="pill '+st.tone+'">'+st.label+'</span></div>' +
+            '<div class="histtop"><span><span class="badge">'+esc(prospectCategoryLabel(p))+'</span>'+serviceBadgeHtml(p)+'</span><span class="pill '+st.tone+'">'+st.label+'</span></div>' +
             '<div style="font-weight:700;margin-top:8px;'+(p.declined?'text-decoration:line-through;color:var(--ink-400);':'')+'">'+(revealName ? esc(p.name||'Unnamed prospect') : '🔒 Hidden until converted')+'</div>' +
             '<div class="histmeta">'+esc(p.location||'—')+(p.address?' · '+esc(p.address):'')+'</div>' +
             (priceStr || p.timeline ? '<div class="histmeta">'+priceStr+(priceStr && p.timeline?' · ':'')+(p.timeline?esc(p.timeline):'')+'</div>' : '') +
@@ -1167,25 +1169,60 @@
   function renderProspectDetail(){
     var p = findProspect(state.activeProspectId);
     if (!p){ state.activeProspectId = null; return renderProspects(); }
-    var linkedAudit = p.auditId ? state.history.filter(function(h){ return h.id===p.auditId; })[0] : null;
+    var audits = prospectAudits(p);
     return '<main>' +
       '<button class="backrow" data-action="back-to-prospects">← Back to prospects</button>' +
       '<div class="eyebrow">Prospect</div>' +
-      '<h1 style="font-size:24px;margin-top:6px;margin-bottom:16px;">'+esc(p.name||'Unnamed prospect')+'</h1>' +
+      '<h1 style="font-size:24px;margin-top:6px;margin-bottom:16px;">'+esc(p.name||'Unnamed prospect')+serviceBadgeHtml(p)+'</h1>' +
       '<div class="formstack">' +
         '<div class="field"><label for="pName">Prospect / store name</label><input id="pName" data-bind-prospect="name" value="'+esc(p.name)+'" placeholder="e.g. Northside Grill"></div>' +
         '<div style="display:flex; gap:12px;">' +
           '<div class="field" style="flex:1;"><label for="pLocation">Location</label><input id="pLocation" data-bind-prospect="location" value="'+esc(p.location)+'" placeholder="e.g. Bandra West"></div>' +
-          '<div class="field" style="flex:1;"><label for="pCategory">Category</label><input id="pCategory" data-bind-prospect="category" value="'+esc(p.category)+'" placeholder="e.g. QSR, Cafe, Fine Dining"></div>' +
+          '<div class="field" style="flex:1;"><label>Category</label><div style="display:flex; gap:8px;">' +
+            '<button type="button" class="naBtn '+(p.category==='dinein'?'on':'')+'" data-action="set-prospect-category" data-val="dinein">Dine-In</button>' +
+            '<button type="button" class="naBtn '+(p.category==='qsr'?'on':'')+'" data-action="set-prospect-category" data-val="qsr">QSR</button>' +
+          '</div></div>' +
         '</div>' +
         '<div class="field"><label for="pAddress">Address</label><input id="pAddress" data-bind-prospect="address" value="'+esc(p.address)+'" placeholder="Full address"></div>' +
-        (!p.auditId ? '<div class="field"><label for="pPlannedDate">Schedule audit for later (optional)</label><input id="pPlannedDate" type="date" data-bind-prospect="plannedAuditDate" value="'+esc(p.plannedAuditDate||'')+'"></div>' : '') +
+        (!audits.length ? '<div class="field"><label for="pPlannedDate">Schedule audit for later (optional)</label><input id="pPlannedDate" type="date" data-bind-prospect="plannedAuditDate" value="'+esc(p.plannedAuditDate||'')+'"></div>' : '') +
       '</div>' +
-      (linkedAudit ? (
-        '<h2 style="font-size:15px;margin-bottom:6px;">Audit</h2>' +
-        '<div class="card histcard" style="margin-bottom:20px;" data-action="view-audit" data-id="'+linkedAudit.id+'">' +
-          '<div class="histtop"><span class="badge">'+esc((state.templates[linkedAudit.type]||{}).label||linkedAudit.type)+'</span><span class="histpct">'+linkedAudit.completionPct+'%'+(linkedAudit.grade?' · <span class="pill '+esc(linkedAudit.grade.tone)+'">'+esc(linkedAudit.grade.label)+'</span>':'')+'</span></div>' +
-          '<div class="histmeta" style="margin-top:8px;">Audited '+fmtAuditWhen(linkedAudit.auditDate,linkedAudit.auditTime)+' · Tap to view full report</div>' +
+      '<h2 style="font-size:15px;margin-bottom:6px;">Point of Contact</h2>' +
+      '<div class="formstack">' +
+        '<div class="field"><label for="pContactName">Contact person name</label><input id="pContactName" data-bind-prospect="contactName" value="'+esc(p.contactName||'')+'" placeholder="e.g. Priya Sharma"></div>' +
+        '<div style="display:flex; gap:12px;">' +
+          '<div class="field" style="flex:1;"><label for="pContactDesignation">Designation</label><input id="pContactDesignation" data-bind-prospect="contactDesignation" value="'+esc(p.contactDesignation||'')+'" placeholder="e.g. Store Manager"></div>' +
+          '<div class="field" style="flex:1;"><label for="pContactMobile">Mobile number</label><input id="pContactMobile" type="tel" inputmode="tel" data-bind-prospect="contactMobile" value="'+esc(p.contactMobile||'')+'" placeholder="e.g. 98765 43210"></div>' +
+        '</div>' +
+      '</div>' +
+      (audits.length ? (
+        '<h2 style="font-size:15px;margin-bottom:6px;">Audit History ('+audits.length+')</h2>' +
+        '<div style="margin-bottom:20px;">' +
+          audits.map(function(h){
+            return '<div class="card histcard" data-action="view-audit" data-id="'+h.id+'">' +
+              '<div class="histtop"><span class="badge">'+esc((state.templates[h.type]||{}).label||h.type)+'</span><span class="histpct">'+h.completionPct+'%'+(h.grade?' · <span class="pill '+esc(h.grade.tone)+'">'+esc(h.grade.label)+'</span>':'')+'</span></div>' +
+              '<div class="histmeta" style="margin-top:8px;">'+fmtAuditWhen(h.auditDate,h.auditTime)+' · Tap to view full report</div>' +
+            '</div>';
+          }).join('') +
+        '</div>' +
+        '<h2 style="font-size:15px;margin-bottom:6px;">Post-Audit Follow-up</h2>' +
+        '<div class="card" style="padding:14px 16px;margin-bottom:20px;border:1.5px solid var(--accent);background:var(--accent-soft);">' +
+          '<div class="field"><label for="pServices">Services offered</label><input id="pServices" data-bind-prospect="servicesOffered" value="'+esc(p.servicesOffered||'')+'" placeholder="e.g. System, Training, Consulting"></div>' +
+          '<div class="field">' +
+            '<label>Pricing type</label>' +
+            '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
+              '<button type="button" class="naBtn '+(p.pricingType==='onetime'?'on':'')+'" data-action="set-pricing-type" data-val="onetime">One-time</button>' +
+              '<button type="button" class="naBtn '+(p.pricingType==='retainer'?'on':'')+'" data-action="set-pricing-type" data-val="retainer">Retainer</button>' +
+            '</div>' +
+          '</div>' +
+          '<div class="field" style="margin-bottom:'+(p.proposalStatus==='meeting_scheduled'?'12px':'0')+';">' +
+            '<label>Solution proposed?</label>' +
+            '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
+              '<button type="button" class="naBtn '+(p.proposalStatus==='proposed'?'on':'')+'" data-action="set-proposal-status" data-val="proposed">Proposed</button>' +
+              '<button type="button" class="naBtn '+(p.proposalStatus==='not_offered'?'on':'')+'" data-action="set-proposal-status" data-val="not_offered">Not offered right now</button>' +
+              '<button type="button" class="naBtn '+(p.proposalStatus==='meeting_scheduled'?'on':'')+'" data-action="set-proposal-status" data-val="meeting_scheduled">Meeting scheduled later</button>' +
+            '</div>' +
+          '</div>' +
+          (p.proposalStatus==='meeting_scheduled' ? '<div class="field" style="margin-bottom:0;"><label for="pMeetingDate">Date of proposal / meeting</label><input id="pMeetingDate" type="date" data-bind-prospect="proposalMeetingDate" value="'+esc(p.proposalMeetingDate||'')+'"></div>' : '') +
         '</div>' +
         '<h2 style="font-size:15px;margin-bottom:6px;">Proposal &amp; conversion</h2>' +
         '<div class="formstack">' +
@@ -1531,7 +1568,6 @@
     else if (action==='close-sidebar'){ state.sidebarOpen = false; render(); }
     else if (action==='go-dashboard'){ if(!state.draft){ state.view='dashboard'; render(); } }
     else if (action==='go-setup'){ if(!state.draft) { state.view='setup'; render(); } }
-    else if (action==='go-history'){ if(!state.draft){ state.view='history'; render(); } }
     else if (action==='go-editor'){ if(!state.draft){ state.view='editor'; render(); } }
     else if (action==='go-pricing'){ if(!state.draft){ state.view='pricing'; render(); } }
     else if (action==='go-actions'){ if(!state.draft){ state.view='actions'; render(); } }
@@ -1574,7 +1610,9 @@
     else if (action==='add-prospect'){
       var newP = { id: uid(), name:'', location:'', address:'', category:'', auditId:null,
         plannedAuditDate:'', proposed:'', priceMin:'', priceMax:'', converted:false, convertedAt:null,
-        declined:false, declinedAt:null, followUpDate:'', finalPrice:'', timeline:'', createdAt: Date.now() };
+        declined:false, declinedAt:null, followUpDate:'', finalPrice:'', timeline:'', createdAt: Date.now(),
+        servicesOffered:'', pricingType:'', proposalStatus:'', proposalMeetingDate:'',
+        contactName:'', contactDesignation:'', contactMobile:'' };
       state.prospects.push(newP); persistProspects();
       state.activeProspectId = newP.id; render();
     }
@@ -1600,6 +1638,25 @@
       state.pendingProspectId = sp.id;
       state.view = 'setup'; render();
     }
+    else if (action==='start-reaudit'){
+      if (state.draft) return;
+      var raName = t.dataset.name, raType = t.dataset.type;
+      var raMatch = state.prospects.filter(function(p){ return (p.name||'').trim().toLowerCase()===(raName||'').trim().toLowerCase(); })[0];
+      state.setup.type = raType;
+      state.setup.storeName = raName;
+      state.setup.storeLocation = t.dataset.location || (raMatch?raMatch.location:'') || '';
+      state.setup.contactName = raMatch ? (raMatch.contactName||'') : '';
+      state.setup.contactDesignation = raMatch ? (raMatch.contactDesignation||'') : '';
+      state.setup.contactMobile = raMatch ? (raMatch.contactMobile||'') : '';
+      state.setup.selectedSections = state.templates[raType] ? state.templates[raType].sections.map(function(s){ return s.id; }) : [];
+      state.setup.menuItemCount = '';
+      state.pendingProspectId = raMatch ? raMatch.id : null;
+      state.view = 'setup'; render();
+    }
+    else if (action==='clear-reaudit-override'){
+      delete state.reauditOverrides[t.dataset.key];
+      persistReauditOverrides(); render();
+    }
     else if (action==='toggle-prospect-converted'){
       var cp = findProspect(state.activeProspectId);
       if (cp){
@@ -1619,6 +1676,18 @@
     else if (action==='reactivate-prospect'){
       var rp = findProspect(state.activeProspectId);
       if (rp){ rp.declined = false; rp.declinedAt = null; persistProspects(); render(); }
+    }
+    else if (action==='set-pricing-type'){
+      var ptp = findProspect(state.activeProspectId);
+      if (ptp){ ptp.pricingType = (ptp.pricingType===t.dataset.val) ? '' : t.dataset.val; persistProspects(); render(); }
+    }
+    else if (action==='set-proposal-status'){
+      var psp = findProspect(state.activeProspectId);
+      if (psp){ psp.proposalStatus = (psp.proposalStatus===t.dataset.val) ? '' : t.dataset.val; persistProspects(); render(); }
+    }
+    else if (action==='set-prospect-category'){
+      var ctp = findProspect(state.activeProspectId);
+      if (ctp){ ctp.category = (ctp.category===t.dataset.val) ? '' : t.dataset.val; persistProspects(); render(); }
     }
     else if (action==='pick-type'){
       state.setup.type = t.dataset.type;
@@ -1705,11 +1774,32 @@
       });
       persistActions();
       clearDraft();
-      if (state.pendingProspectId){
-        var linkedP = findProspect(state.pendingProspectId);
-        if (linkedP){ linkedP.auditId = rec.id; persistProspects(); }
-        state.activeProspectId = state.pendingProspectId;
-        state.pendingProspectId = null;
+
+      var linkedP = state.pendingProspectId ? findProspect(state.pendingProspectId) : null;
+      var key = (d.storeName||'').trim().toLowerCase();
+      if (!linkedP && key){
+        linkedP = state.prospects.filter(function(p){ return (p.name||'').trim().toLowerCase()===key; })[0];
+      }
+      if (!linkedP && key){
+        linkedP = { id: uid(), name: d.storeName, location: d.storeLocation, address:'', category: d.type,
+          auditId: rec.id, plannedAuditDate:'', proposed:'', priceMin:'', priceMax:'', converted:false, convertedAt:null,
+          declined:false, declinedAt:null, followUpDate:'', finalPrice:'', timeline:'',
+          servicesOffered:'', pricingType:'', proposalStatus:'', proposalMeetingDate:'',
+          contactName: d.contactName||'', contactDesignation: d.contactDesignation||'', contactMobile: d.contactMobile||'',
+          createdAt: Date.now() };
+        state.prospects.unshift(linkedP);
+      } else if (linkedP){
+        linkedP.auditId = rec.id;
+        if (!linkedP.category) linkedP.category = d.type;
+        if (!linkedP.location) linkedP.location = d.storeLocation;
+        if (!linkedP.contactName) linkedP.contactName = d.contactName||linkedP.contactName||'';
+        if (!linkedP.contactDesignation) linkedP.contactDesignation = d.contactDesignation||linkedP.contactDesignation||'';
+        if (!linkedP.contactMobile) linkedP.contactMobile = d.contactMobile||linkedP.contactMobile||'';
+      }
+      state.pendingProspectId = null;
+      if (linkedP){
+        persistProspects();
+        state.activeProspectId = linkedP.id;
         state.view = 'prospects'; render();
       } else {
         state.viewingAuditId = rec.id; state.summaryReturnView='setup';
@@ -1732,7 +1822,6 @@
     }
     else if (action==='view-audit'){ state.viewingAuditId = t.dataset.id; state.summaryReturnView=state.view; state.view='summary'; render(); }
     else if (action==='back-from-summary'){ state.view = state.summaryReturnView; render(); }
-    else if (action==='hist-tab'){ state.historyTab = t.dataset.tab; render(); }
     else if (action==='editor-tab'){ state.editorTab = t.dataset.tab; render(); }
     else if (action==='delete-section'){
       var tmpl = state.templates[state.editorTab];
@@ -1867,6 +1956,11 @@
           if (sabtn) sabtn.disabled = !el.value.trim();
         }
       }
+    }
+    else if (el.dataset.reauditKey){
+      var rkey = el.dataset.reauditKey;
+      if (el.value){ state.reauditOverrides[rkey] = el.value; } else { delete state.reauditOverrides[rkey]; }
+      persistReauditOverrides(); render();
     }
     else if (el.dataset.bindContent){
       var bc = findContent(state.activeContentId);
