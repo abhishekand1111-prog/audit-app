@@ -185,6 +185,14 @@
   .lookuprow select{border:1px solid var(--line-strong); border-radius:var(--r-s); background:var(--surface); color:var(--ink-600); font-size:11.5px; padding:5px 6px; flex:none;}
   .lookupglimpse-item{display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--line); font-size:13.5px;}
   .lookupglimpse-item:last-child{border-bottom:none;}
+  .weekcal{display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-bottom:20px;}
+  .calcell{background:var(--surface-2); border-radius:var(--r-s); padding:8px 3px; text-align:center; min-height:66px; display:flex; flex-direction:column; align-items:center; gap:2px; border:none;}
+  .calcell.today{box-shadow:inset 0 0 0 2px var(--accent);}
+  .calcell.has{background:var(--accent-soft); cursor:pointer;}
+  .cal-dow{font-size:9.5px; color:var(--ink-400); text-transform:uppercase; font-weight:700;}
+  .cal-daynum{font-family:var(--font-m); font-weight:700; font-size:14px; color:var(--ink);}
+  .cal-topic{font-size:8.5px; color:var(--accent-ink); line-height:1.2; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; margin-top:1px;}
+  .cal-count{font-size:9px; color:var(--accent-ink); font-weight:700; margin-top:1px;}
   .statgrid{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:16px 0 20px;}
   .stattile{background:var(--surface-2); border-radius:var(--r-m); padding:12px 12px;}
   .stattile .v{font-family:var(--font-m); font-size:19px; font-weight:600;}
@@ -266,6 +274,7 @@
   var LS_A = 'diagnosisroom_actions_v1', LS_SCHED = 'diagnosisroom_schedule_v1', LS_G = 'diagnosisroom_grades_v1';
   var LS_PR = 'diagnosisroom_prospects_v1';
   var LS_LK = 'diagnosisroom_lookups_v1';
+  var LS_CI = 'diagnosisroom_content_v1';
 
   var DEFAULT_PRICING = {
     currency: '₹',
@@ -380,6 +389,8 @@
     prospectsFilterLocation: 'all',
     prospectsFilterCategory: 'all',
     lookups: loadJSON(LS_LK, []),
+    contentIdeas: loadJSON(LS_CI, []),
+    activeContentId: null,
     setup: { type:null, storeName:'', storeLocation:'', contactName:'', contactDesignation:'', contactMobile:'', auditDate: todayISO(), auditTime: nowHHMM(), selectedSections:[], menuItemCount:'' },
     editorTab: 'dinein',
     historyTab: 'all',
@@ -398,6 +409,7 @@
   function persistGrades(){ saveJSON(LS_G, state.gradeBands); }
   function persistProspects(){ saveJSON(LS_PR, state.prospects); }
   function persistLookups(){ saveJSON(LS_LK, state.lookups); }
+  function persistContentIdeas(){ saveJSON(LS_CI, state.contentIdeas); }
   function persistDraft(){ saveJSON(LS_D, state.draft); }
   function clearDraft(){ state.draft = null; try{ localStorage.removeItem(LS_D); }catch(e){} }
 
@@ -541,6 +553,7 @@
     else if (v==='actions') html = renderActionsView();
     else if (v==='prospects') html = renderProspects();
     else if (v==='lookup') html = renderLookup();
+    else if (v==='content') html = renderContent();
     else if (v==='dashboard') html = renderDashboard();
     app.innerHTML = topbar() + html;
   }
@@ -565,6 +578,7 @@
         item('history','go-history','History') +
         item('prospects','go-prospects','Prospects') +
         item('lookup','go-lookup','Lookup', (function(){ var n=state.lookups.filter(function(l){ return !l.done; }).length; return n?String(n):''; })()) +
+        item('content','go-content','Content', state.contentIdeas.length?String(state.contentIdeas.length):'') +
         item('editor','go-editor','Checklist') +
         item('pricing','go-pricing','Settings') +
         item('actions','go-actions','Actions', openActions?String(openActions):'') +
@@ -1168,6 +1182,64 @@
     '</main>';
   }
 
+  function findContent(id){ return state.contentIdeas.filter(function(c){ return c.id===id; })[0]; }
+
+  function contentStatus(c){
+    if (c.shootDate) return { label:'Shoot '+fmtDateShort(new Date(c.shootDate+'T00:00:00').getTime()), tone: (c.shootDate<todayISO()?'bad':'good') };
+    if (c.notScheduled) return { label:'Not scheduled', tone:'warn' };
+    return { label:'Draft', tone:'warn' };
+  }
+
+  function renderContent(){
+    if (state.activeContentId) return renderContentDetail();
+    var list = state.contentIdeas.slice().sort(function(a,b){
+      if (a.shootDate && b.shootDate) return a.shootDate<b.shootDate?-1:1;
+      if (a.shootDate) return -1;
+      if (b.shootDate) return 1;
+      return (b.createdAt||0)-(a.createdAt||0);
+    });
+    return '<main>' +
+      '<div style="display:flex; justify-content:space-between; align-items:flex-end; gap:10px; flex-wrap:wrap;">' +
+        '<div><div class="eyebrow">Content Planner</div><h1 style="font-size:26px;margin-top:6px;">Insta Content &amp; Scripts</h1></div>' +
+        '<button class="btn btn-primary btn-sm" data-action="add-content">+ New Idea</button>' +
+      '</div>' +
+      '<div class="helper" style="margin:8px 0 14px;">Idea, hook, insight, CTA and the full script — all against a shoot day, or park it with "Not scheduled" until ready.</div>' +
+      (list.length===0 ? '<div class="empty"><div class="big">🎬</div>No content ideas yet.<br>Add one to start planning your next shoot.</div>' :
+        list.map(function(c){
+          var st = contentStatus(c);
+          return '<div class="card histcard" data-action="open-content" data-id="'+c.id+'">' +
+            '<div class="histtop"><span class="badge">'+(c.script&&c.script.trim()?'Scripted':'No script yet')+'</span><span class="pill '+st.tone+'">'+esc(st.label)+'</span></div>' +
+            '<div style="font-weight:700;margin-top:8px;">'+esc(c.topic||'Untitled idea')+'</div>' +
+            (c.hook ? '<div class="histmeta">Hook: '+esc(c.hook)+'</div>' : '') +
+          '</div>';
+        }).join('')
+      ) +
+    '</main>';
+  }
+
+  function renderContentDetail(){
+    var c = findContent(state.activeContentId);
+    if (!c){ state.activeContentId = null; return renderContent(); }
+    return '<main>' +
+      '<button class="backrow" data-action="back-to-content">← Back to content</button>' +
+      '<div class="eyebrow">Content Idea</div>' +
+      '<h1 style="font-size:24px;margin-top:6px;margin-bottom:16px;">'+esc(c.topic||'Untitled idea')+'</h1>' +
+      '<div class="formstack">' +
+        '<div class="field"><label for="cTopic">Idea / topic</label><input id="cTopic" data-bind-content="topic" value="'+esc(c.topic)+'" placeholder="e.g. 5 signs your kitchen would fail an audit"></div>' +
+        '<div class="field"><label for="cInsight">Insight to be shared</label><textarea id="cInsight" data-bind-content="insight" placeholder="The key point / value viewers walk away with">'+esc(c.insight)+'</textarea></div>' +
+        '<div class="field"><label for="cHook">Hook</label><input id="cHook" data-bind-content="hook" value="'+esc(c.hook)+'" placeholder="The first line that stops the scroll"></div>' +
+        '<div class="field"><label for="cCta">CTA</label><input id="cCta" data-bind-content="cta" value="'+esc(c.cta)+'" placeholder="e.g. Comment AUDIT for a free checklist"></div>' +
+      '</div>' +
+      '<h2 style="font-size:15px;margin-bottom:6px;">Shoot day</h2>' +
+      '<div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:20px;">' +
+        '<div class="field" style="flex:1; min-width:160px; margin-bottom:0;"><label for="cShootDate">Shoot date</label><input id="cShootDate" type="date" data-bind-content="shootDate" value="'+esc(c.shootDate)+'" '+(c.notScheduled?'disabled':'')+'></div>' +
+        '<button type="button" class="naBtn '+(c.notScheduled?'on':'')+'" data-action="toggle-content-notscheduled" style="padding:9px 14px;">'+(c.notScheduled?'✓ Not scheduled':'Not now')+'</button>' +
+      '</div>' +
+      '<div class="field"><label for="cScript">Script — everything to say/do on shoot day</label><textarea id="cScript" data-bind-content="script" style="min-height:160px;" placeholder="Full script / shot list for the shoot">'+esc(c.script)+'</textarea></div>' +
+      '<button class="btn btn-text btn-danger" style="margin-top:10px;" data-action="delete-content" data-id="'+c.id+'">Delete idea</button>' +
+    '</main>';
+  }
+
   var LOOKUP_CATEGORIES = { task:'Task', work:'Area to work on', research:'Research' };
 
   function renderLookup(){
@@ -1287,6 +1359,24 @@
     }
 
     var openLookups = state.lookups.filter(function(l){ return !l.done; }).sort(function(a,b){ return (b.createdAt||0)-(a.createdAt||0); });
+    var doneLookups = state.lookups.length - openLookups.length;
+
+    var weekDays = [];
+    for (var wi=0; wi<7; wi++){
+      var wd = new Date(); wd.setHours(0,0,0,0); wd.setDate(wd.getDate()+wi);
+      var wIso = wd.getFullYear()+'-'+String(wd.getMonth()+1).padStart(2,'0')+'-'+String(wd.getDate()).padStart(2,'0');
+      var shoots = state.contentIdeas.filter(function(c){ return c.shootDate===wIso; });
+      weekDays.push({ iso: wIso, dow: wd.toLocaleDateString(undefined,{weekday:'short'}).slice(0,2), dayNum: wd.getDate(), isToday: wi===0, shoots: shoots });
+    }
+    var weekCalHtml = '<div class="weekcal">' + weekDays.map(function(d){
+      var has = d.shoots.length>0;
+      var first = has ? d.shoots[0] : null;
+      return '<div class="calcell '+(has?'has':'')+' '+(d.isToday?'today':'')+'" '+(has?'data-action="goto-content" data-id="'+first.id+'"':'')+'>' +
+        '<div class="cal-dow">'+d.dow+'</div>' +
+        '<div class="cal-daynum">'+d.dayNum+'</div>' +
+        (has ? (d.shoots.length>1 ? '<div class="cal-count">'+d.shoots.length+' shoots</div>' : '<div class="cal-topic">'+esc((first.topic||'Untitled').slice(0,24))+'</div>') : '') +
+      '</div>';
+    }).join('') + '</div>';
 
     return '<main>' +
       '<div class="eyebrow">Last 7 Days</div>' +
@@ -1315,6 +1405,9 @@
         '<div class="stattile"><div class="v">'+(state.pricing.currency||'')+revenueWeek+'</div><div class="k">Est. Revenue</div></div>' +
       '</div>' +
 
+      '<h2 style="font-size:15px;margin-bottom:8px;">Shoot Days This Week</h2>' +
+      weekCalHtml +
+
       '<h2 style="font-size:15px;margin-bottom:8px;">Corrective Actions</h2>' +
       '<div class="card dashcard" style="margin-bottom:20px;">' +
         '<div class="donutrow">' +
@@ -1339,6 +1432,10 @@
       '</div>' +
 
       '<h2 style="font-size:15px;margin-bottom:8px;">Lookup — areas to work on</h2>' +
+      '<div class="statgrid" style="margin-bottom:8px;">' +
+        '<div class="stattile"><div class="v">'+openLookups.length+'</div><div class="k">To Do</div></div>' +
+        '<div class="stattile"><div class="v">'+doneLookups+'</div><div class="k">Done</div></div>' +
+      '</div>' +
       (openLookups.length===0 ? '<div class="empty" style="padding:24px 0;margin-bottom:20px;"><div class="big">🔎</div>Nothing on your lookup list.<br><button class="btn btn-ghost btn-sm" style="margin-top:10px;" data-action="go-lookup">+ Add something</button></div>' :
         '<div class="card" style="padding:4px 16px;margin-bottom:8px;">' +
           openLookups.slice(0,5).map(function(l){
@@ -1406,6 +1503,26 @@
     else if (action==='go-actions'){ if(!state.draft){ state.view='actions'; render(); } }
     else if (action==='go-prospects'){ if(!state.draft){ state.activeProspectId=null; state.view='prospects'; render(); } }
     else if (action==='go-lookup'){ if(!state.draft){ state.view='lookup'; render(); } }
+    else if (action==='go-content'){ if(!state.draft){ state.activeContentId=null; state.view='content'; render(); } }
+    else if (action==='add-content'){
+      var newC = { id: uid(), topic:'', insight:'', hook:'', cta:'', shootDate:'', notScheduled:false, script:'', createdAt: Date.now() };
+      state.contentIdeas.unshift(newC); persistContentIdeas();
+      state.activeContentId = newC.id; render();
+    }
+    else if (action==='open-content'){ state.activeContentId = t.dataset.id; render(); }
+    else if (action==='goto-content'){ if(!state.draft){ state.activeContentId = t.dataset.id; state.view='content'; render(); } }
+    else if (action==='back-to-content'){ state.activeContentId = null; render(); }
+    else if (action==='delete-content'){
+      if (window.confirm('Delete this content idea? This cannot be undone.')){
+        state.contentIdeas = state.contentIdeas.filter(function(c){ return c.id!==t.dataset.id; });
+        persistContentIdeas();
+        state.activeContentId = null; render();
+      }
+    }
+    else if (action==='toggle-content-notscheduled'){
+      var nc = findContent(state.activeContentId);
+      if (nc){ nc.notScheduled = !nc.notScheduled; if (nc.notScheduled) nc.shootDate=''; persistContentIdeas(); render(); }
+    }
     else if (action==='add-lookup'){
       state.lookups.unshift({ id: uid(), text:'', category:'task', done:false, createdAt: Date.now() });
       persistLookups(); render();
@@ -1697,6 +1814,14 @@
           var sabtn = app.querySelector('[data-action="start-audit-from-prospect"]');
           if (sabtn) sabtn.disabled = !el.value.trim();
         }
+      }
+    }
+    else if (el.dataset.bindContent){
+      var bc = findContent(state.activeContentId);
+      if (bc){
+        bc[el.dataset.bindContent] = el.value;
+        if (el.dataset.bindContent==='shootDate' && el.value) bc.notScheduled = false;
+        persistContentIdeas();
       }
     }
     else if (el.dataset.action==='rename-lookup'){
