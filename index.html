@@ -280,6 +280,7 @@
   var LS_LK = 'diagnosisroom_lookups_v1';
   var LS_RO = 'diagnosisroom_reaudit_overrides_v1';
   var LS_CI = 'diagnosisroom_content_v1';
+  var LS_SVC = 'diagnosisroom_serviceclasses_v1';
 
   var DEFAULT_PRICING = {
     currency: '₹',
@@ -299,6 +300,12 @@
     { id:'g2', min:75, label:'B — Good', tone:'good' },
     { id:'g3', min:60, label:'C — Needs Improvement', tone:'warn' },
     { id:'g4', min:0,  label:'D — Fail', tone:'bad' }
+  ];
+
+  var DEFAULT_SERVICE_CLASSES = [
+    { id:'s1', number:1, label:'Audit Only' },
+    { id:'s2', number:2, label:'Audit + Training' },
+    { id:'s3', number:3, label:'Monthly Retainer' }
   ];
 
   var DEFAULT_TEMPLATES = {
@@ -388,6 +395,7 @@
     correctiveActions: loadJSON(LS_A, []),
     schedule: loadJSON(LS_SCHED, null) || JSON.parse(JSON.stringify(DEFAULT_SCHEDULE)),
     gradeBands: loadJSON(LS_G, null) || JSON.parse(JSON.stringify(DEFAULT_GRADE_BANDS)),
+    serviceClasses: loadJSON(LS_SVC, null) || JSON.parse(JSON.stringify(DEFAULT_SERVICE_CLASSES)),
     prospects: loadJSON(LS_PR, []),
     activeProspectId: null,
     pendingProspectId: null,
@@ -413,6 +421,7 @@
   function persistActions(){ saveJSON(LS_A, state.correctiveActions); }
   function persistSchedule(){ saveJSON(LS_SCHED, state.schedule); }
   function persistGrades(){ saveJSON(LS_G, state.gradeBands); }
+  function persistServiceClasses(){ saveJSON(LS_SVC, state.serviceClasses); }
   function persistProspects(){ saveJSON(LS_PR, state.prospects); }
   function persistLookups(){ saveJSON(LS_LK, state.lookups); }
   function persistContentIdeas(){ saveJSON(LS_CI, state.contentIdeas); }
@@ -859,6 +868,19 @@
     return rows.join('\r\n');
   }
 
+  function buildProspectsCSV(){
+    var cols = ['Prospect Name','Location','Category','Status','Class of Service','Contact Name','Contact Mobile','Audited','Converted','Final Price','Follow-up Date'];
+    var rows = [cols.join(',')];
+    state.prospects.slice().sort(function(a,b){ return (b.createdAt||0)-(a.createdAt||0); }).forEach(function(p){
+      var st = prospectStatus(p);
+      var cls = p.servicesOffered ? findServiceClass(p.servicesOffered) : null;
+      var svcStr = cls ? ('No. '+cls.number+' — '+cls.label) : 'N/A';
+      var row = [p.name||'', p.location||'', prospectCategoryLabel(p), st.label, svcStr, p.contactName||'', p.contactMobile||'', p.auditId?'Yes':'No', p.converted?'Yes':'No', p.finalPrice||'', p.followUpDate||''];
+      rows.push(row.map(csvEscape).join(','));
+    });
+    return rows.join('\r\n');
+  }
+
   function renderTrend(list){
     if (list.length < 2) return '';
     var last = list.slice(-12);
@@ -960,6 +982,22 @@
         '<button class="btn btn-text btn-danger" data-action="reset-grades">Reset to defaults</button>' +
       '</div>' +
 
+      '<h1 style="font-size:20px;margin:0 0 4px;">Service classes</h1>' +
+      '<div class="helper" style="margin-bottom:12px;">The numbered service classes a converted prospect can be assigned to. Shown as a badge on prospect cards and in the Re-audit Due list.</div>' +
+      '<div class="card" style="padding:4px 16px;margin-bottom:12px;">' +
+        state.serviceClasses.slice().sort(function(a,b){return a.number-b.number;}).map(function(sc){
+          return '<div class="gradebandrow">' +
+            '<input type="number" min="1" data-svc-field="number" data-svc="'+sc.id+'" value="'+sc.number+'" title="Service No.">' +
+            '<input type="text" data-svc-field="label" data-svc="'+sc.id+'" value="'+esc(sc.label)+'" placeholder="Service name">' +
+            '<button class="iconbtn" data-action="svc-remove" data-svc="'+sc.id+'" title="Remove class">✕</button>' +
+          '</div>';
+        }).join('') +
+      '</div>' +
+      '<div style="display:flex;gap:8px;margin-bottom:24px;">' +
+        '<button class="btn btn-ghost btn-sm" data-action="svc-add">+ Add service class</button>' +
+        '<button class="btn btn-text btn-danger" data-action="reset-svc">Reset to defaults</button>' +
+      '</div>' +
+
       '<h1 style="font-size:20px;margin:0 0 4px;">Re-audit schedule</h1>' +
       '<div class="helper" style="margin-bottom:12px;">How many days after an audit a store should be re-checked. Used to build the due list under Actions.</div>' +
       '<div class="card edsection">' +
@@ -1056,9 +1094,10 @@
       var statusText = isOverdue ? ('Overdue by '+daysAbs+'d') : (x.daysUntil===0 ? 'Due today' : 'Due in '+x.daysUntil+'d');
       var tone = isOverdue ? 'bad' : (x.daysUntil<=7 ? 'warn' : 'good');
       var tmpl = state.templates[x.type] || { label: x.type };
+      var dueProspect = findProspectByName(x.storeName);
       return '<div class="card histcard">' +
         '<div class="histtop"><span class="badge">'+esc(tmpl.label||x.type)+'</span><span class="pill '+tone+'">'+statusText+'</span></div>' +
-        '<div style="font-weight:700;margin-top:8px;">'+esc(x.storeName||'Unnamed store')+'</div>' +
+        '<div style="font-weight:700;margin-top:8px;">'+esc(x.storeName||'Unnamed store')+serviceBadgeHtml(dueProspect)+'</div>' +
         '<div class="histmeta">'+(x.storeLocation?esc(x.storeLocation)+' · ':'')+'Last audited '+fmtDateShort(x.lastAuditAt)+'</div>' +
         '<div class="histmeta">Next due '+fmtDateShort(x.dueAt)+(x.overridden?' (manually set)':'')+'</div>' +
         '<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:10px;">' +
@@ -1083,6 +1122,14 @@
 
   function findProspect(id){ return state.prospects.filter(function(p){ return p.id===id; })[0]; }
 
+  function findProspectByName(name){
+    var key = (name||'').trim().toLowerCase();
+    if (!key) return null;
+    return state.prospects.filter(function(p){ return (p.name||'').trim().toLowerCase()===key; })[0] || null;
+  }
+
+  function findServiceClass(id){ return state.serviceClasses.filter(function(s){ return s.id===id; })[0] || null; }
+
   function prospectAudits(p){
     var key = (p.name||'').trim().toLowerCase();
     if (!key) return [];
@@ -1096,8 +1143,10 @@
   }
 
   function serviceBadgeHtml(p){
-    if (!p.servicesOffered || !p.servicesOffered.trim()) return '';
-    return '<span class="badge" style="margin-left:6px;">'+esc(p.servicesOffered.trim())+' Client</span>';
+    if (!p) return '';
+    var cls = p.servicesOffered ? findServiceClass(p.servicesOffered) : null;
+    if (cls) return '<span class="badge" style="margin-left:6px;">No. '+cls.number+' — '+esc(cls.label)+'</span>';
+    return '<span class="badge" style="margin-left:6px;color:var(--ink-400);background:var(--line);">N/A</span>';
   }
 
   function renderProspectsDaily(){
@@ -1174,8 +1223,9 @@
     return '<main>' +
       '<div style="display:flex; justify-content:space-between; align-items:flex-end; gap:10px; flex-wrap:wrap;">' +
         '<div><div class="eyebrow">Sales Pipeline &amp; Audit History</div><h1 style="font-size:26px;margin-top:6px;">Prospects</h1></div>' +
-        '<div style="display:flex; gap:8px;">' +
-          (state.history.length ? '<button class="btn btn-ghost btn-sm" data-action="export-csv">Export CSV</button>' : '') +
+        '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
+          (state.prospects.length ? '<button class="btn btn-ghost btn-sm" data-action="export-prospects-csv">Export Prospects CSV</button>' : '') +
+          (state.history.length ? '<button class="btn btn-ghost btn-sm" data-action="export-csv">Export Audit CSV</button>' : '') +
           '<button class="btn btn-primary btn-sm" data-action="add-prospect">+ Add Prospect</button>' +
         '</div>' +
       '</div>' +
@@ -1254,7 +1304,7 @@
         '</div>' +
         '<h2 style="font-size:15px;margin-bottom:6px;">Post-Audit Follow-up</h2>' +
         '<div class="card" style="padding:14px 16px;margin-bottom:20px;border:1.5px solid var(--accent);background:var(--accent-soft);">' +
-          '<div class="field"><label for="pServices">Services offered</label><input id="pServices" data-bind-prospect="servicesOffered" value="'+esc(p.servicesOffered||'')+'" placeholder="e.g. System, Training, Consulting"></div>' +
+          '<div class="field"><label for="pServices">Class of service</label><select id="pServices" data-bind-prospect="servicesOffered"><option value="">— Not selected (N/A) —</option>'+state.serviceClasses.map(function(sc){ return '<option value="'+sc.id+'" '+(p.servicesOffered===sc.id?'selected':'')+'>No. '+sc.number+' — '+esc(sc.label)+'</option>'; }).join('')+'</select></div>' +
           '<div class="field">' +
             '<label>Pricing type</label>' +
             '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
@@ -1883,6 +1933,10 @@
       var csv = buildHistoryCSV();
       downloadCSV(csv, 'diagnosis-room-audits-'+todayISO()+'.csv');
     }
+    else if (action==='export-prospects-csv'){
+      var pcsv = buildProspectsCSV();
+      downloadCSV(pcsv, 'diagnosis-room-prospects-'+todayISO()+'.csv');
+    }
     else if (action==='view-audit'){ state.viewingAuditId = t.dataset.id; state.summaryReturnView=state.view; state.view='summary'; render(); }
     else if (action==='back-from-summary'){ state.view = state.summaryReturnView; render(); }
     else if (action==='editor-tab'){ state.editorTab = t.dataset.tab; render(); }
@@ -1945,6 +1999,21 @@
       if (window.confirm('Reset grade bands to defaults?')){
         state.gradeBands = JSON.parse(JSON.stringify(DEFAULT_GRADE_BANDS));
         persistGrades(); render();
+      }
+    }
+    else if (action==='svc-add'){
+      var nextNum = state.serviceClasses.reduce(function(m,sc){ return Math.max(m,sc.number); },0)+1;
+      state.serviceClasses.push({ id: uid(), number: nextNum, label: 'New service' });
+      persistServiceClasses(); render();
+    }
+    else if (action==='svc-remove'){
+      state.serviceClasses = state.serviceClasses.filter(function(sc){ return sc.id!==t.dataset.svc; });
+      persistServiceClasses(); render();
+    }
+    else if (action==='reset-svc'){
+      if (window.confirm('Reset service classes to defaults?')){
+        state.serviceClasses = JSON.parse(JSON.stringify(DEFAULT_SERVICE_CLASSES));
+        persistServiceClasses(); render();
       }
     }
   });
@@ -2018,6 +2087,14 @@
         persistGrades();
       }
     }
+    else if (el.dataset.svcField){
+      var sc2 = state.serviceClasses.filter(function(s){ return s.id===el.dataset.svc; })[0];
+      if (sc2){
+        if (el.dataset.svcField==='number'){ var svn = parseInt(el.value,10); sc2.number = isNaN(svn)?1:svn; }
+        else { sc2[el.dataset.svcField] = el.value; }
+        persistServiceClasses();
+      }
+    }
     else if (el.dataset.bindProspect){
       var bp = findProspect(state.activeProspectId);
       if (bp){
@@ -2026,7 +2103,7 @@
           var sabtn = app.querySelector('[data-action="start-audit-from-prospect"]');
           if (sabtn) sabtn.disabled = !el.value.trim();
         }
-        if (el.dataset.bindProspect==='plannedAuditDate') render();
+        if (el.dataset.bindProspect==='plannedAuditDate' || el.dataset.bindProspect==='servicesOffered') render();
       }
     }
     else if (el.dataset.reauditKey){
