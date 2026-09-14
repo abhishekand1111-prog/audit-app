@@ -187,8 +187,12 @@
   .lookupglimpse-item:last-child{border-bottom:none;}
   .weekcal{display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-bottom:20px;}
   .calcell{background:var(--surface-2); border-radius:var(--r-s); padding:8px 3px; text-align:center; min-height:66px; display:flex; flex-direction:column; align-items:center; gap:2px; border:none;}
-  .calcell.today{box-shadow:inset 0 0 0 2px var(--accent);}
-  .calcell.has{background:var(--accent-soft); cursor:pointer;}
+  .calcell.today{box-shadow:inset 0 0 0 2px var(--ink);}
+  .calcell.has{background:var(--accent); cursor:pointer;}
+  .calcell.has .cal-dow{color:rgba(255,255,255,.85);}
+  .calcell.has .cal-daynum{color:#fff;}
+  .calcell.has .cal-topic{color:#fff;}
+  .calcell.has .cal-count{color:#fff;}
   .cal-dow{font-size:9.5px; color:var(--ink-400); text-transform:uppercase; font-weight:700;}
   .cal-daynum{font-family:var(--font-m); font-weight:700; font-size:14px; color:var(--ink);}
   .cal-topic{font-size:8.5px; color:var(--accent-ink); line-height:1.2; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; margin-top:1px;}
@@ -1478,6 +1482,25 @@
       '</div>';
     }).join('') + '</div>';
 
+    var reWeekDays = [];
+    for (var ri=0; ri<7; ri++){
+      var rd = new Date(); rd.setHours(0,0,0,0); rd.setDate(rd.getDate()+ri);
+      var rDayStart = rd.getTime(), rDayEnd = rDayStart + 24*60*60*1000;
+      var dueThatDay = due.filter(function(x){
+        return ri===0 ? x.dueAt<rDayEnd : (x.dueAt>=rDayStart && x.dueAt<rDayEnd);
+      });
+      reWeekDays.push({ dow: rd.toLocaleDateString(undefined,{weekday:'short'}).slice(0,2), dayNum: rd.getDate(), isToday: ri===0, items: dueThatDay });
+    }
+    var reCalHtml = '<div class="weekcal">' + reWeekDays.map(function(d){
+      var has = d.items.length>0;
+      var first = has ? d.items[0] : null;
+      return '<div class="calcell '+(has?'has':'')+' '+(d.isToday?'today':'')+'" '+(has?'data-action="go-actions"':'')+'>' +
+        '<div class="cal-dow">'+d.dow+'</div>' +
+        '<div class="cal-daynum">'+d.dayNum+'</div>' +
+        (has ? (d.items.length>1 ? '<div class="cal-count">'+d.items.length+' due</div>' : '<div class="cal-topic">'+esc((first.storeName||'Store').slice(0,24))+'</div>') : '') +
+      '</div>';
+    }).join('') + '</div>';
+
     return '<main>' +
       '<div class="eyebrow">Last 7 Days</div>' +
       '<h1 style="font-size:26px;margin-top:6px;margin-bottom:16px;">Welcome back</h1>' +
@@ -1497,13 +1520,6 @@
       '</div>' +
 
       sparkHtml +
-
-      '<h2 style="font-size:15px;margin-bottom:8px;">Audits</h2>' +
-      '<div class="statgrid" style="margin-bottom:20px;">' +
-        '<div class="stattile"><div class="v">'+auditsWeek.length+'</div><div class="k">Completed</div></div>' +
-        '<div class="stattile"><div class="v">'+(avgScore===null?'—':avgScore+'%')+'</div><div class="k">Avg. Score</div></div>' +
-        '<div class="stattile"><div class="v">'+(state.pricing.currency||'')+revenueWeek+'</div><div class="k">Est. Revenue</div></div>' +
-      '</div>' +
 
       '<h2 style="font-size:15px;margin-bottom:8px;">Shoot Days This Week</h2>' +
       weekCalHtml +
@@ -1531,33 +1547,10 @@
         '<div class="stattile"><div class="v">'+openPipeline+'</div><div class="k">Open Pipeline</div></div>' +
       '</div>' +
 
-      '<h2 style="font-size:15px;margin-bottom:8px;">Lookup — areas to work on</h2>' +
-      '<div class="statgrid" style="margin-bottom:8px;">' +
-        '<div class="stattile"><div class="v">'+openLookups.length+'</div><div class="k">To Do</div></div>' +
-        '<div class="stattile"><div class="v">'+doneLookups+'</div><div class="k">Done</div></div>' +
-      '</div>' +
-      (openLookups.length===0 ? '<div class="empty" style="padding:24px 0;margin-bottom:20px;"><div class="big">🔎</div>Nothing on your lookup list.<br><button class="btn btn-ghost btn-sm" style="margin-top:10px;" data-action="go-lookup">+ Add something</button></div>' :
-        '<div class="card" style="padding:4px 16px;margin-bottom:8px;">' +
-          openLookups.slice(0,5).map(function(l){
-            return '<div class="lookupglimpse-item"><span class="badge">'+esc(LOOKUP_CATEGORIES[l.category]||'Task')+'</span><span>'+esc(l.text||'(untitled)')+'</span></div>';
-          }).join('') +
-        '</div>' +
-        '<button class="btn btn-ghost btn-sm" style="margin-bottom:20px;" data-action="go-lookup">View all ('+openLookups.length+') →</button>'
-      ) +
-
-      '<h2 style="font-size:15px;margin-bottom:8px;">Re-audits Due</h2>' +
-      (due.length===0 ? '<div class="empty" style="padding:24px 0;"><div class="big">🗓️</div>Complete an audit to start tracking re-audit schedules.</div>' :
-        '<div class="card dashcard" style="margin-bottom:12px;">' +
-          '<div class="donutrow">' +
-            '<div class="donut" style="--pct:'+overdueDuePct+';--donutcolor:var(--bad);"><div class="donut-inner"><div class="donut-val">'+overdueDuePct+'%</div><div class="donut-lbl">Overdue</div></div></div>' +
-            '<div class="donutstats">' +
-              '<div class="row">Due within 7 days <b>'+dueSoon.length+'</b></div>' +
-              '<div class="row">Overdue <b'+(overdueDue?' class="bad"':'')+'>'+overdueDue+'</b></div>' +
-              '<div class="row">Stores tracked <b>'+due.length+'</b></div>' +
-            '</div>' +
-          '</div>' +
-        '</div>' +
-        '<button class="btn btn-ghost btn-sm" data-action="go-actions">View schedule →</button>'
+      '<h2 style="font-size:15px;margin-bottom:8px;">Re-audits Due This Week</h2>' +
+      reCalHtml +
+      (due.length===0 ? '<div class="helper" style="margin-top:8px;">Complete an audit to start tracking re-audit schedules.</div>' :
+        '<button class="btn btn-ghost btn-sm" style="margin-top:8px;" data-action="go-actions">View schedule →</button>'
       ) +
     '</main>';
   }
