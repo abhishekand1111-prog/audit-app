@@ -1251,12 +1251,13 @@
           var st = prospectStatus(p);
           var priceStr = p.converted ? (p.finalPrice ? (state.pricing.currency||'')+p.finalPrice : '') :
             ((p.priceMin||p.priceMax) ? (state.pricing.currency||'')+(p.priceMin||'0')+'–'+(state.pricing.currency||'')+(p.priceMax||'0') : '');
-          var revealName = p.converted || p.declined;
+          var revealName = p.converted || p.declined || !!p.plannedAuditDate;
           return '<div class="card histcard" data-action="open-prospect" data-id="'+p.id+'">' +
             '<div class="histtop"><span><span class="badge">'+esc(prospectCategoryLabel(p))+'</span>'+serviceBadgeHtml(p)+'</span><span class="pill '+st.tone+'">'+st.label+'</span></div>' +
             '<div style="font-weight:700;margin-top:8px;'+(p.declined?'text-decoration:line-through;color:var(--ink-400);':'')+'">'+(revealName ? esc(p.name||'Unnamed prospect') : '🔒 Hidden until converted')+'</div>' +
             '<div class="histmeta">'+esc(p.location||'—')+(p.address?' · '+esc(p.address):'')+'</div>' +
             (priceStr || p.timeline ? '<div class="histmeta">'+priceStr+(priceStr && p.timeline?' · ':'')+(p.timeline?esc(p.timeline):'')+'</div>' : '') +
+            (!p.declined && p.plannedAuditDate ? '<div class="histmeta">Audit day: '+fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime())+'</div>' : '') +
             (p.declined && p.followUpDate ? '<div class="histmeta">Follow up: '+fmtDateShort(new Date(p.followUpDate+'T00:00:00').getTime())+'</div>' : '') +
           '</div>';
         }).join('')
@@ -1563,7 +1564,7 @@
       return '<div class="calcell '+(has?'has':'')+' '+(d.isToday?'today':'')+'" '+(has?'data-action="goto-content" data-id="'+first.id+'"':'')+'>' +
         '<div class="cal-dow">'+d.dow+'</div>' +
         '<div class="cal-daynum">'+d.dayNum+'</div>' +
-        (has ? (d.shoots.length>1 ? '<div class="cal-count">'+d.shoots.length+' shoots</div>' : '<div class="cal-topic">'+esc((first.topic||'Untitled').slice(0,24))+'</div>') : '') +
+        (has ? '<div class="cal-count">'+d.shoots.length+'</div>' : '') +
       '</div>';
     }).join('') + '</div>';
 
@@ -1578,11 +1579,10 @@
     }
     var reCalHtml = '<div class="weekcal">' + reWeekDays.map(function(d){
       var has = d.items.length>0;
-      var first = has ? d.items[0] : null;
       return '<div class="calcell '+(has?'has':'')+' '+(d.isToday?'today':'')+'" '+(has?'data-action="go-actions"':'')+'>' +
         '<div class="cal-dow">'+d.dow+'</div>' +
         '<div class="cal-daynum">'+d.dayNum+'</div>' +
-        (has ? (d.items.length>1 ? '<div class="cal-count">'+d.items.length+' due</div>' : '<div class="cal-topic">'+esc((first.storeName||'Store').slice(0,24))+'</div>') : '') +
+        (has ? '<div class="cal-count">'+d.items.length+'</div>' : '') +
       '</div>';
     }).join('') + '</div>';
 
