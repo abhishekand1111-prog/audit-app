@@ -180,7 +180,7 @@
   .lookuprow{display:flex; align-items:center; flex-wrap:wrap; gap:8px; row-gap:6px; padding:9px 0; border-bottom:1px solid var(--line);}
   .lookuprow:last-child{border-bottom:none;}
   .lookuprow.done .lookuptext{text-decoration:line-through; color:var(--ink-400);}
-  .lookuptext{flex:1 1 140px; min-width:0; border:none; background:none; color:var(--ink); font-size:14px; padding:4px 0;}
+  .lookuptext{flex:1 1 140px; min-width:0; border:none; background:none; color:var(--ink); font-size:14px; padding:4px 0; font-family:inherit; resize:none; overflow:hidden; white-space:pre-wrap; word-wrap:break-word; line-height:1.4;}
   .lookuptext:focus{outline:none;}
   .lookuprow select{border:1px solid var(--line-strong); border-radius:var(--r-s); background:var(--surface); color:var(--ink-600); font-size:11.5px; padding:5px 6px; flex:none;}
   .lookupglimpse-item{display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--line); font-size:13.5px;}
@@ -574,6 +574,11 @@
     else if (v==='content') html = renderContent();
     else if (v==='dashboard') html = renderDashboard();
     app.innerHTML = topbar() + html;
+    var lookupTAs = app.querySelectorAll('.lookuptext');
+    for (var lti=0; lti<lookupTAs.length; lti++){
+      lookupTAs[lti].style.height = 'auto';
+      lookupTAs[lti].style.height = lookupTAs[lti].scrollHeight+'px';
+    }
   }
 
   function topbar(){
@@ -1455,7 +1460,7 @@
           items.map(function(l){
             return '<div class="lookuprow '+(l.done?'done':'')+'">' +
               '<button class="chk '+(l.done?'checked':'')+'" data-action="toggle-lookup-done" data-id="'+l.id+'" aria-label="Toggle done">'+(l.done?'✓':'')+'</button>' +
-              '<input type="text" class="lookuptext" data-action="rename-lookup" data-id="'+l.id+'" value="'+esc(l.text)+'" placeholder="What needs attention?">' +
+              '<textarea rows="1" class="lookuptext" data-action="rename-lookup" data-id="'+l.id+'" placeholder="What needs attention?">'+esc(l.text)+'</textarea>' +
               '<select data-action="lookup-category" data-id="'+l.id+'">' +
                 Object.keys(LOOKUP_CATEGORIES).map(function(k){ return '<option value="'+k+'" '+(lookupGroup(l)===k?'selected':'')+'>'+LOOKUP_CATEGORIES[k]+'</option>'; }).join('') +
               '</select>' +
@@ -2174,6 +2179,7 @@
     else if (el.dataset.action==='rename-lookup'){
       var rlk = state.lookups.filter(function(l){ return l.id===el.dataset.id; })[0];
       if (rlk){ rlk.text = el.value; persistLookups(); }
+      el.style.height = 'auto'; el.style.height = el.scrollHeight+'px';
     }
     else if (el.dataset.action==='lookup-category'){
       var clk = state.lookups.filter(function(l){ return l.id===el.dataset.id; })[0];
