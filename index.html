@@ -24,6 +24,7 @@
     --good:#2E7D4F; --good-soft:#DCEEE2;
     --bad:#C1392B; --bad-soft:#F6DFDA;
     --shadow:0 1px 2px rgba(0,0,0,.06),0 6px 20px rgba(0,0,0,.06);
+    --shadow-sm:0 1px 2px rgba(0,0,0,.05),0 2px 8px rgba(0,0,0,.04);
     --r-s:8px; --r-m:12px; --r-l:18px;
     --font-d:'Inter',"Segoe UI",sans-serif;
     --font-b:'Inter',-apple-system,"Segoe UI",sans-serif;
@@ -38,6 +39,7 @@
       --good:#59B583; --good-soft:#24352B;
       --bad:#E2645A; --bad-soft:#3A2622;
       --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35);
+      --shadow-sm:0 1px 2px rgba(0,0,0,.25),0 2px 8px rgba(0,0,0,.2);
     }
   }
   :root[data-theme="dark"]{
@@ -48,6 +50,7 @@
     --good:#59B583; --good-soft:#24352B;
     --bad:#E2645A; --bad-soft:#3A2622;
     --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35);
+    --shadow-sm:0 1px 2px rgba(0,0,0,.25),0 2px 8px rgba(0,0,0,.2);
   }
   *{box-sizing:border-box;}
   @media (prefers-reduced-motion: reduce){ *{transition:none !important; animation:none !important;} }
@@ -69,7 +72,7 @@
   .sidebar{position:fixed; top:0; left:0; bottom:0; width:250px; max-width:82vw; background:var(--surface); border-right:1px solid var(--line); z-index:20; transform:translateX(-100%); transition:transform .25s ease; display:flex; flex-direction:column; padding:16px 12px; overflow-y:auto;}
   .sidebar.open{transform:translateX(0);}
   .sidebar-brand{display:flex; align-items:center; gap:9px; padding:6px 8px 16px; border-bottom:1px solid var(--line); margin-bottom:10px;}
-  .sidebarbtn{display:flex; align-items:center; justify-content:space-between; gap:8px; text-align:left; width:100%; border:none; background:none; color:var(--ink-600); font-size:14.5px; font-weight:600; padding:11px 10px; border-radius:var(--r-s); margin-bottom:2px;}
+  .sidebarbtn{display:flex; align-items:center; justify-content:space-between; gap:8px; text-align:left; width:100%; border:none; background:none; color:var(--ink-600); font-size:14.5px; font-weight:600; padding:11px 10px; border-radius:var(--r-s); margin-bottom:2px; transition:background .15s, color .15s;}
   .sidebarbtn:hover:not(:disabled){background:var(--surface-2); color:var(--ink);}
   .sidebarbtn.active{background:var(--accent); color:#fff;}
   .sidebarbtn:disabled{opacity:.35; cursor:not-allowed;}
@@ -77,11 +80,11 @@
   main{flex:1; padding:22px 18px 90px;}
   .eyebrow{font-size:11.5px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-400);}
   .card{background:var(--surface); border:1px solid var(--line); border-radius:var(--r-l); box-shadow:var(--shadow);}
-  .btn{display:inline-flex; align-items:center; justify-content:center; gap:7px; border-radius:var(--r-m); font-weight:700; font-size:14.5px; padding:11px 18px; border:1px solid transparent; transition:transform .12s, background .15s;}
+  .btn{display:inline-flex; align-items:center; justify-content:center; gap:7px; border-radius:var(--r-m); font-weight:700; font-size:14.5px; padding:11px 18px; border:1px solid transparent; transition:transform .12s, background .15s, box-shadow .15s;}
   .btn:active{transform:scale(.98);}
-  .btn-primary{background:var(--accent); color:#fff;}
-  .btn-primary:hover{background:var(--accent-ink);}
-  .btn-primary:disabled{background:var(--ink-400); cursor:not-allowed;}
+  .btn-primary{background:var(--accent); color:#fff; box-shadow:0 2px 10px rgba(37,150,224,.28);}
+  .btn-primary:hover{background:var(--accent-ink); box-shadow:0 3px 14px rgba(37,150,224,.34);}
+  .btn-primary:disabled{background:var(--ink-400); box-shadow:none; cursor:not-allowed;}
   .btn-ghost{background:var(--surface); color:var(--ink); border-color:var(--line-strong);}
   .btn-ghost:hover{background:var(--surface-2);}
   .btn-text{background:none; color:var(--ink-600); padding:8px 4px;}
@@ -96,8 +99,10 @@
 
   /* setup */
   .typegrid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:14px 0 20px;}
-  .typecard{border:1.5px solid var(--line-strong); border-radius:var(--r-l); padding:16px 14px; background:var(--surface); text-align:left;}
-  .typecard.selected{border-color:var(--accent); background:var(--accent-soft);}
+  .typecard{border:1.5px solid var(--line-strong); border-radius:var(--r-l); padding:16px 14px; background:var(--surface); text-align:left; transition:border-color .15s, background .15s, box-shadow .15s, transform .12s;}
+  .typecard:hover{box-shadow:var(--shadow-sm);}
+  .typecard:active{transform:scale(.99);}
+  .typecard.selected{border-color:var(--accent); background:var(--accent-soft); box-shadow:var(--shadow-sm);}
   .typecard .ticon{font-size:22px;}
   .typecard .tname{font-family:var(--font-d); font-weight:800; font-size:16px; margin-top:8px;}
   .typecard .tmeta{font-size:12.5px; color:var(--ink-600); margin-top:3px;}
@@ -105,7 +110,7 @@
   .helper{font-size:12.5px; color:var(--ink-400); margin-top:6px;}
 
   /* audit header */
-  .auditbar{position:sticky; top:57px; z-index:9; background:var(--paper); padding:12px 0 14px; border-bottom:1px solid var(--line); margin-bottom:16px;}
+  .auditbar{position:sticky; top:57px; z-index:9; background:var(--paper); padding:12px 0 14px; border-bottom:1px solid var(--line); margin-bottom:16px; box-shadow:0 4px 12px rgba(0,0,0,.05);}
   .auditbar .row1{display:flex; justify-content:space-between; align-items:flex-start; gap:10px;}
   .badge{display:inline-block; font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--accent-ink); background:var(--accent-soft); padding:3px 8px; border-radius:20px;}
   .storeline{font-weight:700; font-size:15px; margin-top:6px;}
@@ -120,9 +125,10 @@
   .barctl{display:flex; gap:8px; margin-top:12px;}
 
   /* sections */
-  .section{border:1px solid var(--line); border-radius:var(--r-l); background:var(--surface); margin-bottom:12px; overflow:hidden;}
-  .section.active{border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset;}
-  .sechead{display:flex; align-items:center; gap:12px; padding:14px 16px; width:100%; background:none; border:none; text-align:left;}
+  .section{border:1px solid var(--line); border-radius:var(--r-l); background:var(--surface); margin-bottom:12px; overflow:hidden; box-shadow:var(--shadow-sm); transition:border-color .15s, box-shadow .15s;}
+  .section.active{border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset, var(--shadow-sm);}
+  .sechead{display:flex; align-items:center; gap:12px; padding:14px 16px; width:100%; background:none; border:none; text-align:left; transition:background .12s;}
+  .sechead:hover{background:var(--surface-2);}
   .secnum{font-family:var(--font-m); font-size:12px; font-weight:600; color:var(--ink-400); width:20px; flex:none;}
   .sectitle{flex:1; min-width:0;}
   .sectitle .sname{font-weight:700; font-size:15px;}
@@ -151,7 +157,7 @@
   .naBtn{font-size:11px; font-weight:700; color:var(--ink-400); background:none; border:1px solid var(--line-strong); border-radius:20px; padding:4px 9px; flex:none;}
   .naBtn.on{color:var(--accent-ink); border-color:var(--accent); background:var(--accent-soft);}
 
-  .footerbar{position:fixed; bottom:0; left:0; right:0; background:var(--paper); border-top:1px solid var(--line); padding:12px 18px; display:flex; justify-content:center; z-index:11;}
+  .footerbar{position:fixed; bottom:0; left:0; right:0; background:var(--paper); border-top:1px solid var(--line); padding:12px 18px; display:flex; justify-content:center; z-index:11; box-shadow:0 -4px 16px rgba(0,0,0,.06);}
   .footerbar .inner{max-width:640px; width:100%; display:flex; gap:10px;}
   .footerbar .inner .btn{flex:1;}
 
@@ -201,7 +207,7 @@
   .cal-topic{font-size:8.5px; color:var(--accent-ink); line-height:1.2; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; margin-top:1px;}
   .cal-count{font-size:9px; color:var(--accent-ink); font-weight:700; margin-top:1px;}
   .statgrid{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:16px 0 20px;}
-  .stattile{background:var(--surface-2); border-radius:var(--r-m); padding:12px 12px;}
+  .stattile{background:var(--surface-2); border-radius:var(--r-m); padding:12px 12px; transition:box-shadow .15s;}
   .stattile .v{font-family:var(--font-m); font-size:19px; font-weight:600;}
   .stattile .k{font-size:11px; color:var(--ink-600); margin-top:2px;}
 
@@ -225,9 +231,9 @@
   .pill.warn{color:var(--accent-ink); background:var(--accent-soft);}
   .pill.bad{color:var(--bad); background:var(--bad-soft);}
   .empty{text-align:center; padding:50px 20px; color:var(--ink-400);}
-  .empty .big{font-size:34px; margin-bottom:8px;}
+  .empty .big{font-size:34px; margin-bottom:8px; opacity:.7;}
   .tabs{display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap;}
-  .tab{border:1px solid var(--line-strong); background:var(--surface); border-radius:20px; padding:6px 13px; font-size:13px; font-weight:600; color:var(--ink-600);}
+  .tab{border:1px solid var(--line-strong); background:var(--surface); border-radius:20px; padding:6px 13px; font-size:13px; font-weight:600; color:var(--ink-600); transition:background .15s, color .15s, border-color .15s;}
   .tab.on{background:var(--accent); color:#fff; border-color:var(--accent);}
 
   /* area filter */
@@ -764,12 +770,13 @@
     var totalMs = d.overall.accumMs;
     var canComplete = (d.remark||'').trim().length > 0;
     var price = computePricing(d.type, d.sections.length, d.menuItemCount||0, op.pct);
+    var prevRec = previousAuditForStore(d.storeName, d.id);
     return '<main>' +
       '<button class="backrow" data-action="resume-checklist">← Back to checklist</button>' +
       '<div class="eyebrow">Finishing Audit</div>' +
       '<h1 style="font-size:24px;margin-top:6px;">'+esc(d.storeName||'Unnamed store')+'</h1>' +
       '<div class="helper" style="margin-top:4px;">'+(d.storeLocation?esc(d.storeLocation)+' · ':'')+fmtAuditWhen(d.auditDate,d.auditTime)+'</div>' +
-      '<div class="helper" style="margin-top:2px;">'+tmpl.label+' · '+op.checked+'/'+op.total+' items checked ('+op.pct+'% score) '+gradeBadge(op.pct)+' · '+fmtTime(totalMs)+' total</div>' +
+      '<div class="helper" style="margin-top:2px;">'+tmpl.label+' · '+op.checked+'/'+op.total+' items checked ('+op.pct+'% score) '+gradeBadge(op.pct)+scoreDeltaHtml(prevRec?prevRec.completionPct:null, op.pct)+' · '+fmtTime(totalMs)+' total</div>' +
       renderPriorIssuesPanel(d) +
       '<div class="statgrid">' +
         d.sections.map(function(s){ return '<div class="stattile"><div class="v">'+fmtTime(s.accumMs)+'</div><div class="k">'+esc(s.name)+'</div><div style="margin-top:5px;">'+gradeBadge(sectionProgress(s).pct)+'</div></div>'; }).join('') +
@@ -837,22 +844,40 @@
       '<button class="btn btn-ghost btn-sm" style="margin-bottom:20px;" data-action="add-custom-action">+ Add custom action</button>';
   }
 
+  function previousAuditForStore(storeName, excludeId){
+    var key = (storeName||'').trim().toLowerCase();
+    if (!key) return null;
+    var matches = state.history.filter(function(h){ return h.id!==excludeId && (h.storeName||'').trim().toLowerCase()===key; })
+      .sort(function(a,b){ return b.finishedAt-a.finishedAt; });
+    return matches[0] || null;
+  }
+
   function computeRecord(d){
     var op = overallProgress(d);
     var pricing = computePricing(d.type, d.sections.length, d.menuItemCount||0, op.pct);
     var grade = computeGrade(op.pct);
+    var prev = previousAuditForStore(d.storeName, d.id);
     return { id:d.id, type:d.type, storeName:d.storeName, storeLocation:d.storeLocation,
       contactName:d.contactName||'', contactDesignation:d.contactDesignation||'', contactMobile:d.contactMobile||'',
       auditDate:d.auditDate, auditTime:d.auditTime, menuItemCount:d.menuItemCount||0,
       startedAt:d.startedAt, finishedAt:d.finishedAt, remark:d.remark,
       totalMs:d.overall.accumMs, completionPct:op.pct, checked:op.checked, total:op.total,
       pricing: pricing, grade: { label:grade.label, tone:grade.tone },
+      prevScore: prev ? prev.completionPct : null, prevAuditDate: prev ? prev.auditDate : null,
       sections: d.sections.map(function(s){
         var p=sectionProgress(s);
         var sg = computeGrade(p.pct);
         return { id:s.id, name:s.name, accumMs:s.accumMs, checked:p.checked, total:p.total, na:p.na, items:s.items.slice(), grade:{label:sg.label,tone:sg.tone} };
       })
     };
+  }
+
+  function scoreDeltaHtml(prevScore, currScore){
+    if (prevScore===null || prevScore===undefined) return '';
+    var delta = currScore - prevScore;
+    var tone = delta>0 ? 'good' : (delta<0 ? 'bad' : 'warn');
+    var arrow = delta>0 ? '▲' : (delta<0 ? '▼' : '—');
+    return '<span class="pill '+tone+'" style="margin-left:8px;">'+arrow+' '+(delta>0?'+':'')+delta+' pts vs last visit</span>';
   }
 
   function renderSummaryView(){
@@ -875,7 +900,7 @@
         '<div class="stattile"><div class="v">'+rec.completionPct+'%</div><div class="k">Score</div></div>' +
         '<div class="stattile"><div class="v">'+rec.checked+'/'+rec.total+'</div><div class="k">Items Checked</div></div>' +
       '</div>' +
-      (rec.grade ? '<div style="margin:-10px 0 16px;">Grade: <span class="pill '+esc(rec.grade.tone)+'">'+esc(rec.grade.label)+'</span></div>' : '') +
+      (rec.grade ? '<div style="margin:-10px 0 16px;">Grade: <span class="pill '+esc(rec.grade.tone)+'">'+esc(rec.grade.label)+'</span>'+scoreDeltaHtml(rec.prevScore, rec.completionPct)+'</div>' : '') +
       '<h2 style="font-size:15px;margin-bottom:6px;">Section timing</h2>' +
       '<div class="card" style="padding:4px 16px;margin-bottom:20px;">' +
         rec.sections.map(function(s){ return '<div class="sumrow"><span class="k">'+esc(s.name)+' '+(s.grade?'<span class="pill '+esc(s.grade.tone)+'">'+esc(s.grade.label)+'</span>':'')+'</span><span class="v">'+fmtTime(s.accumMs)+' · '+s.checked+'/'+s.total+'</span></div>'; }).join('') +
@@ -1686,6 +1711,10 @@
       if (p.plannedAuditDate && p.plannedAuditDate<=todayStr && !p.auditId && !p.declined){
         var overdue = p.plannedAuditDate < todayStr;
         alerts.push({ tone: overdue?'bad':'warn', icon:'⭐', text: (p.name||'Unnamed prospect')+' — scheduled audit '+(overdue?'was due '+fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime()):'due today')+', needs check-in', action:'goto-prospect', id:p.id });
+      }
+      if (p.proposalStatus==='meeting_scheduled' && p.proposalMeetingDate && p.proposalMeetingDate<=todayStr && !p.converted && !p.declined){
+        var mOverdue = p.proposalMeetingDate < todayStr;
+        alerts.push({ tone: mOverdue?'bad':'warn', icon:'🤝', text: (p.name||'Unnamed prospect')+' — proposal meeting '+(mOverdue?'was due '+fmtDateShort(new Date(p.proposalMeetingDate+'T00:00:00').getTime()):'due today')+', follow up', action:'goto-prospect', id:p.id });
       }
     });
     state.contentIdeas.forEach(function(c){
