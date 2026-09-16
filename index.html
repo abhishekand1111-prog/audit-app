@@ -406,6 +406,7 @@
     contentIdeas: loadJSON(LS_CI, []),
     reauditOverrides: loadJSON(LS_RO, {}),
     activeContentId: null,
+    searchQuery: '',
     setup: { type:null, storeName:'', storeLocation:'', contactName:'', contactDesignation:'', contactMobile:'', auditDate: todayISO(), auditTime: nowHHMM(), selectedSections:[], menuItemCount:'' },
     editorTab: 'dinein',
     historyTab: 'all',
@@ -572,6 +573,7 @@
     else if (v==='prospects') html = renderProspects();
     else if (v==='lookup') html = renderLookup();
     else if (v==='content') html = renderContent();
+    else if (v==='search') html = renderSearch();
     else if (v==='dashboard') html = renderDashboard();
     app.innerHTML = topbar() + html;
     var lookupTAs = app.querySelectorAll('.lookuptext');
@@ -592,6 +594,7 @@
       '<div class="topbar">' +
         '<button class="hamburger" data-action="toggle-sidebar" aria-label="Menu">☰</button>' +
         '<button class="brand" data-action="go-dashboard"><span class="mark">dr</span><span class="name">Diagnosis Room</span></button>' +
+        '<button class="hamburger" style="margin-left:auto;" data-action="go-search" '+lockAttr+' aria-label="Search">🔍</button>' +
       '</div>' +
       '<div class="sidebar-overlay '+(state.sidebarOpen?'show':'')+'" data-action="close-sidebar"></div>' +
       '<nav class="sidebar '+(state.sidebarOpen?'open':'')+'">' +
@@ -887,6 +890,45 @@
     return rows.join('\r\n');
   }
 
+  function buildBackupJSON(){
+    return JSON.stringify({
+      version: 1,
+      exportedAt: Date.now(),
+      templates: state.templates,
+      history: state.history,
+      pricing: state.pricing,
+      correctiveActions: state.correctiveActions,
+      schedule: state.schedule,
+      gradeBands: state.gradeBands,
+      serviceClasses: state.serviceClasses,
+      prospects: state.prospects,
+      lookups: state.lookups,
+      contentIdeas: state.contentIdeas,
+      reauditOverrides: state.reauditOverrides
+    }, null, 2);
+  }
+
+  function applyBackupData(data){
+    if (!data || typeof data!=='object') return false;
+    var known = ['templates','history','pricing','correctiveActions','schedule','gradeBands','serviceClasses','prospects','lookups','contentIdeas','reauditOverrides'];
+    var found = known.some(function(k){ return data[k]!==undefined; });
+    if (!found) return false;
+    if (data.templates) state.templates = data.templates;
+    if (data.history) state.history = data.history;
+    if (data.pricing) state.pricing = data.pricing;
+    if (data.correctiveActions) state.correctiveActions = data.correctiveActions;
+    if (data.schedule) state.schedule = data.schedule;
+    if (data.gradeBands) state.gradeBands = data.gradeBands;
+    if (data.serviceClasses) state.serviceClasses = data.serviceClasses;
+    if (data.prospects) state.prospects = data.prospects;
+    if (data.lookups) state.lookups = data.lookups;
+    if (data.contentIdeas) state.contentIdeas = data.contentIdeas;
+    if (data.reauditOverrides) state.reauditOverrides = data.reauditOverrides;
+    persistTemplates(); persistHistory(); persistPricing(); persistActions(); persistSchedule();
+    persistGrades(); persistServiceClasses(); persistProspects(); persistLookups(); persistContentIdeas(); persistReauditOverrides();
+    return true;
+  }
+
   function renderTrend(list){
     if (list.length < 2) return '';
     var last = list.slice(-12);
@@ -957,9 +999,17 @@
       '</div>';
     }
     return '<main>' +
-      '<div class="eyebrow">Pricing Settings</div>' +
-      '<h1 style="font-size:26px;margin-top:6px;margin-bottom:14px;">Set your rates</h1>' +
-      '<div class="field" style="margin-bottom:16px;"><label>Currency symbol</label><input type="text" maxlength="3" data-pricing="currency" value="'+esc(p.currency)+'" style="max-width:90px;"></div>' +
+      '<div class="eyebrow">Settings</div>' +
+      '<h1 style="font-size:26px;margin-top:6px;margin-bottom:6px;">Backup &amp; Restore</h1>' +
+      '<div class="helper" style="margin-bottom:12px;">Everything is stored only on this device. Download a backup regularly, and use Restore if you switch devices, reinstall, or clear browser data.</div>' +
+      '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:28px;">' +
+        '<button class="btn btn-primary btn-sm" data-action="download-backup">⬇ Download backup</button>' +
+        '<button class="btn btn-ghost btn-sm" data-action="trigger-restore-backup">⬆ Restore from backup</button>' +
+        '<input type="file" accept="application/json" id="restoreBackupInput" data-action="restore-backup-file" style="display:none;">' +
+      '</div>' +
+
+      '<h1 style="font-size:20px;margin:0 0 4px;">Pricing Settings</h1>' +
+      '<div class="field" style="margin-bottom:16px;margin-top:14px;"><label>Currency symbol</label><input type="text" maxlength="3" data-pricing="currency" value="'+esc(p.currency)+'" style="max-width:90px;"></div>' +
       typeBlock('dinein') + typeBlock('qsr') +
       '<div class="card edsection">' +
         '<div class="edhead"><div style="font-family:var(--font-d);font-weight:800;font-size:15px;">Low-score surcharge</div></div>' +
@@ -1049,6 +1099,7 @@
         '<div style="display:flex; align-items:center; gap:8px; margin-top:6px; flex-wrap:wrap;">' +
           '<input type="date" data-ca-edit-field="dueDate" data-ca-edit-id="'+a.id+'" value="'+esc(a.dueDate||'')+'" style="border:1px solid var(--line-strong); border-radius:var(--r-s); padding:5px 7px; font-size:12.5px; background:var(--surface); color:var(--ink);">' +
           (overdue?'<span class="pill bad">OVERDUE</span>':'') +
+          (!isDone ? '<button type="button" class="btn btn-text btn-sm" style="margin-left:auto;" data-action="snooze-action" data-id="'+a.id+'">Snooze +3d</button>' : '') +
         '</div>' +
       '</div>';
     }
@@ -1300,7 +1351,10 @@
         '</div>' +
       '</div>' +
       (audits.length ? (
-        '<h2 style="font-size:15px;margin-bottom:6px;">Audit History ('+audits.length+')</h2>' +
+        '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:6px;">' +
+          '<h2 style="font-size:15px;margin:0;">Audit History ('+audits.length+')</h2>' +
+          '<button type="button" class="btn btn-ghost btn-sm" data-action="start-reaudit" data-name="'+esc(p.name)+'" data-location="'+esc(p.location||'')+'" data-type="'+esc(audits[0].type)+'">🔁 Re-audit now</button>' +
+        '</div>' +
         '<div style="margin-bottom:20px;">' +
           audits.map(function(h){
             return '<div class="card histcard" data-action="view-audit" data-id="'+h.id+'">' +
@@ -1442,6 +1496,52 @@
     '</main>';
   }
 
+  function renderSearchResultsHtml(){
+    var q = (state.searchQuery||'').trim().toLowerCase();
+    if (!q) return '<div class="helper">Type to search across prospects, audit history, corrective actions and lookup/task items.</div>';
+    var prospects = state.prospects.filter(function(p){ return (p.name||'').toLowerCase().indexOf(q)>=0 || (p.location||'').toLowerCase().indexOf(q)>=0; }).slice(0,20);
+    var audits = state.history.filter(function(h){ return (h.storeName||'').toLowerCase().indexOf(q)>=0; }).slice(0,20);
+    var actionsRes = state.correctiveActions.filter(function(a){ return (a.description||'').toLowerCase().indexOf(q)>=0 || (a.storeName||'').toLowerCase().indexOf(q)>=0; }).slice(0,20);
+    var lookupsRes = state.lookups.filter(function(l){ return (l.text||'').toLowerCase().indexOf(q)>=0; }).slice(0,20);
+    var total = prospects.length+audits.length+actionsRes.length+lookupsRes.length;
+    if (total===0) return '<div class="empty"><div class="big">🔍</div>No results for "'+esc(state.searchQuery)+'".</div>';
+    var html = '';
+    if (prospects.length){
+      html += '<h2 style="font-size:14px;margin:16px 0 8px;">Prospects ('+prospects.length+')</h2>' +
+        prospects.map(function(p){
+          return '<div class="card histcard" data-action="goto-prospect" data-id="'+p.id+'"><div style="font-weight:700;">'+esc(p.name||'Unnamed prospect')+'</div><div class="histmeta">'+esc(p.location||'—')+'</div></div>';
+        }).join('');
+    }
+    if (audits.length){
+      html += '<h2 style="font-size:14px;margin:16px 0 8px;">Audit History ('+audits.length+')</h2>' +
+        audits.map(function(h){
+          return '<div class="card histcard" data-action="view-audit" data-id="'+h.id+'"><div style="font-weight:700;">'+esc(h.storeName||'Unnamed store')+'</div><div class="histmeta">'+fmtAuditWhen(h.auditDate,h.auditTime)+' · '+h.completionPct+'%</div></div>';
+        }).join('');
+    }
+    if (actionsRes.length){
+      html += '<h2 style="font-size:14px;margin:16px 0 8px;">Corrective Actions ('+actionsRes.length+')</h2>' +
+        actionsRes.map(function(a){
+          return '<div class="card histcard" data-action="go-actions" data-tab="corrective"><div style="font-weight:700;">'+esc(a.description||'(unspecified)')+'</div><div class="histmeta">'+esc(a.storeName||'Unnamed store')+'</div></div>';
+        }).join('');
+    }
+    if (lookupsRes.length){
+      html += '<h2 style="font-size:14px;margin:16px 0 8px;">Lookup / Task ('+lookupsRes.length+')</h2>' +
+        lookupsRes.map(function(l){
+          return '<div class="card histcard" data-action="go-lookup"><div style="font-weight:700;">'+esc(l.text||'')+'</div></div>';
+        }).join('');
+    }
+    return html;
+  }
+
+  function renderSearch(){
+    return '<main>' +
+      '<div class="eyebrow">Search</div>' +
+      '<h1 style="font-size:26px;margin-top:6px;margin-bottom:14px;">Search everything</h1>' +
+      '<input type="text" data-action="search-input" value="'+esc(state.searchQuery||'')+'" placeholder="Search prospects, audits, actions, lookup items…" style="width:100%;border:1px solid var(--line-strong);border-radius:var(--r-s);padding:12px 14px;font-size:15px;background:var(--surface);color:var(--ink);margin-bottom:6px;" autofocus>' +
+      '<div id="searchResultsContainer">' + renderSearchResultsHtml() + '</div>' +
+    '</main>';
+  }
+
   var LOOKUP_CATEGORIES = { task:'Task', lookup:'Lookup' };
 
   function lookupGroup(l){ return l.category==='task' ? 'task' : 'lookup'; }
@@ -1482,6 +1582,37 @@
       renderLookupSection('Task', '✅', taskItems, 'task') +
       renderLookupSection('Lookup', '🔎', lookupItems, 'lookup') +
     '</main>';
+  }
+
+  function computeSectionInsights(){
+    var stats = {};
+    state.history.forEach(function(h){
+      (h.sections||[]).forEach(function(s){
+        var key = h.type+'|'+s.name;
+        if (!stats[key]) stats[key] = { name: s.name, type: h.type, sum:0, count:0 };
+        var pct = s.total ? (s.checked/s.total*100) : 100;
+        stats[key].sum += pct; stats[key].count++;
+      });
+    });
+    var arr = Object.keys(stats).map(function(k){ return stats[k]; });
+    arr.forEach(function(s){ s.avgPct = Math.round(s.sum/s.count); });
+    arr.sort(function(a,b){ return a.avgPct-b.avgPct; });
+    return arr.slice(0,3);
+  }
+
+  function renderProblemAreasHtml(){
+    if (state.history.length<2) return '';
+    var insights = computeSectionInsights();
+    if (!insights.length) return '';
+    return '<h2 style="font-size:15px;margin-bottom:8px;">Recurring Problem Areas</h2>' +
+      '<div class="card" style="padding:4px 16px;margin-bottom:20px;">' +
+        insights.map(function(s){
+          return '<div style="padding:10px 0;border-top:1px solid var(--line);">' +
+            '<div style="display:flex;justify-content:space-between;gap:8px;"><span style="font-weight:700;">'+esc(s.name)+'</span><span class="pill '+(s.avgPct<60?'bad':'warn')+'">'+s.avgPct+'% avg</span></div>' +
+            '<div class="histmeta">'+esc((state.templates[s.type]||{}).label||s.type)+' · across '+s.count+' audit'+(s.count>1?'s':'')+'</div>' +
+          '</div>';
+        }).join('') +
+      '</div>';
   }
 
   function computeAlerts(){
@@ -1665,6 +1796,8 @@
 
       sparkHtml +
 
+      renderProblemAreasHtml() +
+
       '<h2 style="font-size:15px;margin-bottom:8px;">Shoot Days This Week</h2>' +
       weekCalHtml +
 
@@ -1729,6 +1862,15 @@
     setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
   }
 
+  function downloadJSON(json, filename){
+    var blob = new Blob([json], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  }
+
   // ---------- event delegation ----------
   app.addEventListener('click', function(e){
     var t = e.target.closest('[data-action]');
@@ -1747,6 +1889,7 @@
     else if (action==='go-actions'){ if(!state.draft){ if (t.dataset.tab) state.actionsTab = t.dataset.tab; state.view='actions'; render(); } }
     else if (action==='go-prospects'){ if(!state.draft){ state.activeProspectId=null; state.view='prospects'; render(); } }
     else if (action==='go-lookup'){ if(!state.draft){ state.view='lookup'; render(); } }
+    else if (action==='go-search'){ if(!state.draft){ state.view='search'; render(); } }
     else if (action==='go-content'){ if(!state.draft){ state.activeContentId=null; state.view='content'; render(); } }
     else if (action==='add-content'){
       var newC = { id: uid(), topic:'', insight:'', hook:'', cta:'', shootDate:'', notScheduled:false, script:'', createdAt: Date.now() };
@@ -2000,6 +2143,15 @@
       var act2 = state.correctiveActions.filter(function(a){ return a.id===t.dataset.id; })[0];
       if (act2){ act2.done = false; persistActions(); render(); }
     }
+    else if (action==='snooze-action'){
+      var act3 = state.correctiveActions.filter(function(a){ return a.id===t.dataset.id; })[0];
+      if (act3){
+        var baseTime = act3.dueDate ? new Date(act3.dueDate+'T00:00:00').getTime() : Date.now();
+        var snoozed = new Date(Math.max(baseTime, Date.now()) + 3*24*60*60*1000);
+        act3.dueDate = snoozed.getFullYear()+'-'+String(snoozed.getMonth()+1).padStart(2,'0')+'-'+String(snoozed.getDate()).padStart(2,'0');
+        persistActions(); render();
+      }
+    }
     else if (action==='toggle-show-done'){ state.actionsShowDone = !state.actionsShowDone; render(); }
     else if (action==='actions-tab'){ state.actionsTab = t.dataset.tab; render(); }
     else if (action==='prospects-tab'){ state.prospectsTab = t.dataset.tab; render(); }
@@ -2010,6 +2162,14 @@
     else if (action==='export-prospects-csv'){
       var pcsv = buildProspectsCSV();
       downloadCSV(pcsv, 'diagnosis-room-prospects-'+todayISO()+'.csv');
+    }
+    else if (action==='download-backup'){
+      var json = buildBackupJSON();
+      downloadJSON(json, 'diagnosis-room-backup-'+todayISO()+'.json');
+    }
+    else if (action==='trigger-restore-backup'){
+      var rbInput = document.getElementById('restoreBackupInput');
+      if (rbInput) rbInput.click();
     }
     else if (action==='view-audit'){ state.viewingAuditId = t.dataset.id; state.summaryReturnView=state.view; state.view='summary'; render(); }
     else if (action==='back-from-summary'){ state.view = state.summaryReturnView; render(); }
@@ -2198,6 +2358,11 @@
       if (rlk){ rlk.text = el.value; persistLookups(); }
       el.style.height = 'auto'; el.style.height = el.scrollHeight+'px';
     }
+    else if (el.dataset.action==='search-input'){
+      state.searchQuery = el.value;
+      var srC = document.getElementById('searchResultsContainer');
+      if (srC) srC.innerHTML = renderSearchResultsHtml();
+    }
     else if (el.dataset.action==='lookup-category'){
       var clk = state.lookups.filter(function(l){ return l.id===el.dataset.id; })[0];
       if (clk){ clk.category = el.value; persistLookups(); render(); }
@@ -2209,6 +2374,25 @@
       var sday = parseInt(el.value,10); if (isNaN(sday) || sday<1) sday = 1;
       state.schedule[spath[0]][spath[1]] = sday;
       persistSchedule();
+    }
+  });
+
+  app.addEventListener('change', function(e){
+    var el = e.target;
+    if (el.dataset.action==='restore-backup-file'){
+      var file = el.files && el.files[0];
+      if (!file) return;
+      if (!window.confirm('This will REPLACE all current data (audits, prospects, actions, settings) with the contents of this backup file. Continue?')){ el.value=''; return; }
+      var reader = new FileReader();
+      reader.onload = function(ev){
+        try {
+          var data = JSON.parse(ev.target.result);
+          if (applyBackupData(data)){ alert('Backup restored.'); render(); }
+          else { alert("This file doesn't look like a valid Diagnosis Room backup."); }
+        } catch(err){ alert("Could not read this file — make sure it's a Diagnosis Room backup JSON."); }
+        el.value = '';
+      };
+      reader.readAsText(file);
     }
   });
 
