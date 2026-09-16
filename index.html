@@ -137,6 +137,8 @@
   .secbody{padding:0 16px 14px;}
   .item{display:flex; align-items:flex-start; gap:11px; padding:10px 2px; border-top:1px solid var(--line);}
   .item:first-child{border-top:none;}
+  .item.priorflag{background:var(--bad-soft); margin:0 -12px; padding:10px 12px; border-radius:8px;}
+  .secwarn{font-size:11.5px; font-weight:700; color:var(--bad); margin-left:6px;}
   .chk{width:22px; height:22px; border-radius:6px; border:1.5px solid var(--line-strong); background:var(--surface); flex:none; margin-top:1px; display:flex; align-items:center; justify-content:center; transition:background .12s, border-color .12s;}
   .chk.checked{background:var(--good); border-color:var(--good); color:#fff;}
   .chk.na{background:var(--surface-2); border-color:var(--line-strong); color:var(--ink-400);}
@@ -180,7 +182,7 @@
   .lookuprow{display:flex; align-items:center; flex-wrap:wrap; gap:8px; row-gap:6px; padding:9px 0; border-bottom:1px solid var(--line);}
   .lookuprow:last-child{border-bottom:none;}
   .lookuprow.done .lookuptext{text-decoration:line-through; color:var(--ink-400);}
-  .lookuptext{flex:1 1 140px; min-width:0; border:none; background:none; color:var(--ink); font-size:14px; padding:4px 0; font-family:inherit; resize:none; overflow:hidden; white-space:pre-wrap; word-wrap:break-word; line-height:1.4;}
+  .lookuptext{flex:1 1 140px; min-width:0; border:none; background:none; color:var(--ink); font-size:14px; padding:4px 0; font-family:inherit; resize:none; overflow-y:auto; max-height:120px; white-space:pre-wrap; word-wrap:break-word; line-height:1.4;}
   .lookuptext:focus{outline:none;}
   .lookuprow select{border:1px solid var(--line-strong); border-radius:var(--r-s); background:var(--surface); color:var(--ink-600); font-size:11.5px; padding:5px 6px; flex:none;}
   .lookupglimpse-item{display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--line); font-size:13.5px;}
@@ -667,23 +669,58 @@
     '</div>';
   }
 
+  function openActionsForStore(name){
+    var key = (name||'').trim().toLowerCase();
+    if (!key) return [];
+    return state.correctiveActions.filter(function(a){ return !a.done && (a.storeName||'').trim().toLowerCase()===key; });
+  }
+
+  function priorFlaggedItemSet(d){
+    var set = {};
+    openActionsForStore(d.storeName).forEach(function(a){ if (a.sourceItemId) set[a.sourceItemId] = true; });
+    return set;
+  }
+
+  function renderPriorIssuesPanel(d){
+    var prior = openActionsForStore(d.storeName);
+    if (!prior.length) return '';
+    var todayStr = todayISO();
+    return '<div class="card" style="margin-bottom:14px; padding:14px 16px; border:1.5px solid var(--accent); background:var(--accent-soft);">' +
+      '<div style="font-weight:700;margin-bottom:8px;">🔁 Open issues from last visit ('+prior.length+')</div>' +
+      '<div class="helper" style="margin:0 0 10px;">Check whether these were fixed before scoring this area.</div>' +
+      prior.map(function(a){
+        var overdue = a.dueDate && a.dueDate<todayStr;
+        return '<div style="display:flex; align-items:center; gap:8px; padding:8px 0; border-top:1px solid var(--line);">' +
+          '<div style="flex:1;"><div style="font-weight:600;font-size:13.5px;">'+esc(a.description||'(unspecified)')+'</div>' +
+          (a.dueDate ? '<div class="histmeta">'+(overdue?'Was due ':'Due ')+fmtDateShort(new Date(a.dueDate+'T00:00:00').getTime())+'</div>' : '') +
+          '</div>' +
+          '<button type="button" class="btn btn-primary btn-sm" data-action="resolve-action" data-id="'+a.id+'">✓ Fixed</button>' +
+        '</div>';
+      }).join('') +
+    '</div>';
+  }
+
   function renderAudit(d){
     var tmpl = state.templates[d.type];
     var op = overallProgress(d);
     if (d.finishedAt) return renderRemarkStep(d);
 
+    var priorSet = priorFlaggedItemSet(d);
     var secHtml = d.sections.map(function(sec, idx){
       var active = d.activeSectionId === sec.id;
       var running = !!sec.runningSince;
       var p = sectionProgress(sec);
+      var secPriorCount = sec.items.filter(function(it){ return !!priorSet[it.id]; }).length;
       var itemsHtml = sec.items.map(function(it){
         var checked = it.state==='checked', na = it.state==='na';
-        return '<div class="item">' +
+        var flagged = !!priorSet[it.id];
+        return '<div class="item '+(flagged?'priorflag':'')+'">' +
           '<button class="chk '+(checked?'checked':'')+' '+(na?'na':'')+'" data-action="toggle-item" data-sec="'+sec.id+'" data-item="'+it.id+'" aria-label="Toggle item">' +
             (checked?'✓':(na?'–':'')) +
           '</button>' +
           '<div class="itemcol">' +
-            '<div class="itemtext '+(checked?'checked':'')+' '+(na?'na':'')+'">'+esc(it.text)+'</div>' +
+            '<div class="itemtext '+(checked?'checked':'')+' '+(na?'na':'')+'">'+(flagged?'⚠ ':'')+esc(it.text)+'</div>' +
+            (flagged ? '<div class="histmeta" style="color:var(--bad);">Flagged unresolved on last visit</div>' : '') +
             (it.requiresInfo ? '<input type="text" class="itemvalue" data-bind-item="value" data-sec="'+sec.id+'" data-item="'+it.id+'" placeholder="'+esc(it.infoLabel||'Enter value')+'" value="'+esc(it.value||'')+'">' : '') +
           '</div>' +
           '<button class="naBtn '+(na?'on':'')+'" data-action="toggle-na" data-sec="'+sec.id+'" data-item="'+it.id+'" title="Not Available — counts against the score">N/A</button>' +
@@ -692,11 +729,11 @@
       return '<div class="section '+(active?'active':'')+'">' +
         '<button class="sechead" data-action="toggle-section" data-sec="'+sec.id+'">' +
           '<div class="secnum mono">'+String(idx+1).padStart(2,'0')+'</div>' +
-          '<div class="sectitle"><div class="sname">'+esc(sec.name)+'</div><div class="smeta">'+p.checked+'/'+p.total+' checked'+(p.na?' · '+p.na+' N/A':'')+' '+gradeBadge(p.pct)+'</div></div>' +
+          '<div class="sectitle"><div class="sname">'+esc(sec.name)+(secPriorCount?'<span class="secwarn">⚠ '+secPriorCount+' to re-check</span>':'')+'</div><div class="smeta">'+p.checked+'/'+p.total+' checked'+(p.na?' · '+p.na+' N/A':'')+' '+gradeBadge(p.pct)+'</div></div>' +
           '<div class="sectimer '+(running?'running':'')+'"><span class="dot '+(running?'running':'')+'"></span><span data-timer="sec-'+sec.id+'">'+fmtTime(sectionElapsed(sec))+'</span></div>' +
           '<div class="chev">▼</div>' +
         '</button>' +
-        '<div class="secbody" '+(active?'':'hidden')+'>'+itemsHtml+'</div>' +
+        '<div class="secbody" '+(active||secPriorCount?'':'hidden')+'>'+itemsHtml+'</div>' +
       '</div>';
     }).join('');
 
@@ -715,7 +752,7 @@
           '<button class="btn btn-text btn-sm btn-danger" data-action="discard-audit">Discard</button>' +
         '</div>' +
       '</div></div>' +
-      '<main style="padding-top:2px;">' + secHtml + '</main>' +
+      '<main style="padding-top:2px;">' + renderPriorIssuesPanel(d) + secHtml + '</main>' +
       '<div class="footerbar"><div class="inner"><button class="btn btn-primary" data-action="finish-audit">Finish Audit</button></div></div>';
   }
 
@@ -731,6 +768,7 @@
       '<h1 style="font-size:24px;margin-top:6px;">'+esc(d.storeName||'Unnamed store')+'</h1>' +
       '<div class="helper" style="margin-top:4px;">'+(d.storeLocation?esc(d.storeLocation)+' · ':'')+fmtAuditWhen(d.auditDate,d.auditTime)+'</div>' +
       '<div class="helper" style="margin-top:2px;">'+tmpl.label+' · '+op.checked+'/'+op.total+' items checked ('+op.pct+'% score) '+gradeBadge(op.pct)+' · '+fmtTime(totalMs)+' total</div>' +
+      renderPriorIssuesPanel(d) +
       '<div class="statgrid">' +
         d.sections.map(function(s){ return '<div class="stattile"><div class="v">'+fmtTime(s.accumMs)+'</div><div class="k">'+esc(s.name)+'</div><div style="margin-top:5px;">'+gradeBadge(sectionProgress(s).pct)+'</div></div>'; }).join('') +
       '</div>' +
@@ -761,12 +799,13 @@
     });
     var addedIds = {};
     (d.correctiveActions||[]).forEach(function(ca){ if (ca.sourceItemId) addedIds[ca.sourceItemId]=true; });
-    var chipsHtml = uncheckedItems.length ? (
-      '<div class="areagrid" style="margin-bottom:12px;">' +
-        uncheckedItems.map(function(it){
-          var on = !!addedIds[it.id];
-          return '<button type="button" class="areachip '+(on?'on':'')+'" data-action="toggle-ca-item" data-item="'+it.id+'">'+(on?'✓ ':'+ ')+esc(it.text)+'</button>';
-        }).join('') +
+    var availableItems = uncheckedItems.filter(function(it){ return !addedIds[it.id]; });
+    var chipsHtml = availableItems.length ? (
+      '<div class="field" style="margin-bottom:12px;">' +
+        '<select data-action="add-ca-from-select">' +
+          '<option value="">+ Add corrective action for an unchecked item…</option>' +
+          availableItems.map(function(it){ return '<option value="'+it.id+'">'+esc(it.text)+'</option>'; }).join('') +
+        '</select>' +
       '</div>'
     ) : '';
     var rowsHtml = (d.correctiveActions||[]).map(function(ca){
@@ -2069,19 +2108,6 @@
     else if (action==='resume-checklist'){
       d.finishedAt = null; persistDraft(); render();
     }
-    else if (action==='toggle-ca-item'){
-      var itemId = t.dataset.item;
-      var existingIdx = -1;
-      (d.correctiveActions||[]).forEach(function(ca,i){ if (ca.sourceItemId===itemId) existingIdx=i; });
-      if (existingIdx!==-1){
-        d.correctiveActions.splice(existingIdx,1);
-      } else {
-        var text = '';
-        d.sections.forEach(function(s){ s.items.forEach(function(it){ if (it.id===itemId) text = it.text; }); });
-        d.correctiveActions.push({ id: uid(), sourceItemId: itemId, description: text, dueDate: '' });
-      }
-      persistDraft(); render();
-    }
     else if (action==='add-custom-action'){
       d.correctiveActions.push({ id: uid(), sourceItemId: null, description: '', dueDate: '' });
       persistDraft(); render();
@@ -2098,7 +2124,7 @@
         state.correctiveActions.push({
           id: ca.id, auditId: rec.id, storeName: d.storeName, storeLocation: d.storeLocation,
           type: d.type, description: (ca.description||'').trim() || '(unspecified)', dueDate: ca.dueDate||'',
-          done: false, createdAt: Date.now()
+          sourceItemId: ca.sourceItemId||null, done: false, createdAt: Date.now()
         });
       });
       persistActions();
@@ -2379,7 +2405,16 @@
 
   app.addEventListener('change', function(e){
     var el = e.target;
-    if (el.dataset.action==='restore-backup-file'){
+    if (el.dataset.action==='add-ca-from-select'){
+      var itemId = el.value;
+      if (!itemId || !state.draft) return;
+      var d = state.draft;
+      var text = '';
+      d.sections.forEach(function(s){ s.items.forEach(function(it){ if (it.id===itemId) text = it.text; }); });
+      d.correctiveActions.push({ id: uid(), sourceItemId: itemId, description: text, dueDate: '' });
+      persistDraft(); render();
+    }
+    else if (el.dataset.action==='restore-backup-file'){
       var file = el.files && el.files[0];
       if (!file) return;
       if (!window.confirm('This will REPLACE all current data (audits, prospects, actions, settings) with the contents of this backup file. Continue?')){ el.value=''; return; }
