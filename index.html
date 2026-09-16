@@ -1622,15 +1622,32 @@
       '</div>';
     }).join('') + '</div>';
 
-    var reWeekDays = [];
-    for (var ri=0; ri<7; ri++){
-      var rd = new Date(); rd.setHours(0,0,0,0); rd.setDate(rd.getDate()+ri);
-      var rDayStart = rd.getTime(), rDayEnd = rDayStart + 24*60*60*1000;
-      var dueThatDay = due.filter(function(x){
-        return ri===0 ? x.dueAt<rDayEnd : (x.dueAt>=rDayStart && x.dueAt<rDayEnd);
-      });
-      reWeekDays.push({ dow: rd.toLocaleDateString(undefined,{weekday:'short'}).slice(0,2), dayNum: rd.getDate(), isToday: ri===0, items: dueThatDay });
+    var reTodayDate = new Date(); reTodayDate.setHours(0,0,0,0);
+    var reTodayTime = reTodayDate.getTime();
+    function reIsoOf(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+    var reTodayIso = reIsoOf(reTodayDate);
+    var dueByDay = {};
+    due.forEach(function(x){
+      var bucketDate = x.dueAt < now ? new Date(reTodayTime) : new Date(x.dueAt);
+      bucketDate.setHours(0,0,0,0);
+      var iso = reIsoOf(bucketDate);
+      if (!dueByDay[iso]) dueByDay[iso] = [];
+      dueByDay[iso].push(x);
+    });
+    var chosenIso = Object.keys(dueByDay).sort().slice(0,7);
+    var reFillCursor = new Date(reTodayDate);
+    while (chosenIso.length<7){
+      var fIso = reIsoOf(reFillCursor);
+      if (chosenIso.indexOf(fIso)===-1) chosenIso.push(fIso);
+      reFillCursor.setDate(reFillCursor.getDate()+1);
     }
+    chosenIso.sort();
+    var reWeekDays = chosenIso.map(function(iso){
+      var parts = iso.split('-').map(Number);
+      var dObj = new Date(parts[0], parts[1]-1, parts[2]);
+      var dowLabel = dObj.getMonth()!==reTodayDate.getMonth() ? dObj.toLocaleDateString(undefined,{month:'short'}).toUpperCase() : dObj.toLocaleDateString(undefined,{weekday:'short'}).slice(0,2);
+      return { dow: dowLabel, dayNum: dObj.getDate(), isToday: iso===reTodayIso, items: dueByDay[iso]||[] };
+    });
     var reCalHtml = '<div class="weekcal">' + reWeekDays.map(function(d){
       var has = d.items.length>0;
       return '<div class="calcell '+(has?'has':'')+' '+(d.isToday?'today':'')+'" '+(has?'data-action="go-actions"':'')+'>' +
@@ -1682,7 +1699,7 @@
         '<div class="stattile"><div class="v">'+openPipeline+'</div><div class="k">Open Pipeline</div></div>' +
       '</div>' +
 
-      '<h2 style="font-size:15px;margin-bottom:8px;">Re-audits Due This Week</h2>' +
+      '<h2 style="font-size:15px;margin-bottom:8px;">Re-audits Due — Next 7</h2>' +
       reCalHtml +
       (due.length===0 ? '<div class="helper" style="margin-top:8px;">Complete an audit to start tracking re-audit schedules.</div>' :
         '<button class="btn btn-ghost btn-sm" style="margin-top:8px;" data-action="go-actions">View schedule →</button>'
