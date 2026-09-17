@@ -303,7 +303,7 @@
 (function(){
   "use strict";
   var LS_T = 'diagnosisroom_templates_v1', LS_H = 'diagnosisroom_history_v1', LS_D = 'diagnosisroom_draft_v1', LS_P = 'diagnosisroom_pricing_v1';
-  var LS_A = 'diagnosisroom_actions_v1', LS_SCHED = 'diagnosisroom_schedule_v1', LS_G = 'diagnosisroom_grades_v1';
+  var LS_A = 'diagnosisroom_actions_v1', LS_SCHED = 'diagnosisroom_schedule_v1';
   var LS_PR = 'diagnosisroom_prospects_v1';
   var LS_LK = 'diagnosisroom_lookups_v1';
   var LS_RO = 'diagnosisroom_reaudit_overrides_v1';
@@ -314,22 +314,13 @@
   var DEFAULT_PRICING = {
     currency: '₹',
     dinein: { baseFee: 1500, perSection: 300, perMenuItem: 5 },
-    qsr: { baseFee: 1000, perSection: 250, perMenuItem: 3 },
-    lowScoreThresholdPct: 80,
-    lowScoreSurcharge: 500
+    qsr: { baseFee: 1000, perSection: 250, perMenuItem: 3 }
   };
 
   var DEFAULT_SCHEDULE = {
     dinein: { intervalDays: 30 },
     qsr: { intervalDays: 14 }
   };
-
-  var DEFAULT_GRADE_BANDS = [
-    { id:'g1', min:90, label:'A — Excellent', tone:'good' },
-    { id:'g2', min:75, label:'B — Good', tone:'good' },
-    { id:'g3', min:60, label:'C — Needs Improvement', tone:'warn' },
-    { id:'g4', min:0,  label:'D — Fail', tone:'bad' }
-  ];
 
   var DEFAULT_SERVICE_CLASSES = [
     { id:'s1', number:1, label:'Audit Only' },
@@ -423,7 +414,6 @@
     pricing: loadJSON(LS_P, null) || JSON.parse(JSON.stringify(DEFAULT_PRICING)),
     correctiveActions: loadJSON(LS_A, []),
     schedule: loadJSON(LS_SCHED, null) || JSON.parse(JSON.stringify(DEFAULT_SCHEDULE)),
-    gradeBands: loadJSON(LS_G, null) || JSON.parse(JSON.stringify(DEFAULT_GRADE_BANDS)),
     serviceClasses: loadJSON(LS_SVC, null) || JSON.parse(JSON.stringify(DEFAULT_SERVICE_CLASSES)),
     targets: loadJSON(LS_TG, null) || { revenue:0, clients:0 },
     prospects: loadJSON(LS_PR, []),
@@ -452,7 +442,6 @@
   function persistTargets(){ saveJSON(LS_TG, state.targets); }
   function persistActions(){ saveJSON(LS_A, state.correctiveActions); }
   function persistSchedule(){ saveJSON(LS_SCHED, state.schedule); }
-  function persistGrades(){ saveJSON(LS_G, state.gradeBands); }
   function persistServiceClasses(){ saveJSON(LS_SVC, state.serviceClasses); }
   function persistProspects(){ saveJSON(LS_PR, state.prospects); }
   function persistLookups(){ saveJSON(LS_LK, state.lookups); }
@@ -525,24 +514,12 @@
   }
 
   // ---------- pricing ----------
-  function computePricing(type, sectionCount, menuItemCount, completionPct){
+  function computePricing(type, sectionCount, menuItemCount){
     var cfg = state.pricing[type] || { baseFee:0, perSection:0, perMenuItem:0 };
     var sectionsCost = sectionCount * (cfg.perSection||0);
     var menuCost = (menuItemCount||0) * (cfg.perMenuItem||0);
-    var surcharge = completionPct < state.pricing.lowScoreThresholdPct ? (state.pricing.lowScoreSurcharge||0) : 0;
-    var total = (cfg.baseFee||0) + sectionsCost + menuCost + surcharge;
-    return { base:cfg.baseFee||0, sectionsCost:sectionsCost, menuCost:menuCost, surcharge:surcharge, total:total, currency: state.pricing.currency||'' };
-  }
-
-  // ---------- grading ----------
-  function computeGrade(pct){
-    var bands = state.gradeBands.slice().sort(function(a,b){ return b.min-a.min; });
-    for (var i=0;i<bands.length;i++){ if (pct>=bands[i].min) return bands[i]; }
-    return bands[bands.length-1] || { label:'—', tone:'warn' };
-  }
-  function gradeBadge(pct){
-    var g = computeGrade(pct);
-    return '<span class="pill '+esc(g.tone)+'">'+esc(g.label)+'</span>';
+    var total = (cfg.baseFee||0) + sectionsCost + menuCost;
+    return { base:cfg.baseFee||0, sectionsCost:sectionsCost, menuCost:menuCost, total:total, currency: state.pricing.currency||'' };
   }
 
   // ---------- re-audit schedule ----------
@@ -762,7 +739,7 @@
       return '<div class="section '+(active?'active':'')+'">' +
         '<button class="sechead" data-action="toggle-section" data-sec="'+sec.id+'">' +
           '<div class="secnum mono">'+String(idx+1).padStart(2,'0')+'</div>' +
-          '<div class="sectitle"><div class="sname">'+esc(sec.name)+(secPriorCount?'<span class="secwarn">⚠ '+secPriorCount+' to re-check</span>':'')+'</div><div class="smeta">'+p.checked+'/'+p.total+' checked'+(p.na?' · '+p.na+' N/A':'')+' '+gradeBadge(p.pct)+'</div></div>' +
+          '<div class="sectitle"><div class="sname">'+esc(sec.name)+(secPriorCount?'<span class="secwarn">⚠ '+secPriorCount+' to re-check</span>':'')+'</div><div class="smeta">'+p.checked+'/'+p.total+' checked'+(p.na?' · '+p.na+' N/A':'')+'</div></div>' +
           '<div class="sectimer '+(running?'running':'')+'"><span class="dot '+(running?'running':'')+'"></span><span data-timer="sec-'+sec.id+'">'+fmtTime(sectionElapsed(sec))+'</span></div>' +
           '<div class="chev">▼</div>' +
         '</button>' +
@@ -794,24 +771,23 @@
     var op = overallProgress(d);
     var totalMs = d.overall.accumMs;
     var canComplete = (d.remark||'').trim().length > 0;
-    var price = computePricing(d.type, d.sections.length, d.menuItemCount||0, op.pct);
+    var price = computePricing(d.type, d.sections.length, d.menuItemCount||0);
     var prevRec = previousAuditForStore(d.storeName, d.id);
     return '<main>' +
       '<button class="backrow" data-action="resume-checklist">← Back to checklist</button>' +
       '<div class="eyebrow">Finishing Audit</div>' +
       '<h1 style="font-size:24px;margin-top:6px;">'+esc(d.storeName||'Unnamed store')+'</h1>' +
       '<div class="helper" style="margin-top:4px;">'+(d.storeLocation?esc(d.storeLocation)+' · ':'')+fmtAuditWhen(d.auditDate,d.auditTime)+'</div>' +
-      '<div class="helper" style="margin-top:2px;">'+tmpl.label+' · '+op.checked+'/'+op.total+' items checked ('+op.pct+'% score) '+gradeBadge(op.pct)+scoreDeltaHtml(prevRec?prevRec.completionPct:null, op.pct)+' · '+fmtTime(totalMs)+' total</div>' +
+      '<div class="helper" style="margin-top:2px;">'+tmpl.label+' · '+op.checked+'/'+op.total+' items checked ('+op.pct+'% score)'+scoreDeltaHtml(prevRec?prevRec.completionPct:null, op.pct)+' · '+fmtTime(totalMs)+' total</div>' +
       renderPriorIssuesPanel(d) +
       '<div class="statgrid">' +
-        d.sections.map(function(s){ return '<div class="stattile"><div class="v">'+fmtTime(s.accumMs)+'</div><div class="k">'+esc(s.name)+'</div><div style="margin-top:5px;">'+gradeBadge(sectionProgress(s).pct)+'</div></div>'; }).join('') +
+        d.sections.map(function(s){ var p=sectionProgress(s); return '<div class="stattile"><div class="v">'+fmtTime(s.accumMs)+'</div><div class="k">'+esc(s.name)+'</div><div style="margin-top:5px;" class="histmeta">'+p.checked+'/'+p.total+' checked</div></div>'; }).join('') +
       '</div>' +
       '<h2 style="font-size:15px;margin-bottom:6px;">Estimated pricing</h2>' +
       '<div class="card" style="padding:4px 16px;margin-bottom:20px;">' +
         '<div class="sumrow"><span class="k">Base fee ('+tmpl.label+')</span><span class="v">'+price.currency+price.base+'</span></div>' +
         '<div class="sumrow"><span class="k">Areas audited ('+d.sections.length+')</span><span class="v">'+price.currency+price.sectionsCost+'</span></div>' +
         '<div class="sumrow"><span class="k">Menu items ('+(d.menuItemCount||0)+')</span><span class="v">'+price.currency+price.menuCost+'</span></div>' +
-        (price.surcharge ? '<div class="sumrow"><span class="k">Below '+state.pricing.lowScoreThresholdPct+'% score surcharge</span><span class="v">'+price.currency+price.surcharge+'</span></div>' : '') +
         '<div class="sumrow pricerow"><span class="k" style="font-weight:700;color:var(--ink);">Total</span><span class="pricetotal">'+price.currency+price.total+'</span></div>' +
       '</div>' +
       renderCorrectiveEditor(d) +
@@ -879,20 +855,18 @@
 
   function computeRecord(d){
     var op = overallProgress(d);
-    var pricing = computePricing(d.type, d.sections.length, d.menuItemCount||0, op.pct);
-    var grade = computeGrade(op.pct);
+    var pricing = computePricing(d.type, d.sections.length, d.menuItemCount||0);
     var prev = previousAuditForStore(d.storeName, d.id);
     return { id:d.id, type:d.type, storeName:d.storeName, storeLocation:d.storeLocation,
       contactName:d.contactName||'', contactDesignation:d.contactDesignation||'', contactMobile:d.contactMobile||'',
       auditDate:d.auditDate, auditTime:d.auditTime, menuItemCount:d.menuItemCount||0,
       startedAt:d.startedAt, finishedAt:d.finishedAt, remark:d.remark,
       totalMs:d.overall.accumMs, completionPct:op.pct, checked:op.checked, total:op.total,
-      pricing: pricing, grade: { label:grade.label, tone:grade.tone },
+      pricing: pricing,
       prevScore: prev ? prev.completionPct : null, prevAuditDate: prev ? prev.auditDate : null,
       sections: d.sections.map(function(s){
         var p=sectionProgress(s);
-        var sg = computeGrade(p.pct);
-        return { id:s.id, name:s.name, accumMs:s.accumMs, checked:p.checked, total:p.total, na:p.na, items:s.items.slice(), grade:{label:sg.label,tone:sg.tone} };
+        return { id:s.id, name:s.name, accumMs:s.accumMs, checked:p.checked, total:p.total, na:p.na, items:s.items.slice() };
       })
     };
   }
@@ -925,27 +899,28 @@
         '<div class="stattile"><div class="v">'+rec.completionPct+'%</div><div class="k">Score</div></div>' +
         '<div class="stattile"><div class="v">'+rec.checked+'/'+rec.total+'</div><div class="k">Items Checked</div></div>' +
       '</div>' +
-      (rec.grade ? '<div style="margin:-10px 0 16px;">Grade: <span class="pill '+esc(rec.grade.tone)+'">'+esc(rec.grade.label)+'</span>'+scoreDeltaHtml(rec.prevScore, rec.completionPct)+'</div>' : '') +
+      (scoreDeltaHtml(rec.prevScore, rec.completionPct) ? '<div style="margin:-10px 0 16px;">'+scoreDeltaHtml(rec.prevScore, rec.completionPct)+'</div>' : '') +
       '<h2 style="font-size:15px;margin-bottom:6px;">Section timing</h2>' +
       '<div class="card" style="padding:4px 16px;margin-bottom:20px;">' +
-        rec.sections.map(function(s){ return '<div class="sumrow"><span class="k">'+esc(s.name)+' '+(s.grade?'<span class="pill '+esc(s.grade.tone)+'">'+esc(s.grade.label)+'</span>':'')+'</span><span class="v">'+fmtTime(s.accumMs)+' · '+s.checked+'/'+s.total+'</span></div>'; }).join('') +
+        rec.sections.map(function(s){ return '<div class="sumrow"><span class="k">'+esc(s.name)+'</span><span class="v">'+fmtTime(s.accumMs)+' · '+s.checked+'/'+s.total+'</span></div>'; }).join('') +
       '</div>' +
-      (function(){
-        var recorded = [];
-        rec.sections.forEach(function(s){ s.items.forEach(function(it){ if (it.requiresInfo && (it.value||'').trim()) recorded.push({ text: it.text, value: it.value }); }); });
-        if (!recorded.length) return '';
-        return '<h2 style="font-size:15px;margin-bottom:6px;">Recorded values</h2>' +
-          '<div class="card" style="padding:4px 16px;margin-bottom:20px;">' +
-            recorded.map(function(r){ return '<div class="sumrow"><span class="k">'+esc(r.text)+'</span><span class="v">'+esc(r.value)+'</span></div>'; }).join('') +
-          '</div>';
-      })() +
+      '<h2 style="font-size:15px;margin-bottom:6px;">Full checklist responses</h2>' +
+      rec.sections.map(function(s){
+        return '<div class="card" style="padding:4px 16px;margin-bottom:10px;">' +
+          '<div style="font-weight:700;font-size:13px;padding:10px 0 4px;">'+esc(s.name)+'</div>' +
+          (s.items||[]).map(function(it){
+            var tone = it.state==='checked' ? 'good' : (it.state==='na' ? 'warn' : 'bad');
+            var label = it.state==='checked' ? '✓ Checked' : (it.state==='na' ? '– N/A' : '○ Not checked');
+            return '<div class="sumrow" style="align-items:flex-start;"><span class="k">'+esc(it.text)+(it.requiresInfo ? '<div class="histmeta">'+esc(it.infoLabel||'Answer')+': '+(esc(it.value||'')||'—')+'</div>' : '')+'</span><span class="v"><span class="pill '+tone+'">'+label+'</span></span></div>';
+          }).join('') +
+        '</div>';
+      }).join('') +
       (rec.pricing ? (
       '<h2 style="font-size:15px;margin-bottom:6px;">Pricing</h2>' +
       '<div class="card" style="padding:4px 16px;margin-bottom:20px;">' +
         '<div class="sumrow"><span class="k">Base fee</span><span class="v">'+rec.pricing.currency+rec.pricing.base+'</span></div>' +
         '<div class="sumrow"><span class="k">Areas audited ('+rec.sections.length+')</span><span class="v">'+rec.pricing.currency+rec.pricing.sectionsCost+'</span></div>' +
         '<div class="sumrow"><span class="k">Menu items ('+(rec.menuItemCount||0)+')</span><span class="v">'+rec.pricing.currency+rec.pricing.menuCost+'</span></div>' +
-        (rec.pricing.surcharge ? '<div class="sumrow"><span class="k">Low-score surcharge</span><span class="v">'+rec.pricing.currency+rec.pricing.surcharge+'</span></div>' : '') +
         '<div class="sumrow pricerow"><span class="k" style="font-weight:700;color:var(--ink);">Total</span><span class="pricetotal">'+rec.pricing.currency+rec.pricing.total+'</span></div>' +
       '</div>') : '') +
       (function(){
@@ -969,13 +944,13 @@
     return v;
   }
   function buildHistoryCSV(){
-    var cols = ['Store Name','Store Location','Contact Name','Contact Designation','Contact Mobile','Type','Audit Date','Day','Audit Time','Total Time','Score %','Grade','Items Checked','Items Total','Areas Audited','Menu Items','Section Breakdown','Estimated Pricing','Final Remark'];
+    var cols = ['Store Name','Store Location','Contact Name','Contact Designation','Contact Mobile','Type','Audit Date','Day','Audit Time','Total Time','Score %','Items Checked','Items Total','Areas Audited','Menu Items','Section Breakdown','Estimated Pricing','Final Remark'];
     var rows = [cols.join(',')];
     state.history.slice().sort(function(a,b){ return b.finishedAt-a.finishedAt; }).forEach(function(h){
       var tmpl = state.templates[h.type] || { label: h.type };
       var sectionSummary = (h.sections||[]).map(function(s){ return s.name+': '+fmtTime(s.accumMs)+' ('+s.checked+'/'+s.total+')'; }).join(' | ');
       var priceStr = h.pricing ? (h.pricing.currency+h.pricing.total) : '';
-      var row = [h.storeName||'', h.storeLocation||'', h.contactName||'', h.contactDesignation||'', h.contactMobile||'', tmpl.label||h.type, h.auditDate||'', dayName(h.auditDate), h.auditTime||'', fmtTime(h.totalMs), h.completionPct, (h.grade?h.grade.label:''), h.checked, h.total, (h.sections||[]).length, h.menuItemCount||0, sectionSummary, priceStr, h.remark||''];
+      var row = [h.storeName||'', h.storeLocation||'', h.contactName||'', h.contactDesignation||'', h.contactMobile||'', tmpl.label||h.type, h.auditDate||'', dayName(h.auditDate), h.auditTime||'', fmtTime(h.totalMs), h.completionPct, h.checked, h.total, (h.sections||[]).length, h.menuItemCount||0, sectionSummary, priceStr, h.remark||''];
       rows.push(row.map(csvEscape).join(','));
     });
     return rows.join('\r\n');
@@ -1003,7 +978,6 @@
       pricing: state.pricing,
       correctiveActions: state.correctiveActions,
       schedule: state.schedule,
-      gradeBands: state.gradeBands,
       serviceClasses: state.serviceClasses,
       prospects: state.prospects,
       lookups: state.lookups,
@@ -1015,7 +989,7 @@
 
   function applyBackupData(data){
     if (!data || typeof data!=='object') return false;
-    var known = ['templates','history','pricing','correctiveActions','schedule','gradeBands','serviceClasses','prospects','lookups','contentIdeas','reauditOverrides','targets'];
+    var known = ['templates','history','pricing','correctiveActions','schedule','serviceClasses','prospects','lookups','contentIdeas','reauditOverrides','targets'];
     var found = known.some(function(k){ return data[k]!==undefined; });
     if (!found) return false;
     if (data.templates) state.templates = data.templates;
@@ -1023,7 +997,6 @@
     if (data.pricing) state.pricing = data.pricing;
     if (data.correctiveActions) state.correctiveActions = data.correctiveActions;
     if (data.schedule) state.schedule = data.schedule;
-    if (data.gradeBands) state.gradeBands = data.gradeBands;
     if (data.serviceClasses) state.serviceClasses = data.serviceClasses;
     if (data.prospects) state.prospects = data.prospects;
     if (data.lookups) state.lookups = data.lookups;
@@ -1031,7 +1004,7 @@
     if (data.reauditOverrides) state.reauditOverrides = data.reauditOverrides;
     if (data.targets) state.targets = data.targets;
     persistTemplates(); persistHistory(); persistPricing(); persistActions(); persistSchedule();
-    persistGrades(); persistServiceClasses(); persistProspects(); persistLookups(); persistContentIdeas(); persistReauditOverrides(); persistTargets();
+    persistServiceClasses(); persistProspects(); persistLookups(); persistContentIdeas(); persistReauditOverrides(); persistTargets();
     return true;
   }
 
@@ -1126,34 +1099,10 @@
       '<h1 style="font-size:20px;margin:0 0 4px;">Pricing Settings</h1>' +
       '<div class="field" style="margin-bottom:16px;margin-top:14px;"><label>Currency symbol</label><input type="text" maxlength="3" data-pricing="currency" value="'+esc(p.currency)+'" style="max-width:90px;"></div>' +
       typeBlock('dinein') + typeBlock('qsr') +
-      '<div class="card edsection">' +
-        '<div class="edhead"><div style="font-family:var(--font-d);font-weight:800;font-size:15px;">Low-score surcharge</div></div>' +
-        '<div class="field"><label>Apply when score is below (%)</label><input type="number" min="0" max="100" data-pricing="lowScoreThresholdPct" value="'+p.lowScoreThresholdPct+'"></div>' +
-        '<div class="field"><label>Surcharge amount</label><input type="number" min="0" data-pricing="lowScoreSurcharge" value="'+p.lowScoreSurcharge+'"></div>' +
-      '</div>' +
-      '<div class="helper" style="margin-bottom:24px;">Total price = base fee + (areas audited × area rate) + (menu items × item rate) + surcharge if the score falls below your threshold. Changes apply to audits completed from now on — past records keep the price they were given at the time.</div>' +
+      '<div class="helper" style="margin-bottom:24px;">Total price = base fee + (areas audited × area rate) + (menu items × item rate). Changes apply to audits completed from now on — past records keep the price they were given at the time.</div>' +
       '<button class="btn btn-text btn-danger" data-action="reset-pricing">Reset pricing to defaults</button>' +
 
-      '<h1 style="font-size:20px;margin:28px 0 4px;">Grade bands</h1>' +
-      '<div class="helper" style="margin-bottom:12px;">Turn the score % into a letter grade a store manager can read at a glance. Bands are checked highest-first.</div>' +
-      '<div class="card" style="padding:4px 16px;margin-bottom:12px;">' +
-        state.gradeBands.slice().sort(function(a,b){return b.min-a.min;}).map(function(gb){
-          return '<div class="gradebandrow">' +
-            '<input type="number" min="0" max="100" data-gb-field="min" data-gb="'+gb.id+'" value="'+gb.min+'" title="Minimum score %">' +
-            '<input type="text" data-gb-field="label" data-gb="'+gb.id+'" value="'+esc(gb.label)+'" placeholder="Label">' +
-            '<select data-gb-field="tone" data-gb="'+gb.id+'">' +
-              ['good','warn','bad'].map(function(tn){ return '<option value="'+tn+'" '+(gb.tone===tn?'selected':'')+'>'+tn+'</option>'; }).join('') +
-            '</select>' +
-            '<button class="iconbtn" data-action="grade-remove" data-gb="'+gb.id+'" title="Remove band">✕</button>' +
-          '</div>';
-        }).join('') +
-      '</div>' +
-      '<div style="display:flex;gap:8px;margin-bottom:24px;">' +
-        '<button class="btn btn-ghost btn-sm" data-action="grade-add">+ Add band</button>' +
-        '<button class="btn btn-text btn-danger" data-action="reset-grades">Reset to defaults</button>' +
-      '</div>' +
-
-      '<h1 style="font-size:20px;margin:0 0 4px;">Service classes</h1>' +
+      '<h1 style="font-size:20px;margin:28px 0 4px;">Service classes</h1>' +
       '<div class="helper" style="margin-bottom:12px;">The numbered service classes a converted prospect can be assigned to. Shown as a badge on prospect cards and in the Re-audit Due list.</div>' +
       '<div class="card" style="padding:4px 16px;margin-bottom:12px;">' +
         state.serviceClasses.slice().sort(function(a,b){return a.number-b.number;}).map(function(sc){
@@ -1345,7 +1294,7 @@
           '<div style="margin-bottom:16px;">' +
             d.audits.map(function(h){
               return '<div class="card histcard" data-action="view-audit" data-id="'+h.id+'">' +
-                '<div class="histtop"><span class="badge">'+esc((state.templates[h.type]||{}).label||h.type)+'</span><span class="histpct">'+h.completionPct+'%'+(h.grade?' · <span class="pill '+esc(h.grade.tone)+'">'+esc(h.grade.label)+'</span>':'')+'</span></div>' +
+                '<div class="histtop"><span class="badge">'+esc((state.templates[h.type]||{}).label||h.type)+'</span><span class="histpct">'+h.completionPct+'%</span></div>' +
                 '<div style="font-weight:700;margin-top:8px;">'+esc(h.storeName||'Unnamed store')+'</div>' +
                 '<div class="histmeta">'+fmtAuditWhen(h.auditDate,h.auditTime)+' · Tap to view full report</div>' +
               '</div>';
@@ -1509,7 +1458,7 @@
         var d = e.data;
         if (e.type==='audit'){
           return '<div class="card histcard" data-action="view-audit" data-id="'+d.id+'">' +
-            '<div class="histtop"><span class="badge">'+esc((state.templates[d.type]||{}).label||d.type)+' audit</span><span class="histpct">'+d.completionPct+'%'+(d.grade?' · <span class="pill '+esc(d.grade.tone)+'">'+esc(d.grade.label)+'</span>':'')+'</span></div>' +
+            '<div class="histtop"><span class="badge">'+esc((state.templates[d.type]||{}).label||d.type)+' audit</span><span class="histpct">'+d.completionPct+'%</span></div>' +
             '<div class="histmeta" style="margin-top:8px;">'+fmtDateShort(e.t)+' · Tap to view full report</div>' +
           '</div>';
         }
@@ -2431,20 +2380,6 @@
         persistPricing(); render();
       }
     }
-    else if (action==='grade-add'){
-      state.gradeBands.push({ id: uid(), min: 50, label: 'New band', tone: 'warn' });
-      persistGrades(); render();
-    }
-    else if (action==='grade-remove'){
-      state.gradeBands = state.gradeBands.filter(function(gb){ return gb.id!==t.dataset.gb; });
-      persistGrades(); render();
-    }
-    else if (action==='reset-grades'){
-      if (window.confirm('Reset grade bands to defaults?')){
-        state.gradeBands = JSON.parse(JSON.stringify(DEFAULT_GRADE_BANDS));
-        persistGrades(); render();
-      }
-    }
     else if (action==='svc-add'){
       var nextNum = state.serviceClasses.reduce(function(m,sc){ return Math.max(m,sc.number); },0)+1;
       state.serviceClasses.push({ id: uid(), number: nextNum, label: 'New service' });
@@ -2527,14 +2462,6 @@
     else if (el.dataset.caField && state.draft){
       var ca = state.draft.correctiveActions.filter(function(c){ return c.id===el.dataset.ca; })[0];
       if (ca){ ca[el.dataset.caField] = el.value; persistDraft(); }
-    }
-    else if (el.dataset.gbField){
-      var gb = state.gradeBands.filter(function(g){ return g.id===el.dataset.gb; })[0];
-      if (gb){
-        if (el.dataset.gbField==='min'){ var m = parseFloat(el.value); gb.min = isNaN(m)?0:m; }
-        else { gb[el.dataset.gbField] = el.value; }
-        persistGrades();
-      }
     }
     else if (el.dataset.svcField){
       var sc2 = state.serviceClasses.filter(function(s){ return s.id===el.dataset.svc; })[0];
