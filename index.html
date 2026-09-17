@@ -244,6 +244,12 @@
   .pill.good{color:var(--good); background:var(--good-soft);}
   .pill.warn{color:var(--accent-ink); background:var(--accent-soft);}
   .pill.bad{color:var(--bad); background:var(--bad-soft);}
+  .progchips{display:flex; flex-wrap:wrap; gap:6px;}
+  .progchip{display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:600; line-height:1.35; padding:5px 10px; border-radius:20px; max-width:100%;}
+  .progchip .s{opacity:.65; font-weight:500;}
+  .progchip.good{color:var(--good); background:var(--good-soft);}
+  .progchip.bad{color:var(--bad); background:var(--bad-soft);}
+  .progchip.neutral{color:var(--ink-600); background:var(--surface-2);}
   .empty{text-align:center; padding:50px 20px; color:var(--ink-400);}
   .empty .big{font-size:34px; margin-bottom:8px; opacity:.7;}
   .tabs{display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap;}
@@ -1592,6 +1598,63 @@
     '</div>';
   }
 
+  function computeProgressSummary(p, audits){
+    if (audits.length < 2) return null;
+    var latest = audits[0], first = audits[audits.length-1];
+    var firstMap = {};
+    first.sections.forEach(function(s){ (s.items||[]).forEach(function(it){ firstMap[it.id] = it.state; }); });
+    var improved = [], regressed = [], persistent = [];
+    latest.sections.forEach(function(s){
+      (s.items||[]).forEach(function(it){
+        var prevState = firstMap[it.id];
+        if (prevState===undefined) return;
+        if (prevState==='unchecked' && it.state==='checked') improved.push({ text:it.text, section:s.name });
+        else if (prevState==='checked' && it.state==='unchecked') regressed.push({ text:it.text, section:s.name });
+        else if (prevState==='unchecked' && it.state==='unchecked') persistent.push({ text:it.text, section:s.name });
+      });
+    });
+    var key = (p.name||'').trim().toLowerCase();
+    var allActions = state.correctiveActions.filter(function(a){ return (a.storeName||'').trim().toLowerCase()===key; });
+    var resolvedActions = allActions.filter(function(a){ return a.done; });
+    return {
+      first: first, latest: latest,
+      scoreDelta: latest.completionPct - first.completionPct,
+      improved: improved, regressed: regressed, persistent: persistent,
+      auditsCount: audits.length,
+      daysSinceFirst: Math.max(0, Math.round((Date.now()-first.finishedAt)/86400000)),
+      actionsRaised: allActions.length, actionsResolved: resolvedActions.length, actionsOpen: openActionsForStore(p.name).length
+    };
+  }
+
+  function renderProgressSummary(p, audits){
+    var sum = computeProgressSummary(p, audits);
+    if (!sum) return '';
+    var tone = sum.scoreDelta>0 ? 'good' : (sum.scoreDelta<0 ? 'bad' : 'warn');
+    var arrow = sum.scoreDelta>0 ? '▲' : (sum.scoreDelta<0 ? '▼' : '—');
+    function chipGroup(arr, chipTone, emptyText){
+      if (!arr.length) return '<div class="helper" style="margin:2px 0 0;">'+emptyText+'</div>';
+      return '<div class="progchips">' + arr.map(function(it){
+        return '<span class="progchip '+chipTone+'" title="'+esc(it.section)+' — '+esc(it.text)+'"><span class="s">'+esc(it.section)+':</span>'+esc(it.text)+'</span>';
+      }).join('') + '</div>';
+    }
+    return '<h2 style="font-size:15px;margin-bottom:6px;">Progress Summary</h2>' +
+      '<div class="card" style="padding:14px 16px;margin-bottom:16px;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">' +
+          '<span style="font-size:13px;color:var(--ink-600);">Since first audit ('+fmtDateShort(sum.first.finishedAt)+')</span>' +
+          '<span class="pill '+tone+'">'+arrow+' '+(sum.scoreDelta>0?'+':'')+sum.scoreDelta+' pts — '+sum.first.completionPct+'% → '+sum.latest.completionPct+'%</span>' +
+        '</div>' +
+        '<div class="statgrid" style="margin:0 0 14px;">' +
+          '<div class="stattile"><div class="v">'+sum.auditsCount+'</div><div class="k">Audits Done</div></div>' +
+          '<div class="stattile"><div class="v">'+sum.daysSinceFirst+'</div><div class="k">Days Tracked</div></div>' +
+          '<div class="stattile"><div class="v" style="'+(sum.actionsOpen?'color:var(--bad);':'')+'">'+sum.actionsOpen+'</div><div class="k">Open Issues</div></div>' +
+          '<div class="stattile"><div class="v">'+sum.actionsResolved+'/'+sum.actionsRaised+'</div><div class="k">Issues Resolved</div></div>' +
+        '</div>' +
+        '<div style="margin-bottom:10px;"><div style="font-weight:700;font-size:12px;color:var(--good);margin-bottom:5px;">✓ IMPROVED ('+sum.improved.length+')</div>'+chipGroup(sum.improved,'good','Nothing new fixed yet.')+'</div>' +
+        '<div style="margin-bottom:10px;"><div style="font-weight:700;font-size:12px;color:var(--bad);margin-bottom:5px;">⚠ REGRESSED ('+sum.regressed.length+')</div>'+chipGroup(sum.regressed,'bad','Nothing has slipped.')+'</div>' +
+        '<div><div style="font-weight:700;font-size:12px;color:var(--ink-600);margin-bottom:5px;">○ STILL PENDING ('+sum.persistent.length+')</div>'+chipGroup(sum.persistent,'neutral','No long-standing issues.')+'</div>' +
+      '</div>';
+  }
+
   function renderProspectDetail(){
     var p = findProspect(state.activeProspectId);
     if (!p){ state.activeProspectId = null; return renderProspects(); }
@@ -1602,6 +1665,7 @@
       '<div class="eyebrow">Prospect</div>' +
       '<h1 style="font-size:24px;margin-top:6px;margin-bottom:16px;">'+esc(p.name||'Unnamed prospect')+serviceBadgeHtml(p)+'</h1>' +
       renderClientHealthCard(p, audits) +
+      renderProgressSummary(p, audits) +
       '<div class="formstack">' +
         '<div class="field"><label for="pName">Prospect / store name</label><input id="pName" data-bind-prospect="name" value="'+esc(p.name)+'" placeholder="e.g. Northside Grill"></div>' +
         (similarProspectName ? '<div class="helper" style="margin-top:-10px;color:var(--accent-ink);">Did you mean <b>'+esc(similarProspectName)+'</b>? A similar store already exists — <span style="text-decoration:underline;cursor:pointer;" data-action="use-similar-prospectname" data-name="'+esc(similarProspectName)+'">use that name</span> to avoid splitting its history.</div>' : '') +
