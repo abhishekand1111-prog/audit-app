@@ -92,7 +92,7 @@
   .btn-danger{color:var(--bad);}
   .btn-sm{padding:6px 11px; font-size:13px; border-radius:var(--r-s);}
   .field label{display:block; font-size:12.5px; font-weight:700; color:var(--ink-600); margin-bottom:6px;}
-  .field input, .field textarea, .field select{width:100%; border:1px solid var(--line-strong); background:var(--surface); color:var(--ink); border-radius:var(--r-s); padding:10px 12px; font-size:15px; font-family:inherit;}
+  .field input, .field textarea, .field select{width:100%; border:1px solid var(--line-strong); background:var(--surface); color:var(--ink); border-radius:var(--r-s); padding:10px 12px; font-size:16px; font-family:inherit;}
   .field select{appearance:none; -webkit-appearance:none; background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5'><polyline points='6 9 12 15 18 9'/></svg>"); background-repeat:no-repeat; background-position:right 12px center; padding-right:34px;}
   .field input:focus, .field textarea:focus, .field select:focus, button:focus-visible, .navbtn:focus-visible{outline:2px solid var(--accent); outline-offset:1px;}
   input:focus-visible, textarea:focus-visible, select:focus-visible{outline:2px solid var(--accent); outline-offset:1px;}
@@ -154,7 +154,7 @@
   .itemtext{font-size:14.5px; line-height:1.4; padding-top:2px; cursor:default;}
   .itemtext.checked{color:var(--ink-600);}
   .itemtext.na{color:var(--ink-400); text-decoration:line-through;}
-  .itemvalue{display:block; margin-top:6px; width:100%; border:1px solid var(--line-strong); border-radius:var(--r-s); padding:6px 10px; font-size:13px; background:var(--surface); color:var(--ink);}
+  .itemvalue{display:block; margin-top:6px; width:100%; border:1px solid var(--line-strong); border-radius:var(--r-s); padding:6px 10px; font-size:16px; background:var(--surface); color:var(--ink);}
   .naBtn{font-size:11px; font-weight:700; color:var(--ink-400); background:none; border:1px solid var(--line-strong); border-radius:20px; padding:4px 9px; flex:none; transition:background .15s, color .15s, border-color .15s;}
   .naBtn:hover:not(.on){background:var(--surface-2); color:var(--ink-600);}
   .naBtn.on{color:var(--accent-ink); border-color:var(--accent); background:var(--accent-soft);}
@@ -191,7 +191,7 @@
   .lookuprow{display:flex; align-items:center; flex-wrap:wrap; gap:8px; row-gap:6px; padding:9px 0; border-bottom:1px solid var(--line);}
   .lookuprow:last-child{border-bottom:none;}
   .lookuprow.done .lookuptext{text-decoration:line-through; color:var(--ink-400);}
-  .lookuptext{flex:1 1 140px; min-width:0; border:none; background:none; color:var(--ink); font-size:14px; padding:4px 0; font-family:inherit; resize:none; overflow-y:auto; max-height:120px; white-space:pre-wrap; word-wrap:break-word; line-height:1.4;}
+  .lookuptext{flex:1 1 140px; min-width:0; border:none; background:none; color:var(--ink); font-size:16px; padding:4px 0; font-family:inherit; resize:none; overflow-y:auto; max-height:120px; white-space:pre-wrap; word-wrap:break-word; line-height:1.4;}
   .lookuptext:focus{outline:none;}
   .lookuprow select{border:1px solid var(--line-strong); border-radius:var(--r-s); background:var(--surface); color:var(--ink-600); font-size:11.5px; padding:5px 6px; flex:none; transition:border-color .15s;}
   .lookupglimpse-item{display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--line); font-size:13.5px;}
@@ -258,28 +258,28 @@
   /* corrective actions */
   .careow{display:flex; align-items:center; gap:8px; padding:8px 0; border-top:1px solid var(--line);}
   .careow:first-child{border-top:none;}
-  .careow input[type="text"]{flex:1; border:none; border-bottom:1px dashed var(--line-strong); background:none; color:var(--ink); font-size:14px; padding:5px 2px;}
+  .careow input[type="text"]{flex:1; border:none; border-bottom:1px dashed var(--line-strong); background:none; color:var(--ink); font-size:16px; padding:5px 2px;}
   .careow select{flex:1; min-width:0; border:none; border-bottom:1px dashed var(--line-strong); background:none; color:var(--ink); font-size:14px; padding:5px 20px 5px 2px; font-family:inherit; appearance:none; -webkit-appearance:none; background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5'><polyline points='6 9 12 15 18 9'/></svg>"); background-repeat:no-repeat; background-position:right 2px center;}
   .careow input[type="date"]{border:1px solid var(--line-strong); border-radius:var(--r-s); padding:6px 8px; font-size:12.5px; background:var(--surface); color:var(--ink); width:132px; flex:none;}
   .cacard2{padding:12px 16px; margin-bottom:10px;}
   .gradebandrow{display:flex; align-items:center; gap:8px; padding:8px 0; border-top:1px solid var(--line);}
   .gradebandrow:first-child{border-top:none;}
-  .gradebandrow input[type="number"]{width:64px; border:1px solid var(--line-strong); border-radius:var(--r-s); padding:6px 8px; font-size:13px; background:var(--surface); color:var(--ink); flex:none;}
-  .gradebandrow input[type="text"]{flex:1; border:none; border-bottom:1px dashed var(--line-strong); background:none; color:var(--ink); font-size:14px; padding:5px 2px;}
+  .gradebandrow input[type="number"]{width:64px; border:1px solid var(--line-strong); border-radius:var(--r-s); padding:6px 8px; font-size:16px; background:var(--surface); color:var(--ink); flex:none;}
+  .gradebandrow input[type="text"]{flex:1; border:none; border-bottom:1px dashed var(--line-strong); background:none; color:var(--ink); font-size:16px; padding:5px 2px;}
   .gradebandrow select{border:1px solid var(--line-strong); border-radius:var(--r-s); padding:6px 8px; font-size:12.5px; background:var(--surface); color:var(--ink); flex:none;}
 
   /* editor */
   .edsection{padding:14px 16px; margin-bottom:12px;}
   .edhead{display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;}
-  .edhead input{font-family:var(--font-d); font-weight:700; font-size:15px; border:none; background:none; color:var(--ink); padding:2px 0; width:100%;}
+  .edhead input{font-family:var(--font-d); font-weight:700; font-size:16px; border:none; background:none; color:var(--ink); padding:2px 0; width:100%;}
   .editem{display:flex; align-items:center; gap:8px; padding:6px 0;}
-  .editem input{flex:1; border:none; border-bottom:1px dashed var(--line-strong); background:none; color:var(--ink); font-size:14px; padding:5px 2px;}
+  .editem input{flex:1; border:none; border-bottom:1px dashed var(--line-strong); background:none; color:var(--ink); font-size:16px; padding:5px 2px;}
   .iconbtn{background:none; border:none; color:var(--ink-400); padding:4px; border-radius:6px; flex:none; transition:background .15s, color .15s;}
   .iconbtn:hover{color:var(--bad); background:var(--bad-soft);}
   .addrow{display:flex; gap:8px; margin-top:6px;}
-  .addrow input{flex:1; border:1px solid var(--line-strong); border-radius:var(--r-s); padding:8px 10px; font-size:13.5px; background:var(--surface); color:var(--ink);}
+  .addrow input{flex:1; border:1px solid var(--line-strong); border-radius:var(--r-s); padding:8px 10px; font-size:16px; background:var(--surface); color:var(--ink);}
   .editem-sub{display:flex; align-items:center; gap:8px; padding:0 0 8px; flex-wrap:wrap;}
-  .iteminfolabel{flex:1; min-width:140px; border:1px solid var(--line-strong); border-radius:var(--r-s); padding:6px 8px; font-size:12.5px; background:var(--surface); color:var(--ink);}
+  .iteminfolabel{flex:1; min-width:140px; border:1px solid var(--line-strong); border-radius:var(--r-s); padding:6px 8px; font-size:16px; background:var(--surface); color:var(--ink);}
 
   .backrow{display:flex; align-items:center; gap:8px; margin-bottom:14px; color:var(--ink-600); font-size:13px; font-weight:600; cursor:pointer; border:none; background:none; padding:0; transition:color .15s;}
   .backrow:hover{color:var(--ink);}
@@ -1193,7 +1193,7 @@
       var overdue = !isDone && a.dueDate && a.dueDate < todayStr;
       return '<div class="card cacard2">' +
         '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">' +
-          '<input type="text" data-ca-edit-field="description" data-ca-edit-id="'+a.id+'" value="'+esc(a.description||'')+'" placeholder="What needs fixing?" style="flex:1;border:none;background:none;font-weight:700;color:var(--ink);font-size:15px;padding:2px 0;">' +
+          '<input type="text" data-ca-edit-field="description" data-ca-edit-id="'+a.id+'" value="'+esc(a.description||'')+'" placeholder="What needs fixing?" style="flex:1;border:none;background:none;font-weight:700;color:var(--ink);font-size:16px;padding:2px 0;">' +
           '<button class="btn btn-ghost btn-sm" style="flex:none;" data-action="'+(isDone?'reopen-action':'resolve-action')+'" data-id="'+a.id+'">'+(isDone?'Reopen':'Mark done')+'</button>' +
         '</div>' +
         '<div class="histmeta">'+esc(a.storeName||'Unnamed store')+(a.storeLocation?' · '+esc(a.storeLocation):'')+'</div>' +
@@ -1551,24 +1551,13 @@
         '</div>' +
         renderClientTimeline(p, audits) +
         '<h2 style="font-size:15px;margin-bottom:6px;">Post-Audit Follow-up</h2>' +
-        '<div class="card" style="padding:14px 16px;margin-bottom:20px;border:1.5px solid var(--accent);background:var(--accent-soft);">' +
-          '<div class="field"><label for="pServices">Class of service</label><select id="pServices" data-bind-prospect="servicesOffered"><option value="">— Not selected (N/A) —</option>'+state.serviceClasses.map(function(sc){ return '<option value="'+sc.id+'" '+(p.servicesOffered===sc.id?'selected':'')+'>No. '+sc.number+' — '+esc(sc.label)+'</option>'; }).join('')+'</select></div>' +
-          '<div class="field">' +
-            '<label>Pricing type</label>' +
-            '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
-              '<button type="button" class="naBtn '+(p.pricingType==='onetime'?'on':'')+'" data-action="set-pricing-type" data-val="onetime">One-time</button>' +
-              '<button type="button" class="naBtn '+(p.pricingType==='retainer'?'on':'')+'" data-action="set-pricing-type" data-val="retainer">Retainer</button>' +
-            '</div>' +
+        '<div class="card" style="padding:16px;margin-bottom:20px;border:1.5px solid var(--accent);background:var(--accent-soft);">' +
+          '<div class="formstack" style="gap:14px;margin-bottom:0;">' +
+            '<div class="field" style="margin-bottom:0;"><label for="pServices">Class of service</label><select id="pServices" data-bind-prospect="servicesOffered"><option value="">— Not selected (N/A) —</option>'+state.serviceClasses.map(function(sc){ return '<option value="'+sc.id+'" '+(p.servicesOffered===sc.id?'selected':'')+'>No. '+sc.number+' — '+esc(sc.label)+'</option>'; }).join('')+'</select></div>' +
+            '<div class="field" style="margin-bottom:0;"><label for="pPricingType">Pricing type</label><select id="pPricingType" data-action="set-pricing-type-select"><option value="">— Not set —</option><option value="onetime" '+(p.pricingType==='onetime'?'selected':'')+'>One-time</option><option value="retainer" '+(p.pricingType==='retainer'?'selected':'')+'>Retainer</option></select></div>' +
+            '<div class="field" style="margin-bottom:0;"><label for="pProposalStatus">Solution proposed?</label><select id="pProposalStatus" data-action="set-proposal-status-select"><option value="">— Not set —</option><option value="proposed" '+(p.proposalStatus==='proposed'?'selected':'')+'>Proposed</option><option value="not_offered" '+(p.proposalStatus==='not_offered'?'selected':'')+'>Not offered right now</option><option value="meeting_scheduled" '+(p.proposalStatus==='meeting_scheduled'?'selected':'')+'>Meeting scheduled later</option></select></div>' +
+            (p.proposalStatus==='meeting_scheduled' ? '<div class="field" style="margin-bottom:0;"><label for="pMeetingDate">Date of proposal / meeting</label><input id="pMeetingDate" type="date" data-bind-prospect="proposalMeetingDate" value="'+esc(p.proposalMeetingDate||'')+'"></div>' : '') +
           '</div>' +
-          '<div class="field" style="margin-bottom:'+(p.proposalStatus==='meeting_scheduled'?'12px':'0')+';">' +
-            '<label>Solution proposed?</label>' +
-            '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
-              '<button type="button" class="naBtn '+(p.proposalStatus==='proposed'?'on':'')+'" data-action="set-proposal-status" data-val="proposed">Proposed</button>' +
-              '<button type="button" class="naBtn '+(p.proposalStatus==='not_offered'?'on':'')+'" data-action="set-proposal-status" data-val="not_offered">Not offered right now</button>' +
-              '<button type="button" class="naBtn '+(p.proposalStatus==='meeting_scheduled'?'on':'')+'" data-action="set-proposal-status" data-val="meeting_scheduled">Meeting scheduled later</button>' +
-            '</div>' +
-          '</div>' +
-          (p.proposalStatus==='meeting_scheduled' ? '<div class="field" style="margin-bottom:0;"><label for="pMeetingDate">Date of proposal / meeting</label><input id="pMeetingDate" type="date" data-bind-prospect="proposalMeetingDate" value="'+esc(p.proposalMeetingDate||'')+'"></div>' : '') +
         '</div>' +
         '<h2 style="font-size:15px;margin-bottom:6px;">Proposal &amp; conversion</h2>' +
         '<div class="formstack">' +
@@ -1724,7 +1713,7 @@
     return '<main>' +
       '<div class="eyebrow">Search</div>' +
       '<h1 style="font-size:26px;margin-top:6px;margin-bottom:14px;">Search everything</h1>' +
-      '<input type="text" data-action="search-input" value="'+esc(state.searchQuery||'')+'" placeholder="Search prospects, audits, actions, lookup items…" style="width:100%;border:1px solid var(--line-strong);border-radius:var(--r-s);padding:12px 14px;font-size:15px;background:var(--surface);color:var(--ink);margin-bottom:6px;" autofocus>' +
+      '<input type="text" data-action="search-input" value="'+esc(state.searchQuery||'')+'" placeholder="Search prospects, audits, actions, lookup items…" style="width:100%;border:1px solid var(--line-strong);border-radius:var(--r-s);padding:12px 14px;font-size:16px;background:var(--surface);color:var(--ink);margin-bottom:6px;" autofocus>' +
       '<div id="searchResultsContainer">' + renderSearchResultsHtml() + '</div>' +
     '</main>';
   }
@@ -2233,14 +2222,6 @@
       var rp = findProspect(state.activeProspectId);
       if (rp){ rp.declined = false; rp.declinedAt = null; persistProspects(); render(); }
     }
-    else if (action==='set-pricing-type'){
-      var ptp = findProspect(state.activeProspectId);
-      if (ptp){ ptp.pricingType = (ptp.pricingType===t.dataset.val) ? '' : t.dataset.val; persistProspects(); render(); }
-    }
-    else if (action==='set-proposal-status'){
-      var psp = findProspect(state.activeProspectId);
-      if (psp){ psp.proposalStatus = (psp.proposalStatus===t.dataset.val) ? '' : t.dataset.val; persistProspects(); render(); }
-    }
     else if (action==='set-prospect-category'){
       var ctp = findProspect(state.activeProspectId);
       if (ctp){ ctp.category = (ctp.category===t.dataset.val) ? '' : t.dataset.val; persistProspects(); render(); }
@@ -2598,7 +2579,15 @@
 
   app.addEventListener('change', function(e){
     var el = e.target;
-    if (el.dataset.action==='add-ca-from-select'){
+    if (el.dataset.action==='set-pricing-type-select'){
+      var ptp = findProspect(state.activeProspectId);
+      if (ptp){ ptp.pricingType = el.value; persistProspects(); }
+    }
+    else if (el.dataset.action==='set-proposal-status-select'){
+      var psp = findProspect(state.activeProspectId);
+      if (psp){ psp.proposalStatus = el.value; persistProspects(); render(); }
+    }
+    else if (el.dataset.action==='add-ca-from-select'){
       var itemId = el.value;
       if (!itemId || !state.draft) return;
       var d = state.draft;
