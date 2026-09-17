@@ -146,6 +146,8 @@
   .item{display:flex; align-items:flex-start; gap:11px; padding:10px 2px; border-top:1px solid var(--line);}
   .item:first-child{border-top:none;}
   .item.priorflag{background:var(--bad-soft); margin:0 -12px; padding:10px 12px; border-radius:8px;}
+  .item.hasanswer{background:var(--accent-soft); margin:2px -12px; padding:10px 12px; border-radius:8px; border-top-color:transparent;}
+  .item.hasanswer.priorflag{background:var(--bad-soft);}
   .secwarn{display:inline-block; font-size:10.5px; font-weight:700; letter-spacing:.02em; color:var(--bad); background:var(--bad-soft); padding:2px 9px; border-radius:20px; margin-left:8px; vertical-align:middle;}
   .chk{width:22px; height:22px; border-radius:6px; border:1.5px solid var(--line-strong); background:var(--surface); flex:none; margin-top:1px; display:flex; align-items:center; justify-content:center; transition:background .12s, border-color .12s;}
   .chk.checked{background:var(--good); border-color:var(--good); color:#fff;}
@@ -154,7 +156,10 @@
   .itemtext{font-size:14.5px; line-height:1.4; padding-top:2px; cursor:default;}
   .itemtext.checked{color:var(--ink-600);}
   .itemtext.na{color:var(--ink-400); text-decoration:line-through;}
-  .itemvalue{display:block; margin-top:6px; width:100%; border:1px solid var(--line-strong); border-radius:var(--r-s); padding:6px 10px; font-size:16px; background:var(--surface); color:var(--ink);}
+  .answerblock{margin-top:8px;}
+  .answerlabel{display:block; font-size:10.5px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--accent-ink); margin-bottom:4px;}
+  .itemvalue{display:block; width:100%; border:1px solid var(--line-strong); border-radius:var(--r-s); padding:7px 10px; font-size:16px; background:var(--surface); color:var(--ink); transition:border-color .12s, box-shadow .12s;}
+  .itemvalue:focus-visible{border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); outline:none;}
   .naBtn{font-size:11px; font-weight:700; color:var(--ink-400); background:none; border:1px solid var(--line-strong); border-radius:20px; padding:4px 9px; flex:none; transition:background .15s, color .15s, border-color .15s;}
   .naBtn:hover:not(.on){background:var(--surface-2); color:var(--ink-600);}
   .naBtn.on{color:var(--accent-ink); border-color:var(--accent); background:var(--accent-soft);}
@@ -272,13 +277,15 @@
   .edsection{padding:14px 16px; margin-bottom:12px;}
   .edhead{display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;}
   .edhead input{font-family:var(--font-d); font-weight:700; font-size:16px; border:none; background:none; color:var(--ink); padding:2px 0; width:100%;}
-  .editem{display:flex; align-items:center; gap:8px; padding:6px 0;}
-  .editem input{flex:1; border:none; border-bottom:1px dashed var(--line-strong); background:none; color:var(--ink); font-size:16px; padding:5px 2px;}
   .iconbtn{background:none; border:none; color:var(--ink-400); padding:4px; border-radius:6px; flex:none; transition:background .15s, color .15s;}
   .iconbtn:hover{color:var(--bad); background:var(--bad-soft);}
   .addrow{display:flex; gap:8px; margin-top:6px;}
   .addrow input{flex:1; border:1px solid var(--line-strong); border-radius:var(--r-s); padding:8px 10px; font-size:16px; background:var(--surface); color:var(--ink);}
-  .editem-sub{display:flex; align-items:center; gap:8px; padding:0 0 8px; flex-wrap:wrap;}
+  .itemrow{border:1px solid var(--line); border-radius:var(--r-s); padding:8px 10px; margin:8px 0; background:var(--surface); transition:border-color .15s, background .15s;}
+  .itemrow.hasanswer{border-color:var(--accent); background:var(--accent-soft);}
+  .itemrow-top{display:flex; align-items:center; gap:8px;}
+  .itemrow-top input{flex:1; border:none; border-bottom:1px dashed var(--line-strong); background:none; color:var(--ink); font-size:16px; padding:5px 2px; font-weight:600;}
+  .itemrow-sub{display:flex; align-items:center; gap:8px; padding-top:8px; flex-wrap:wrap;}
   .iteminfolabel{flex:1; min-width:140px; border:1px solid var(--line-strong); border-radius:var(--r-s); padding:6px 8px; font-size:16px; background:var(--surface); color:var(--ink);}
 
   .backrow{display:flex; align-items:center; gap:8px; margin-bottom:14px; color:var(--ink-600); font-size:13px; font-weight:600; cursor:pointer; border:none; background:none; padding:0; transition:color .15s;}
@@ -740,14 +747,14 @@
       var itemsHtml = sec.items.map(function(it){
         var checked = it.state==='checked', na = it.state==='na';
         var flagged = !!priorSet[it.id];
-        return '<div class="item '+(flagged?'priorflag':'')+'">' +
+        return '<div class="item '+(flagged?'priorflag':'')+' '+(it.requiresInfo?'hasanswer':'')+'">' +
           '<button class="chk '+(checked?'checked':'')+' '+(na?'na':'')+'" data-action="toggle-item" data-sec="'+sec.id+'" data-item="'+it.id+'" aria-label="Toggle item">' +
             (checked?'✓':(na?'–':'')) +
           '</button>' +
           '<div class="itemcol">' +
             '<div class="itemtext '+(checked?'checked':'')+' '+(na?'na':'')+'">'+(flagged?'⚠ ':'')+esc(it.text)+'</div>' +
             (flagged ? '<div class="histmeta" style="color:var(--bad);">Flagged unresolved on last visit</div>' : '') +
-            (it.requiresInfo ? '<input type="text" class="itemvalue" data-bind-item="value" data-sec="'+sec.id+'" data-item="'+it.id+'" placeholder="'+esc(it.infoLabel||'Enter value')+'" value="'+esc(it.value||'')+'">' : '') +
+            (it.requiresInfo ? '<div class="answerblock"><label class="answerlabel">📝 '+esc(it.infoLabel||'Recorded answer')+'</label><input type="text" class="itemvalue" data-bind-item="value" data-sec="'+sec.id+'" data-item="'+it.id+'" placeholder="'+esc(it.infoLabel||'Enter value')+'" value="'+esc(it.value||'')+'"></div>' : '') +
           '</div>' +
           '<button class="naBtn '+(na?'on':'')+'" data-action="toggle-na" data-sec="'+sec.id+'" data-item="'+it.id+'" title="Not Available — counts against the score">N/A</button>' +
         '</div>';
@@ -1068,13 +1075,15 @@
             '<button class="iconbtn" data-action="delete-section" data-sec="'+sec.id+'" title="Delete section">✕</button>' +
           '</div>' +
           sec.items.map(function(it){
-            return '<div class="editem">' +
-              '<input value="'+esc(it.text)+'" data-action="rename-item" data-sec="'+sec.id+'" data-item="'+it.id+'">' +
-              '<button class="iconbtn" data-action="delete-item" data-sec="'+sec.id+'" data-item="'+it.id+'" title="Delete item">✕</button>' +
-            '</div>' +
-            '<div class="editem-sub">' +
-              '<button type="button" class="naBtn '+(it.requiresInfo?'on':'')+'" data-action="toggle-requires-info" data-sec="'+sec.id+'" data-item="'+it.id+'">Needs value</button>' +
-              (it.requiresInfo ? '<input type="text" class="iteminfolabel" data-action="edit-info-label" data-sec="'+sec.id+'" data-item="'+it.id+'" value="'+esc(it.infoLabel||'')+'" placeholder="e.g. Fridge temp °C">' : '') +
+            return '<div class="itemrow '+(it.requiresInfo?'hasanswer':'')+'">' +
+              '<div class="itemrow-top">' +
+                '<input value="'+esc(it.text)+'" data-action="rename-item" data-sec="'+sec.id+'" data-item="'+it.id+'">' +
+                '<button class="iconbtn" data-action="delete-item" data-sec="'+sec.id+'" data-item="'+it.id+'" title="Delete item">✕</button>' +
+              '</div>' +
+              '<div class="itemrow-sub">' +
+                '<button type="button" class="naBtn '+(it.requiresInfo?'on':'')+'" data-action="toggle-requires-info" data-sec="'+sec.id+'" data-item="'+it.id+'">📝 Requires an answer</button>' +
+                (it.requiresInfo ? '<input type="text" class="iteminfolabel" data-action="edit-info-label" data-sec="'+sec.id+'" data-item="'+it.id+'" value="'+esc(it.infoLabel||'')+'" placeholder="e.g. Fridge temp °C">' : '') +
+              '</div>' +
             '</div>';
           }).join('') +
           '<div class="addrow"><input placeholder="Add a checklist item…" data-newitem-for="'+sec.id+'"><button class="btn btn-ghost btn-sm" data-action="add-item" data-sec="'+sec.id+'">Add</button></div>' +
