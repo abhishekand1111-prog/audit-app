@@ -1414,6 +1414,98 @@
     '</main>';
   }
 
+  function computeClientNextAction(p, audits){
+    var todayStr = todayISO();
+    var nowMs = Date.now();
+    var openIssues = openActionsForStore(p.name);
+    if (p.declined) return { tone:'bad', icon:'✗', text:'Marked as not converted'+(p.followUpDate?' — follow up '+fmtDateShort(new Date(p.followUpDate+'T00:00:00').getTime()):'') };
+    if (audits.length){
+      var key = (p.name||'').trim().toLowerCase();
+      var due = computeDueList().filter(function(x){ return x.key===key; })[0];
+      if (due){
+        if (due.dueAt < nowMs) return { tone:'bad', icon:'⏰', text:'Re-audit overdue since '+fmtDateShort(due.dueAt) };
+        var diso = new Date(due.dueAt); var dstr = diso.getFullYear()+'-'+String(diso.getMonth()+1).padStart(2,'0')+'-'+String(diso.getDate()).padStart(2,'0');
+        if (dstr===todayStr) return { tone:'warn', icon:'🗓️', text:'Re-audit due today' };
+      }
+      if (p.proposalStatus==='meeting_scheduled' && p.proposalMeetingDate && p.proposalMeetingDate<=todayStr && !p.converted){
+        var mOverdue = p.proposalMeetingDate < todayStr;
+        return { tone: mOverdue?'bad':'warn', icon:'🤝', text:'Proposal meeting '+(mOverdue?'was due '+fmtDateShort(new Date(p.proposalMeetingDate+'T00:00:00').getTime()):'due today') };
+      }
+      if (openIssues.length) return { tone:'warn', icon:'⚠', text: openIssues.length+' unresolved issue'+(openIssues.length>1?'s':'')+' from last visit — worth a check-in' };
+      if (due && due.daysUntil<=7) return { tone:'accent', icon:'🗓️', text:'Re-audit due in '+Math.max(due.daysUntil,0)+' day'+(due.daysUntil===1?'':'s') };
+      if (!p.converted && !p.proposalStatus) return { tone:'accent', icon:'📝', text:'Audit done — log a proposal to move this forward' };
+      return { tone:'good', icon:'✓', text:'All caught up' };
+    }
+    if (p.plannedAuditDate && p.plannedAuditDate<=todayStr){
+      return { tone: p.plannedAuditDate<todayStr?'bad':'warn', icon:'⭐', text:'Scheduled audit '+(p.plannedAuditDate<todayStr?'was due '+fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime()):'due today')+', needs check-in' };
+    }
+    return { tone:'accent', icon:'▶', text:'No audit yet — start one to kick things off' };
+  }
+
+  function renderClientHealthCard(p, audits){
+    var openIssues = openActionsForStore(p.name);
+    var last = audits[0];
+    var totalRevenue = audits.reduce(function(n,h){ return n+(h.pricing?h.pricing.total:0); },0);
+    var na = '<span style="color:var(--ink-400);">—</span>';
+    var next = computeClientNextAction(p, audits);
+    var toneColor = { bad:'var(--bad)', warn:'var(--accent)', good:'var(--good)', accent:'var(--accent)' };
+    return '<div class="card" style="padding:14px 16px;margin-bottom:10px;">' +
+      '<div class="statgrid" style="margin:0;">' +
+        '<div class="stattile"><div class="v">'+(last?fmtDateShort(last.finishedAt):na)+'</div><div class="k">Last Audit</div></div>' +
+        '<div class="stattile"><div class="v">'+(last?last.completionPct+'%':na)+'</div><div class="k">Latest Score</div></div>' +
+        '<div class="stattile"><div class="v" style="'+(openIssues.length?'color:var(--bad);':'')+'">'+openIssues.length+'</div><div class="k">Open Issues</div></div>' +
+        '<div class="stattile"><div class="v">'+esc(state.pricing.currency)+totalRevenue+'</div><div class="k">Total Revenue</div></div>' +
+      '</div>' +
+    '</div>' +
+    '<div style="display:flex; align-items:flex-start; gap:8px; padding:10px 12px; margin-bottom:16px; border-radius:var(--r-m); border-left:3px solid '+toneColor[next.tone]+'; background:var(--surface-2);">' +
+      '<span>'+next.icon+'</span><span style="flex:1; font-size:13.5px; font-weight:600; line-height:1.4;">'+esc(next.text)+'</span>' +
+    '</div>';
+  }
+
+  function buildClientTimeline(p, audits){
+    var key = (p.name||'').trim().toLowerCase();
+    var events = [];
+    audits.forEach(function(h){ events.push({ t: h.finishedAt, type:'audit', data:h }); });
+    state.correctiveActions.filter(function(a){ return (a.storeName||'').trim().toLowerCase()===key; }).forEach(function(a){
+      if (a.createdAt) events.push({ t:a.createdAt, type:'action-created', data:a });
+      if (a.done && a.resolvedAt) events.push({ t:a.resolvedAt, type:'action-resolved', data:a });
+    });
+    if (p.convertedAt) events.push({ t:p.convertedAt, type:'converted', data:p });
+    if (p.declinedAt) events.push({ t:p.declinedAt, type:'declined', data:p });
+    if (p.createdAt) events.push({ t:p.createdAt, type:'added', data:p });
+    events.sort(function(a,b){ return b.t-a.t; });
+    return events;
+  }
+
+  function renderClientTimeline(p, audits){
+    var events = buildClientTimeline(p, audits);
+    if (!events.length) return '';
+    return '<div style="margin-bottom:20px;">' +
+      events.map(function(e){
+        var d = e.data;
+        if (e.type==='audit'){
+          return '<div class="card histcard" data-action="view-audit" data-id="'+d.id+'">' +
+            '<div class="histtop"><span class="badge">'+esc((state.templates[d.type]||{}).label||d.type)+' audit</span><span class="histpct">'+d.completionPct+'%'+(d.grade?' · <span class="pill '+esc(d.grade.tone)+'">'+esc(d.grade.label)+'</span>':'')+'</span></div>' +
+            '<div class="histmeta" style="margin-top:8px;">'+fmtDateShort(e.t)+' · Tap to view full report</div>' +
+          '</div>';
+        }
+        if (e.type==='action-created'){
+          return '<div class="card histcard" style="cursor:default;"><div class="histtop"><span>⚠️ Corrective action logged</span></div><div class="histmeta" style="margin-top:8px;">'+esc(d.description||'(unspecified)')+' · '+fmtDateShort(e.t)+'</div></div>';
+        }
+        if (e.type==='action-resolved'){
+          return '<div class="card histcard" style="cursor:default;"><div class="histtop"><span>✓ Issue fixed</span></div><div class="histmeta" style="margin-top:8px;">'+esc(d.description||'(unspecified)')+' · '+fmtDateShort(e.t)+'</div></div>';
+        }
+        if (e.type==='converted'){
+          return '<div class="card histcard" style="cursor:default;border:1.5px solid var(--good);background:var(--good-soft);"><div class="histtop"><span>🎉 Converted to client</span></div><div class="histmeta" style="margin-top:8px;">'+fmtDateShort(e.t)+'</div></div>';
+        }
+        if (e.type==='declined'){
+          return '<div class="card histcard" style="cursor:default;"><div class="histtop"><span>✗ Marked as not converted</span></div><div class="histmeta" style="margin-top:8px;">'+fmtDateShort(e.t)+'</div></div>';
+        }
+        return '<div class="card histcard" style="cursor:default;"><div class="histtop"><span>➕ Added to pipeline</span></div><div class="histmeta" style="margin-top:8px;">'+fmtDateShort(e.t)+'</div></div>';
+      }).join('') +
+    '</div>';
+  }
+
   function renderProspectDetail(){
     var p = findProspect(state.activeProspectId);
     if (!p){ state.activeProspectId = null; return renderProspects(); }
@@ -1422,6 +1514,7 @@
       '<button class="backrow" data-action="back-to-prospects">← Back to prospects</button>' +
       '<div class="eyebrow">Prospect</div>' +
       '<h1 style="font-size:24px;margin-top:6px;margin-bottom:16px;">'+esc(p.name||'Unnamed prospect')+serviceBadgeHtml(p)+'</h1>' +
+      renderClientHealthCard(p, audits) +
       '<div class="formstack">' +
         '<div class="field"><label for="pName">Prospect / store name</label><input id="pName" data-bind-prospect="name" value="'+esc(p.name)+'" placeholder="e.g. Northside Grill"></div>' +
         '<div style="display:flex; gap:12px;">' +
@@ -1443,17 +1536,10 @@
       '</div>' +
       (audits.length ? (
         '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:6px;">' +
-          '<h2 style="font-size:15px;margin:0;">Audit History ('+audits.length+')</h2>' +
+          '<h2 style="font-size:15px;margin:0;">Timeline</h2>' +
           '<button type="button" class="btn btn-ghost btn-sm" data-action="start-reaudit" data-name="'+esc(p.name)+'" data-location="'+esc(p.location||'')+'" data-type="'+esc(audits[0].type)+'">🔁 Re-audit now</button>' +
         '</div>' +
-        '<div style="margin-bottom:20px;">' +
-          audits.map(function(h){
-            return '<div class="card histcard" data-action="view-audit" data-id="'+h.id+'">' +
-              '<div class="histtop"><span class="badge">'+esc((state.templates[h.type]||{}).label||h.type)+'</span><span class="histpct">'+h.completionPct+'%'+(h.grade?' · <span class="pill '+esc(h.grade.tone)+'">'+esc(h.grade.label)+'</span>':'')+'</span></div>' +
-              '<div class="histmeta" style="margin-top:8px;">'+fmtAuditWhen(h.auditDate,h.auditTime)+' · Tap to view full report</div>' +
-            '</div>';
-          }).join('') +
-        '</div>' +
+        renderClientTimeline(p, audits) +
         '<h2 style="font-size:15px;margin-bottom:6px;">Post-Audit Follow-up</h2>' +
         '<div class="card" style="padding:14px 16px;margin-bottom:20px;border:1.5px solid var(--accent);background:var(--accent-soft);">' +
           '<div class="field"><label for="pServices">Class of service</label><select id="pServices" data-bind-prospect="servicesOffered"><option value="">— Not selected (N/A) —</option>'+state.serviceClasses.map(function(sc){ return '<option value="'+sc.id+'" '+(p.servicesOffered===sc.id?'selected':'')+'>No. '+sc.number+' — '+esc(sc.label)+'</option>'; }).join('')+'</select></div>' +
