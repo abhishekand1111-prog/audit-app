@@ -545,17 +545,22 @@
       var key = (h.storeName||'Unnamed store').trim().toLowerCase();
       if (!latestByStore[key] || h.finishedAt > latestByStore[key].finishedAt) latestByStore[key] = h;
     });
+    var prospectByKey = {};
+    state.prospects.forEach(function(p){ var k=(p.name||'').trim().toLowerCase(); if (k) prospectByKey[k]=p; });
     var todayMs = Date.now();
     return Object.keys(latestByStore).map(function(key){
       var h = latestByStore[key];
+      var pr = prospectByKey[key];
       var intervalDays = (state.schedule[h.type]||{}).intervalDays || 30;
+      var perMonth = pr ? Number(pr.auditsPerMonth) : 0;
+      if (perMonth > 0) intervalDays = Math.max(1, Math.round(30/perMonth));
       var computedDueAt = h.finishedAt + intervalDays*86400000;
       var override = state.reauditOverrides[key];
       var dueAt = override ? new Date(override+'T00:00:00').getTime() : computedDueAt;
       return {
         key: key, storeName: h.storeName, storeLocation: h.storeLocation, type: h.type,
         lastAuditAt: h.finishedAt, dueAt: dueAt, overridden: !!override, overrideDate: override||'',
-        daysUntil: Math.ceil((dueAt-todayMs)/86400000)
+        daysUntil: Math.ceil((dueAt-todayMs)/86400000), intervalDays: intervalDays, customCadence: perMonth>0
       };
     }).sort(function(a,b){ return a.dueAt-b.dueAt; });
   }
@@ -1257,7 +1262,7 @@
         '<div class="histtop"><span class="badge">'+esc(tmpl.label||x.type)+'</span><span class="pill '+tone+'">'+statusText+'</span></div>' +
         '<div style="font-weight:700;margin-top:8px;">'+esc(x.storeName||'Unnamed store')+serviceBadgeHtml(dueProspect)+'</div>' +
         '<div class="histmeta">'+(x.storeLocation?esc(x.storeLocation)+' · ':'')+'Last audited '+fmtDateShort(x.lastAuditAt)+'</div>' +
-        '<div class="histmeta">Next due '+fmtDateShort(x.dueAt)+(x.overridden?' (manually set)':'')+'</div>' +
+        '<div class="histmeta">Next due '+fmtDateShort(x.dueAt)+(x.overridden?' (manually set)':(x.customCadence?' (every '+x.intervalDays+'d — custom cadence)':''))+'</div>' +
         '<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:10px;">' +
           '<input type="date" data-reaudit-key="'+esc(x.key)+'" value="'+esc(x.overrideDate)+'" style="border:1px solid var(--line-strong); border-radius:var(--r-s); padding:6px 8px; font-size:12.5px; background:var(--surface); color:var(--ink);" title="Reschedule this re-audit">' +
           (x.overridden ? '<button type="button" class="btn btn-ghost btn-sm" data-action="clear-reaudit-override" data-key="'+esc(x.key)+'">Reopen schedule</button>' : '') +
@@ -1567,6 +1572,7 @@
             '<div class="field" style="flex:1;"><label for="pPriceMax">Price range — to</label><input id="pPriceMax" type="number" min="0" inputmode="numeric" data-bind-prospect="priceMax" value="'+esc(p.priceMax)+'" placeholder="e.g. 8000"></div>' +
           '</div>' +
           '<div class="field"><label for="pTimeline">Timeline</label><input id="pTimeline" data-bind-prospect="timeline" value="'+esc(p.timeline)+'" placeholder="e.g. Start from Dec 2026, 3-month contract"></div>' +
+          '<div class="field"><label for="pAuditsPerMonth">Audits per month (optional)</label><input id="pAuditsPerMonth" type="number" min="1" inputmode="numeric" data-bind-prospect="auditsPerMonth" value="'+esc(p.auditsPerMonth||'')+'" placeholder="Leave blank for the standard schedule"><div class="helper" style="margin-top:6px;">If this client is audited more than once a month, set how many — re-audit due dates will follow this instead of the standard '+((state.schedule[p.category]||{}).intervalDays||30)+'-day interval.</div></div>' +
         '</div>' +
         '<div class="field">' +
           '<label>Outcome</label>' +
@@ -2146,7 +2152,7 @@
       var newP = { id: uid(), name:'', location:'', address:'', category:'', auditId:null,
         plannedAuditDate:'', checkinNote:'', proposed:'', priceMin:'', priceMax:'', converted:false, convertedAt:null,
         declined:false, declinedAt:null, followUpDate:'', finalPrice:'', timeline:'', createdAt: Date.now(),
-        servicesOffered:'', pricingType:'', proposalStatus:'', proposalMeetingDate:'',
+        servicesOffered:'', pricingType:'', proposalStatus:'', proposalMeetingDate:'', auditsPerMonth:'',
         contactName:'', contactDesignation:'', contactMobile:'' };
       state.prospects.push(newP); persistProspects();
       state.activeProspectId = newP.id; render();
@@ -2308,7 +2314,7 @@
         linkedP = { id: uid(), name: d.storeName, location: d.storeLocation, address:'', category: d.type,
           auditId: rec.id, plannedAuditDate:'', proposed:'', priceMin:'', priceMax:'', converted:false, convertedAt:null,
           declined:false, declinedAt:null, followUpDate:'', finalPrice:'', timeline:'',
-          servicesOffered:'', pricingType:'', proposalStatus:'', proposalMeetingDate:'',
+          servicesOffered:'', pricingType:'', proposalStatus:'', proposalMeetingDate:'', auditsPerMonth:'',
           contactName: d.contactName||'', contactDesignation: d.contactDesignation||'', contactMobile: d.contactMobile||'',
           createdAt: Date.now() };
         state.prospects.unshift(linkedP);
