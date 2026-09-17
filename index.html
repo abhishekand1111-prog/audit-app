@@ -790,12 +790,32 @@
         '<div class="sumrow pricerow"><span class="k" style="font-weight:700;color:var(--ink);">Total</span><span class="pricetotal">'+price.currency+price.total+'</span></div>' +
       '</div>' +
       renderCorrectiveEditor(d) +
+      renderWitnessEditor(d) +
       '<div class="field remarkwrap"><label for="remarkInput">Final remark <span style="color:var(--bad)">*</span></label>' +
         '<textarea id="remarkInput" data-bind="remark" placeholder="Summarise findings, corrective actions and overall condition of the floor…">'+esc(d.remark||'')+'</textarea>' +
         '<div class="helper">A remark is required to mark this audit complete.</div>' +
       '</div>' +
       '<button class="btn btn-primary" style="width:100%;padding:14px;" data-action="complete-audit" '+(canComplete?'':'disabled')+'>Complete Audit</button>' +
     '</main>';
+  }
+
+  function renderWitnessEditor(d){
+    var hasContact = !!(d.contactName||'').trim();
+    var sameAsContact = hasContact && d.witnessSameAsContact!==false;
+    return '<h2 style="font-size:15px;margin-bottom:6px;">Audit witnessed by</h2>' +
+      '<div class="card" style="padding:12px 16px;margin-bottom:20px;">' +
+        (hasContact ?
+          '<button type="button" class="naBtn '+(sameAsContact?'on':'')+'" data-action="toggle-witness-same">'+(sameAsContact?'✓ ':'')+'Same as point of contact</button>' +
+          (sameAsContact ? '<div class="histmeta" style="margin-top:10px;">'+esc(d.contactName)+(d.contactDesignation?' · '+esc(d.contactDesignation):'')+(d.contactMobile?' · '+esc(d.contactMobile):'')+'</div>' : '')
+        : '<div class="helper" style="margin:0 0 10px;">No point of contact was recorded at the start of this audit — add who witnessed it.</div>') +
+        (!sameAsContact ? (
+          '<div class="formstack" style="margin-top:'+(hasContact?'12px':'0')+';">' +
+            '<div class="field"><label for="witnessName">Witness name</label><input id="witnessName" data-bind="witnessName" placeholder="e.g. Priya Sharma" value="'+esc(d.witnessName||'')+'"></div>' +
+            '<div class="field"><label for="witnessDesignation">Designation</label><input id="witnessDesignation" data-bind="witnessDesignation" placeholder="e.g. Store Manager" value="'+esc(d.witnessDesignation||'')+'"></div>' +
+            '<div class="field"><label for="witnessMobile">Mobile number</label><input id="witnessMobile" type="tel" inputmode="tel" data-bind="witnessMobile" placeholder="e.g. 98765 43210" value="'+esc(d.witnessMobile||'')+'"></div>' +
+          '</div>'
+        ) : '') +
+      '</div>';
   }
 
   function renderCorrectiveEditor(d){
@@ -856,8 +876,13 @@
     var op = overallProgress(d);
     var pricing = computePricing(d.type, d.sections.length, d.menuItemCount||0);
     var prev = previousAuditForStore(d.storeName, d.id);
+    var hasContact = !!(d.contactName||'').trim();
+    var sameAsContact = hasContact && d.witnessSameAsContact!==false;
     return { id:d.id, type:d.type, storeName:d.storeName, storeLocation:d.storeLocation,
       contactName:d.contactName||'', contactDesignation:d.contactDesignation||'', contactMobile:d.contactMobile||'',
+      witnessName: sameAsContact ? d.contactName||'' : (d.witnessName||''),
+      witnessDesignation: sameAsContact ? d.contactDesignation||'' : (d.witnessDesignation||''),
+      witnessMobile: sameAsContact ? d.contactMobile||'' : (d.witnessMobile||''),
       auditDate:d.auditDate, auditTime:d.auditTime, menuItemCount:d.menuItemCount||0,
       startedAt:d.startedAt, finishedAt:d.finishedAt, remark:d.remark,
       totalMs:d.overall.accumMs, completionPct:op.pct, checked:op.checked, total:op.total,
@@ -891,6 +916,12 @@
         '<div class="card" style="padding:4px 16px;margin-bottom:16px;">' +
           '<div class="sumrow"><span class="k">Point of contact</span><span class="v">'+esc(rec.contactName||'—')+(rec.contactDesignation?' ('+esc(rec.contactDesignation)+')':'')+'</span></div>' +
           (rec.contactMobile ? '<div class="sumrow"><span class="k">Mobile</span><span class="v">'+esc(rec.contactMobile)+'</span></div>' : '') +
+        '</div>'
+      ) : '') +
+      (rec.witnessName ? (
+        '<div class="card" style="padding:4px 16px;margin-bottom:16px;">' +
+          '<div class="sumrow"><span class="k">Audit witnessed by</span><span class="v">'+esc(rec.witnessName)+(rec.witnessDesignation?' ('+esc(rec.witnessDesignation)+')':'')+'</span></div>' +
+          (rec.witnessMobile ? '<div class="sumrow"><span class="k">Mobile</span><span class="v">'+esc(rec.witnessMobile)+'</span></div>' : '') +
         '</div>'
       ) : '') +
       '<div class="statgrid">' +
@@ -943,13 +974,13 @@
     return v;
   }
   function buildHistoryCSV(){
-    var cols = ['Store Name','Store Location','Contact Name','Contact Designation','Contact Mobile','Type','Audit Date','Day','Audit Time','Total Time','Score %','Items Checked','Items Total','Areas Audited','Menu Items','Section Breakdown','Estimated Pricing','Final Remark'];
+    var cols = ['Store Name','Store Location','Contact Name','Contact Designation','Contact Mobile','Witness Name','Witness Designation','Witness Mobile','Type','Audit Date','Day','Audit Time','Total Time','Score %','Items Checked','Items Total','Areas Audited','Menu Items','Section Breakdown','Estimated Pricing','Final Remark'];
     var rows = [cols.join(',')];
     state.history.slice().sort(function(a,b){ return b.finishedAt-a.finishedAt; }).forEach(function(h){
       var tmpl = state.templates[h.type] || { label: h.type };
       var sectionSummary = (h.sections||[]).map(function(s){ return s.name+': '+fmtTime(s.accumMs)+' ('+s.checked+'/'+s.total+')'; }).join(' | ');
       var priceStr = h.pricing ? (h.pricing.currency+h.pricing.total) : '';
-      var row = [h.storeName||'', h.storeLocation||'', h.contactName||'', h.contactDesignation||'', h.contactMobile||'', tmpl.label||h.type, h.auditDate||'', dayName(h.auditDate), h.auditTime||'', fmtTime(h.totalMs), h.completionPct, h.checked, h.total, (h.sections||[]).length, h.menuItemCount||0, sectionSummary, priceStr, h.remark||''];
+      var row = [h.storeName||'', h.storeLocation||'', h.contactName||'', h.contactDesignation||'', h.contactMobile||'', h.witnessName||'', h.witnessDesignation||'', h.witnessMobile||'', tmpl.label||h.type, h.auditDate||'', dayName(h.auditDate), h.auditTime||'', fmtTime(h.totalMs), h.completionPct, h.checked, h.total, (h.sections||[]).length, h.menuItemCount||0, sectionSummary, priceStr, h.remark||''];
       rows.push(row.map(csvEscape).join(','));
     });
     return rows.join('\r\n');
@@ -2240,6 +2271,10 @@
     else if (action==='resume-checklist'){
       d.finishedAt = null; persistDraft(); render();
     }
+    else if (action==='toggle-witness-same'){
+      d.witnessSameAsContact = !(d.witnessSameAsContact!==false);
+      persistDraft(); render();
+    }
     else if (action==='add-custom-action'){
       d.correctiveActions.push({ id: uid(), sourceItemId: null, description: '', dueDate: '' });
       persistDraft(); render();
@@ -2410,6 +2445,9 @@
       var btn = app.querySelector('[data-action="complete-audit"]');
       if (btn) btn.disabled = !el.value.trim();
     }
+    else if (el.dataset.bind === 'witnessName' && state.draft){ state.draft.witnessName = el.value; persistDraft(); }
+    else if (el.dataset.bind === 'witnessDesignation' && state.draft){ state.draft.witnessDesignation = el.value; persistDraft(); }
+    else if (el.dataset.bind === 'witnessMobile' && state.draft){ state.draft.witnessMobile = el.value; persistDraft(); }
     else if (el.dataset.action === 'rename-section'){
       var tmpl = state.templates[state.editorTab];
       var sec = tmpl.sections.filter(function(s){return s.id===el.dataset.sec;})[0];
