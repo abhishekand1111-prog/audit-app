@@ -522,6 +522,10 @@
     state.syncPending = true;
     fsUserDataDoc(collName).set({list:list}).catch(function(){});
   }
+  function isTypingInApp(){
+    var ae = document.activeElement;
+    return !!(ae && app && app.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName));
+  }
   function fsWatchDoc(name, isConfig){
     var ref = fsUserDataDoc(name);
     var unsub = ref.onSnapshot(function(snap){
@@ -544,6 +548,7 @@
           ref.set({ list: state[name] || [] }).catch(function(){});
         }
       }
+      if (snap.metadata.hasPendingWrites || isTypingInApp()) return;
       render();
     }, function(){});
     fsUnsubs.push(unsub);
@@ -556,7 +561,11 @@
     fsWatchDoc('contentIdeas', false);
     fsWatchDoc('lookups', false);
     fsWatchDoc('config', true);
-    var unsubSync = fsDb.onSnapshotsInSync(function(){ state.syncPending = false; render(); });
+    var unsubSync = fsDb.onSnapshotsInSync(function(){
+      state.syncPending = false;
+      if (isTypingInApp()) return;
+      render();
+    });
     fsUnsubs.push(unsubSync);
   }
   function detachFirestoreSync(){
