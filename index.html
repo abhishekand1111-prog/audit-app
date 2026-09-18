@@ -333,6 +333,7 @@
 
 <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore-compat.js"></script>
 <script>
   firebase.initializeApp({
     apiKey: "AIzaSyBbEjsvTcWKqQs5pGsSdVYTxWtwKdr3zcU",
@@ -342,10 +343,12 @@
     messagingSenderId: "197732013160",
     appId: "1:197732013160:web:86f938ffbabb1858fa57dd"
   });
+  firebase.firestore().enablePersistence({synchronizeTabs:true}).catch(function(){});
 </script>
 <script>
 (function(){
   "use strict";
+  var OWNER_EMAIL = 'abhishekand.1111@gmail.com';
   var LS_T = 'diagnosisroom_templates_v1', LS_H = 'diagnosisroom_history_v1', LS_D = 'diagnosisroom_draft_v1', LS_P = 'diagnosisroom_pricing_v1';
   var LS_A = 'diagnosisroom_actions_v1', LS_SCHED = 'diagnosisroom_schedule_v1';
   var LS_PR = 'diagnosisroom_prospects_v1';
@@ -484,17 +487,74 @@
   };
   if (state.draft) state.view = 'audit';
 
-  function persistTemplates(){ saveJSON(LS_T, state.templates); }
-  function persistHistory(){ saveJSON(LS_H, state.history); }
-  function persistPricing(){ saveJSON(LS_P, state.pricing); }
-  function persistTargets(){ saveJSON(LS_TG, state.targets); }
-  function persistActions(){ saveJSON(LS_A, state.correctiveActions); }
-  function persistSchedule(){ saveJSON(LS_SCHED, state.schedule); }
-  function persistServiceClasses(){ saveJSON(LS_SVC, state.serviceClasses); }
-  function persistProspects(){ saveJSON(LS_PR, state.prospects); }
-  function persistLookups(){ saveJSON(LS_LK, state.lookups); }
-  function persistContentIdeas(){ saveJSON(LS_CI, state.contentIdeas); }
-  function persistReauditOverrides(){ saveJSON(LS_RO, state.reauditOverrides); }
+  var fsDb = null;
+  var fsUnsubs = [];
+
+  function fsUserDataDoc(name){
+    return fsDb.collection('users').doc(state.authUser.uid).collection('data').doc(name);
+  }
+  function fsSyncConfig(fieldName, value){
+    if (!fsDb || !state.authUser) return;
+    var obj = {};
+    obj[fieldName] = value;
+    fsUserDataDoc('config').set(obj, {merge:true}).catch(function(){});
+  }
+  function fsSyncList(collName, list){
+    if (!fsDb || !state.authUser) return;
+    fsUserDataDoc(collName).set({list:list}).catch(function(){});
+  }
+  function fsWatchDoc(name, isConfig){
+    var ref = fsUserDataDoc(name);
+    var unsub = ref.onSnapshot(function(snap){
+      if (snap.exists){
+        var data = snap.data();
+        if (isConfig){
+          if (data.templates) state.templates = data.templates;
+          if (data.pricing) state.pricing = data.pricing;
+          if (data.schedule) state.schedule = data.schedule;
+          if (data.serviceClasses) state.serviceClasses = data.serviceClasses;
+          if (data.targets) state.targets = data.targets;
+          if (data.reauditOverrides) state.reauditOverrides = data.reauditOverrides;
+        } else {
+          state[name] = data.list || [];
+        }
+      } else {
+        if (isConfig){
+          ref.set({ templates: state.templates, pricing: state.pricing, schedule: state.schedule, serviceClasses: state.serviceClasses, targets: state.targets, reauditOverrides: state.reauditOverrides }).catch(function(){});
+        } else {
+          ref.set({ list: state[name] || [] }).catch(function(){});
+        }
+      }
+      render();
+    }, function(){});
+    fsUnsubs.push(unsub);
+  }
+  function attachFirestoreSync(){
+    fsDb = firebase.firestore();
+    fsWatchDoc('history', false);
+    fsWatchDoc('prospects', false);
+    fsWatchDoc('correctiveActions', false);
+    fsWatchDoc('contentIdeas', false);
+    fsWatchDoc('lookups', false);
+    fsWatchDoc('config', true);
+  }
+  function detachFirestoreSync(){
+    fsUnsubs.forEach(function(u){ try{ u(); }catch(e){} });
+    fsUnsubs = [];
+    fsDb = null;
+  }
+
+  function persistTemplates(){ saveJSON(LS_T, state.templates); fsSyncConfig('templates', state.templates); }
+  function persistHistory(){ saveJSON(LS_H, state.history); fsSyncList('history', state.history); }
+  function persistPricing(){ saveJSON(LS_P, state.pricing); fsSyncConfig('pricing', state.pricing); }
+  function persistTargets(){ saveJSON(LS_TG, state.targets); fsSyncConfig('targets', state.targets); }
+  function persistActions(){ saveJSON(LS_A, state.correctiveActions); fsSyncList('correctiveActions', state.correctiveActions); }
+  function persistSchedule(){ saveJSON(LS_SCHED, state.schedule); fsSyncConfig('schedule', state.schedule); }
+  function persistServiceClasses(){ saveJSON(LS_SVC, state.serviceClasses); fsSyncConfig('serviceClasses', state.serviceClasses); }
+  function persistProspects(){ saveJSON(LS_PR, state.prospects); fsSyncList('prospects', state.prospects); }
+  function persistLookups(){ saveJSON(LS_LK, state.lookups); fsSyncList('lookups', state.lookups); }
+  function persistContentIdeas(){ saveJSON(LS_CI, state.contentIdeas); fsSyncList('contentIdeas', state.contentIdeas); }
+  function persistReauditOverrides(){ saveJSON(LS_RO, state.reauditOverrides); fsSyncConfig('reauditOverrides', state.reauditOverrides); }
   function persistDraft(){ saveJSON(LS_D, state.draft); }
   function clearDraft(){ state.draft = null; try{ localStorage.removeItem(LS_D); }catch(e){} }
 
@@ -684,7 +744,12 @@
       (state.authError ? '<div class="helper" style="color:var(--bad);margin-bottom:10px;">'+esc(state.authError)+'</div>' : '') +
       '<div class="formstack">' +
         '<div class="field"><label for="authEmail">Email</label><input id="authEmail" type="email" placeholder="you@example.com" autocomplete="email"></div>' +
-        '<div class="field"><label for="authPassword">Password</label><input id="authPassword" type="password" placeholder="'+(mode==='signup'?'At least 6 characters':'Your password')+'" autocomplete="'+(mode==='signup'?'new-password':'current-password')+'"></div>' +
+        '<div class="field"><label for="authPassword">Password</label>' +
+          '<div style="position:relative;">' +
+            '<input id="authPassword" type="password" placeholder="'+(mode==='signup'?'At least 6 characters':'Your password')+'" autocomplete="'+(mode==='signup'?'new-password':'current-password')+'" style="padding-right:44px;">' +
+            '<button type="button" data-action="auth-toggle-pwd" aria-label="Show password" style="position:absolute;right:4px;top:0;bottom:0;border:none;background:none;cursor:pointer;font-size:17px;color:var(--ink-400);padding:0 10px;">👁️</button>' +
+          '</div>' +
+        '</div>' +
       '</div>' +
       '<button class="btn btn-primary" style="width:100%;padding:14px;margin-top:6px;" data-action="auth-submit">'+(mode==='signup'?'Create account':'Sign in')+'</button>' +
       '<div style="text-align:center;margin-top:16px;font-size:13.5px;color:var(--ink-600);">' +
@@ -2507,6 +2572,13 @@
       authAction.catch(function(err){ state.authError = authErrorMessage(err); render(); });
     }
     else if (action==='auth-signout'){ firebase.auth().signOut(); }
+    else if (action==='auth-toggle-pwd'){
+      var pwdInput = app.querySelector('#authPassword');
+      if (pwdInput){
+        pwdInput.type = pwdInput.type==='password' ? 'text' : 'password';
+        t.textContent = pwdInput.type==='password' ? '👁️' : '🙈';
+      }
+    }
     else if (action==='toggle-sidebar'){ state.sidebarOpen = !state.sidebarOpen; render(); }
     else if (action==='close-sidebar'){ state.sidebarOpen = false; render(); }
     else if (action==='go-dashboard'){ if(!state.draft){ state.view='dashboard'; render(); } }
@@ -3049,10 +3121,23 @@
     }
   });
 
+  var authKicked = false;
   firebase.auth().onAuthStateChanged(function(user){
+    detachFirestoreSync();
+    if (user && (user.email||'').toLowerCase()!==OWNER_EMAIL.toLowerCase()){
+      authKicked = true;
+      firebase.auth().signOut();
+      state.authUser = null;
+      state.authReady = true;
+      state.authError = 'This app is private — access is restricted to its owner.';
+      render();
+      return;
+    }
     state.authUser = user;
     state.authReady = true;
-    state.authError = '';
+    if (!authKicked) state.authError = '';
+    authKicked = false;
+    if (user) attachFirestoreSync();
     render();
   });
 })();
