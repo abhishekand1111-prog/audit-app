@@ -1,4 +1,4 @@
-const CACHE = 'diagnosis-room-v1';
+const CACHE = 'diagnosis-room-v2';
 const SHELL = ['./', './index.html', './manifest.json', './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', function(event){
@@ -17,6 +17,19 @@ self.addEventListener('activate', function(event){
 
 self.addEventListener('fetch', function(event){
   if (event.request.method !== 'GET') return;
+  var isPage = event.request.mode === 'navigate' || event.request.destination === 'document';
+  if (isPage){
+    event.respondWith(
+      fetch(event.request).then(function(networkResponse){
+        if (networkResponse && networkResponse.ok){
+          var copy = networkResponse.clone();
+          caches.open(CACHE).then(function(cache){ cache.put(event.request, copy); });
+        }
+        return networkResponse;
+      }).catch(function(){ return caches.match(event.request); })
+    );
+    return;
+  }
   event.respondWith(
     caches.match(event.request).then(function(cached){
       var fetchPromise = fetch(event.request).then(function(networkResponse){
