@@ -1508,8 +1508,16 @@
       return (b.createdAt||0)-(a.createdAt||0);
     });
 
-    var auditedCount = state.prospects.filter(function(p){ return !!p.auditId; }).length;
-    var convertedCount = state.prospects.filter(function(p){ return p.converted; }).length;
+    var pipelineList = list.filter(function(p){ return !p.converted; });
+    var clientsList = list.filter(function(p){ return p.converted; });
+    var pipelineAuditedCount = pipelineList.filter(function(p){ return !!p.auditId; }).length;
+    var pipelineDeclinedCount = pipelineList.filter(function(p){ return p.declined; }).length;
+    var clientKeys = {};
+    clientsList.forEach(function(p){ clientKeys[(p.name||'').trim().toLowerCase()] = true; });
+    var clientsDueSoon = computeDueList().filter(function(x){ return clientKeys[x.key] && x.dueAt<=Date.now()+7*24*60*60*1000; }).length;
+    var clientsRevenue = clientsList.reduce(function(sum,p){
+      return sum + prospectAudits(p).reduce(function(n,h){ return n+(h.pricing?h.pricing.total:0); }, 0);
+    }, 0);
 
     var sortedHist = state.history.slice().sort(function(a,b){ return a.finishedAt-b.finishedAt; });
     var histSummaryHtml = '';
@@ -1539,27 +1547,48 @@
       '</div>' +
       '<div class="tabs" style="margin-top:14px;">' +
         '<button class="tab '+(pTab==='pipeline'?'on':'')+'" data-action="prospects-tab" data-tab="pipeline">Pipeline</button>' +
+        '<button class="tab '+(pTab==='clients'?'on':'')+'" data-action="prospects-tab" data-tab="clients">Clients</button>' +
         '<button class="tab '+(pTab==='daily'?'on':'')+'" data-action="prospects-tab" data-tab="daily">Daily Activity</button>' +
       '</div>' +
       (pTab==='daily' ? renderProspectsDaily() : (
-      '<div class="statgrid" style="margin-top:16px;">' +
-        '<div class="stattile"><div class="v">'+state.prospects.length+'</div><div class="k">Total</div></div>' +
-        '<div class="stattile"><div class="v">'+auditedCount+'</div><div class="k">Audited</div></div>' +
-        '<div class="stattile"><div class="v">'+convertedCount+'</div><div class="k">Converted</div></div>' +
-      '</div>' +
-      histSummaryHtml +
       (locs.length || cats.length ? (
         '<div style="display:flex; gap:12px; flex-wrap:wrap; margin:14px 0;">' +
           (locs.length ? '<div class="field" style="flex:1; min-width:150px; margin-bottom:0;"><label>Location</label><select data-prospect-filter="location"><option value="all">All locations</option>'+locs.map(function(l){ return '<option value="'+esc(l)+'" '+(fl===l?'selected':'')+'>'+esc(l)+'</option>'; }).join('')+'</select></div>' : '') +
           (cats.length ? '<div class="field" style="flex:1; min-width:150px; margin-bottom:0;"><label>Category</label><select data-prospect-filter="category"><option value="all">All categories</option>'+cats.map(function(c){ return '<option value="'+esc(c)+'" '+(fc===c?'selected':'')+'>'+esc(state.templates[c]?state.templates[c].label:c)+'</option>'; }).join('')+'</select></div>' : '') +
         '</div>'
       ) : '') +
-      (list.length===0 ? '<div class="empty"><div class="big">🎯</div>No prospects yet.<br>Add one to start tracking your pipeline.</div>' :
-        list.map(function(p){
+      (pTab==='clients' ? (
+        '<div class="statgrid" style="margin-top:0;">' +
+          '<div class="stattile t-accent"><div class="v">'+clientsList.length+'</div><div class="k">Total Clients</div></div>' +
+          '<div class="stattile'+(clientsDueSoon?' t-bad':'')+'"><div class="v">'+clientsDueSoon+'</div><div class="k">Due This Week</div></div>' +
+          '<div class="stattile t-good"><div class="v">'+esc(state.pricing.currency)+clientsRevenue+'</div><div class="k">Total Revenue</div></div>' +
+        '</div>' +
+        (clientsList.length===0 ? '<div class="empty"><div class="big">🤝</div>No clients yet.<br>Convert a prospect to see them here.</div>' :
+          clientsList.map(function(p){
+            var audits = prospectAudits(p);
+            var next = computeClientNextAction(p, audits);
+            var last = audits[0];
+            var toneColor = { bad:'var(--bad)', warn:'var(--accent)', good:'var(--good)', accent:'var(--accent)' };
+            return '<div class="card histcard" style="border-left:3px solid '+(toneColor[next.tone]||'var(--line)')+';" data-action="open-prospect" data-id="'+p.id+'">' +
+              '<div class="histtop"><span><span class="badge">'+esc(prospectCategoryLabel(p))+'</span>'+serviceBadgeHtml(p)+'</span>'+(last?'<span class="histpct">'+last.completionPct+'%</span>':'')+'</div>' +
+              '<div style="font-weight:700;margin-top:8px;">'+esc(p.name||'Unnamed prospect')+'</div>' +
+              '<div class="histmeta">'+esc(p.location||'—')+(p.address?' · '+esc(p.address):'')+'</div>' +
+              '<div class="histmeta" style="margin-top:4px;">'+next.icon+' '+esc(next.text)+'</div>' +
+            '</div>';
+          }).join('')
+        ) +
+        histSummaryHtml
+      ) : (
+      '<div class="statgrid" style="margin-top:0;">' +
+        '<div class="stattile t-accent"><div class="v">'+pipelineList.length+'</div><div class="k">In Pipeline</div></div>' +
+        '<div class="stattile"><div class="v">'+pipelineAuditedCount+'</div><div class="k">Audited</div></div>' +
+        '<div class="stattile'+(pipelineDeclinedCount?' t-bad':'')+'"><div class="v">'+pipelineDeclinedCount+'</div><div class="k">Not Converted</div></div>' +
+      '</div>' +
+      (pipelineList.length===0 ? '<div class="empty"><div class="big">🎯</div>No prospects yet.<br>Add one to start tracking your pipeline.</div>' :
+        pipelineList.map(function(p){
           var st = prospectStatus(p);
-          var priceStr = p.converted ? (p.finalPrice ? (state.pricing.currency||'')+p.finalPrice : '') :
-            ((p.priceMin||p.priceMax) ? (state.pricing.currency||'')+(p.priceMin||'0')+'–'+(state.pricing.currency||'')+(p.priceMax||'0') : '');
-          var revealName = p.converted || p.declined || !!p.plannedAuditDate;
+          var priceStr = (p.priceMin||p.priceMax) ? (state.pricing.currency||'')+(p.priceMin||'0')+'–'+(state.pricing.currency||'')+(p.priceMax||'0') : '';
+          var revealName = p.declined || !!p.plannedAuditDate;
           var stColor = { good:'var(--good)', bad:'var(--bad)', warn:'var(--accent)' }[st.tone] || 'var(--line)';
           return '<div class="card histcard" style="border-left:3px solid '+stColor+';" data-action="open-prospect" data-id="'+p.id+'">' +
             '<div class="histtop"><span><span class="badge">'+esc(prospectCategoryLabel(p))+'</span>'+serviceBadgeHtml(p)+'</span><span class="pill '+st.tone+'">'+st.label+'</span></div>' +
@@ -1571,6 +1600,7 @@
           '</div>';
         }).join('')
       )
+      ))
       )) +
     '</main>';
   }
