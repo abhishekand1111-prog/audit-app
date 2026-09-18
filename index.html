@@ -2066,10 +2066,43 @@
     '</div>';
   }
 
+  function buildTodayActivity(todayStartMs){
+    var events = [];
+    state.history.forEach(function(h){ if (h.finishedAt>=todayStartMs) events.push({ t:h.finishedAt, icon:'📋', text:'Audited '+(h.storeName||'Unnamed store')+' — '+h.completionPct+'% score', action:'view-audit', id:h.id }); });
+    state.prospects.forEach(function(p){
+      if ((p.createdAt||0)>=todayStartMs) events.push({ t:p.createdAt, icon:'➕', text:'Added prospect '+(p.name||'Unnamed prospect'), action:'goto-prospect', id:p.id });
+      if (p.converted && (p.convertedAt||0)>=todayStartMs) events.push({ t:p.convertedAt, icon:'🎉', text:(p.name||'Unnamed prospect')+' converted to client', action:'goto-prospect', id:p.id });
+      if (p.declined && (p.declinedAt||0)>=todayStartMs) events.push({ t:p.declinedAt, icon:'✗', text:(p.name||'Unnamed prospect')+' marked not converted', action:'goto-prospect', id:p.id });
+    });
+    state.correctiveActions.forEach(function(a){
+      if ((a.createdAt||0)>=todayStartMs) events.push({ t:a.createdAt, icon:'⚠️', text:'Logged issue at '+(a.storeName||'—')+' — '+(a.description||'(unspecified)'), action:'go-actions' });
+      if (a.done && (a.resolvedAt||0)>=todayStartMs) events.push({ t:a.resolvedAt, icon:'✓', text:'Fixed at '+(a.storeName||'—')+' — '+(a.description||'(unspecified)'), action:'go-actions' });
+    });
+    state.contentIdeas.forEach(function(c){
+      if (c.posted && (c.postedAt||0)>=todayStartMs) events.push({ t:c.postedAt, icon:'🎬', text:'Posted "'+(c.topic||'Untitled idea')+'"', action:'goto-content', id:c.id });
+    });
+    state.lookups.forEach(function(l){
+      if (l.done && (l.doneAt||0)>=todayStartMs) events.push({ t:l.doneAt, icon:'✔️', text:'Completed '+(l.category==='task'?'task':'lookup')+' — '+(l.text||'(untitled)'), action:'go-lookup' });
+    });
+    events.sort(function(a,b){ return b.t-a.t; });
+    return events;
+  }
+
   function renderDashboard(){
     var now = Date.now();
     var weekAgo = now - 7*24*60*60*1000;
     var weekAhead = now + 7*24*60*60*1000;
+    var todayStartD = new Date(); todayStartD.setHours(0,0,0,0);
+    var todayStartMs = todayStartD.getTime();
+
+    var auditsToday = state.history.filter(function(h){ return h.finishedAt>=todayStartMs; });
+    var avgScoreToday = auditsToday.length ? Math.round(auditsToday.reduce(function(n,h){ return n+h.completionPct; },0)/auditsToday.length) : null;
+    var revenueToday = auditsToday.reduce(function(n,h){ return n+(h.pricing?h.pricing.total:0); },0);
+    var prospectsAddedToday = state.prospects.filter(function(p){ return (p.createdAt||0)>=todayStartMs; }).length;
+    var prospectsConvertedToday = state.prospects.filter(function(p){ return p.converted && (p.convertedAt||0)>=todayStartMs; }).length;
+    var actionsResolvedToday = state.correctiveActions.filter(function(a){ return a.done && (a.resolvedAt||0)>=todayStartMs; }).length;
+    var contentPostedToday = state.contentIdeas.filter(function(c){ return c.posted && (c.postedAt||0)>=todayStartMs; }).length;
+    var todayActivity = buildTodayActivity(todayStartMs);
 
     var auditsWeek = state.history.filter(function(h){ return h.finishedAt>=weekAgo; });
     var avgScore = auditsWeek.length ? Math.round(auditsWeek.reduce(function(n,h){ return n+h.completionPct; },0)/auditsWeek.length) : null;
@@ -2211,12 +2244,40 @@
     else if (overdueActions>0) greeting = overdueActions+' corrective action'+(overdueActions>1?'s':'')+' overdue';
     else if (openActionsNow>0) greeting = openActionsNow+' open issue'+(openActionsNow>1?'s':'')+' to resolve';
 
+    var todayLabel = new Date().toLocaleDateString(undefined,{weekday:'long', month:'short', day:'numeric'});
+    var todayActivityShown = todayActivity.slice(0,8);
+
     return '<main>' +
       renderTargetCard(monthName, revenueMonth, clientsMonth) +
-      '<div class="eyebrow">Last 7 Days</div>' +
-      '<h1 style="font-size:26px;margin-top:6px;margin-bottom:16px;">'+esc(greeting)+'</h1>' +
+      '<div class="eyebrow">'+esc(todayLabel)+'</div>' +
+      '<h1 style="font-size:26px;margin-top:6px;margin-bottom:14px;">'+esc(greeting)+'</h1>' +
+
+      '<h2 style="font-size:15px;margin-bottom:8px;">Today\'s Summary</h2>' +
+      '<div class="statgrid" style="margin-top:0;margin-bottom:20px;">' +
+        '<div class="stattile"><div class="v">'+auditsToday.length+'</div><div class="k">Audits Done</div></div>' +
+        '<div class="stattile"><div class="v">'+(avgScoreToday===null?'—':avgScoreToday+'%')+'</div><div class="k">Avg. Score</div></div>' +
+        '<div class="stattile"><div class="v">'+prospectsAddedToday+'</div><div class="k">Prospects Added</div></div>' +
+        '<div class="stattile"><div class="v">'+prospectsConvertedToday+'</div><div class="k">Converted</div></div>' +
+        '<div class="stattile"><div class="v">'+actionsResolvedToday+'</div><div class="k">Issues Resolved</div></div>' +
+        '<div class="stattile"><div class="v">'+esc(state.pricing.currency)+revenueToday+'</div><div class="k">Revenue Today</div></div>' +
+      '</div>' +
+
       renderAlertsBanner() +
       '<button class="btn btn-primary" style="width:100%;padding:14px;margin-bottom:22px;" data-action="go-setup">+ Start New Audit</button>' +
+
+      '<h2 style="font-size:15px;margin-bottom:8px;">Today\'s Activity</h2>' +
+      (todayActivity.length===0 ? '<div class="helper" style="margin-bottom:20px;">Nothing logged yet today — get started above.</div>' :
+        '<div class="card" style="padding:4px 16px;margin-bottom:'+(todayActivity.length>8?'8px':'20px')+';">' +
+          todayActivityShown.map(function(ev){
+            return '<div data-action="'+ev.action+'"'+(ev.id?' data-id="'+ev.id+'"':'')+' style="display:flex; align-items:flex-start; gap:10px; padding:10px 0; border-top:1px solid var(--line); cursor:pointer;">' +
+              '<span>'+ev.icon+'</span>' +
+              '<span style="flex:1; font-size:13.5px; line-height:1.4;">'+esc(ev.text)+'</span>' +
+              '<span class="histmeta" style="white-space:nowrap;">'+new Date(ev.t).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})+'</span>' +
+            '</div>';
+          }).join('') +
+        '</div>' +
+        (todayActivity.length>8 ? '<div class="helper" style="margin-bottom:20px;">+'+(todayActivity.length-8)+' more today</div>' : '')
+      ) +
 
       sparkHtml +
 
@@ -2225,7 +2286,7 @@
       '<h2 style="font-size:15px;margin-bottom:8px;">Shoot Days This Week</h2>' +
       weekCalHtml +
 
-      '<h2 style="font-size:15px;margin-bottom:8px;">Corrective Actions</h2>' +
+      '<h2 style="font-size:15px;margin-bottom:8px;">Corrective Actions — Last 7 Days</h2>' +
       '<div class="statgrid" style="margin-top:0;margin-bottom:12px;">' +
         '<div class="stattile"><div class="v">'+openActionsNow+'</div><div class="k">Open</div></div>' +
         '<div class="stattile"><div class="v" style="'+(overdueActions?'color:var(--bad);':'')+'">'+overdueActions+'</div><div class="k">Overdue</div></div>' +
@@ -2246,7 +2307,7 @@
         (openActionsNow>topOpenActions.length ? '<button class="btn btn-ghost btn-sm" style="margin-bottom:20px;" data-action="go-actions">View all '+openActionsNow+' open actions →</button>' : '')
       ) +
 
-      '<h2 style="font-size:15px;margin-bottom:8px;">Prospects</h2>' +
+      '<h2 style="font-size:15px;margin-bottom:8px;">Prospects — Last 7 Days</h2>' +
       '<div class="card dashcard" style="margin-bottom:20px;">' +
         (totalProspects===0 ? '<div class="helper" style="margin:0;">No prospects yet.</div>' : stackbarHtml) +
       '</div>' +
@@ -2255,6 +2316,22 @@
         '<div class="stattile"><div class="v">'+prospectsConvertedWeek+'</div><div class="k">Converted (7d)</div></div>' +
         '<div class="stattile"><div class="v">'+openPipeline+'</div><div class="k">Open Pipeline</div></div>' +
       '</div>' +
+
+      '<h2 style="font-size:15px;margin-bottom:8px;">Lookups &amp; Tasks</h2>' +
+      (state.lookups.length===0 ? '<div class="helper" style="margin-bottom:20px;">No lookups or tasks logged yet.</div>' : (
+        '<div class="statgrid" style="margin-top:0;margin-bottom:12px;">' +
+          '<div class="stattile"><div class="v">'+openLookups.length+'</div><div class="k">Open</div></div>' +
+          '<div class="stattile"><div class="v">'+doneLookups+'</div><div class="k">Completed</div></div>' +
+        '</div>' +
+        (openLookups.length===0 ? '<div class="helper" style="margin-bottom:20px;">Everything\'s cleared — nice work.</div>' : (
+          '<div class="card" style="padding:4px 16px;margin-bottom:8px;">' +
+            openLookups.slice(0,3).map(function(l){
+              return '<div class="sumrow"><span class="k">'+(l.category==='task'?'☐':'🔍')+' '+esc(l.text||'(untitled)')+'</span></div>';
+            }).join('') +
+          '</div>' +
+          '<button class="btn btn-ghost btn-sm" style="margin-bottom:20px;" data-action="go-lookup">View all '+openLookups.length+' open →</button>'
+        ))
+      )) +
 
       '<h2 style="font-size:15px;margin-bottom:8px;">Re-audits Due — Next 7</h2>' +
       reCalHtml +
