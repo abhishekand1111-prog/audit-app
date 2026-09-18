@@ -61,6 +61,12 @@
   button{font-family:var(--font-b); cursor:pointer;}
   input,textarea{font-family:var(--font-b);}
   .shell{max-width:640px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column; background:var(--paper);}
+  .authwrap{min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px 18px; background:var(--paper);}
+  .authcard{width:100%; max-width:380px; background:var(--surface); border:1px solid var(--line); border-radius:var(--r-l); box-shadow:var(--shadow); padding:28px 24px;}
+  .authbrand{display:flex; align-items:center; gap:9px;}
+  .authbrand .mark{width:32px; height:32px; border-radius:50%; background:#000; color:#fff; display:flex; align-items:center; justify-content:center; font-family:var(--font-d); font-weight:800; font-style:italic; font-size:15px;}
+  .authbrand .name{font-family:var(--font-d); font-weight:800; font-size:16px;}
+  .authloading{color:var(--ink-400); font-size:14px;}
   .topbar{position:sticky; top:0; z-index:10; background:var(--paper); border-bottom:1px solid var(--line); padding:14px 18px; display:flex; align-items:center; gap:12px;}
   .brand{display:flex; align-items:center; gap:9px; cursor:pointer; border:none; background:none; padding:0;}
   .brand .mark, .sidebar-brand .mark{width:32px; height:32px; border-radius:50%; background:#000; color:#fff; display:flex; align-items:center; justify-content:center; font-family:var(--font-d); font-weight:800; font-style:italic; font-size:15px; letter-spacing:-0.03em; flex:none; overflow:hidden;}
@@ -325,6 +331,18 @@
 
 <div class="shell" id="app"></div>
 
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-auth-compat.js"></script>
+<script>
+  firebase.initializeApp({
+    apiKey: "AIzaSyBbEjsvTcWKqQs5pGsSdVYTxWtwKdr3zcU",
+    authDomain: "diahnosis-room.firebaseapp.com",
+    projectId: "diahnosis-room",
+    storageBucket: "diahnosis-room.firebasestorage.app",
+    messagingSenderId: "197732013160",
+    appId: "1:197732013160:web:86f938ffbabb1858fa57dd"
+  });
+</script>
 <script>
 (function(){
   "use strict";
@@ -434,6 +452,10 @@
   var state = {
     view: 'dashboard',
     sidebarOpen: false,
+    authReady: false,
+    authUser: null,
+    authMode: 'login',
+    authError: '',
     templates: (function(){ var t = loadJSON(LS_T, null); return t ? t : seedTemplates(DEFAULT_TEMPLATES); })(),
     history: loadJSON(LS_H, []),
     draft: loadJSON(LS_D, null),
@@ -642,7 +664,39 @@
   // ---------- render ----------
   var app = document.getElementById('app');
 
+  function authErrorMessage(err){
+    var code = err && err.code || '';
+    if (code==='auth/email-already-in-use') return 'An account already exists with this email — try signing in instead.';
+    if (code==='auth/invalid-email') return 'That email address looks invalid.';
+    if (code==='auth/weak-password') return 'Password should be at least 6 characters.';
+    if (code==='auth/user-not-found' || code==='auth/wrong-password' || code==='auth/invalid-credential') return 'Incorrect email or password.';
+    if (code==='auth/too-many-requests') return 'Too many attempts — please wait a bit and try again.';
+    if (code==='auth/network-request-failed') return 'Network error — check your connection.';
+    return (err && err.message) || 'Something went wrong. Please try again.';
+  }
+
+  function renderAuthGate(){
+    var mode = state.authMode;
+    return '<div class="authwrap"><div class="authcard">' +
+      '<div class="authbrand"><span class="mark">dr</span><span class="name">Diagnosis Room</span></div>' +
+      '<h1 style="font-size:22px;margin:18px 0 4px;">'+(mode==='signup'?'Create your account':'Welcome back')+'</h1>' +
+      '<div class="helper" style="margin-bottom:18px;">'+(mode==='signup'?'Sign up to sync your audits across devices.':'Sign in to access your data.')+'</div>' +
+      (state.authError ? '<div class="helper" style="color:var(--bad);margin-bottom:10px;">'+esc(state.authError)+'</div>' : '') +
+      '<div class="formstack">' +
+        '<div class="field"><label for="authEmail">Email</label><input id="authEmail" type="email" placeholder="you@example.com" autocomplete="email"></div>' +
+        '<div class="field"><label for="authPassword">Password</label><input id="authPassword" type="password" placeholder="'+(mode==='signup'?'At least 6 characters':'Your password')+'" autocomplete="'+(mode==='signup'?'new-password':'current-password')+'"></div>' +
+      '</div>' +
+      '<button class="btn btn-primary" style="width:100%;padding:14px;margin-top:6px;" data-action="auth-submit">'+(mode==='signup'?'Create account':'Sign in')+'</button>' +
+      '<div style="text-align:center;margin-top:16px;font-size:13.5px;color:var(--ink-600);">' +
+        (mode==='signup' ? 'Already have an account? ' : "Don't have an account? ") +
+        '<span style="color:var(--accent-ink);font-weight:700;cursor:pointer;" data-action="auth-toggle">'+(mode==='signup'?'Sign in':'Sign up')+'</span>' +
+      '</div>' +
+    '</div></div>';
+  }
+
   function render(){
+    if (!state.authReady){ app.innerHTML = '<div class="authwrap"><div class="authloading">Loading…</div></div>'; return; }
+    if (!state.authUser){ app.innerHTML = renderAuthGate(); return; }
     var v = state.view;
     var html = '';
     if (v==='setup') html = renderSetup();
@@ -1268,6 +1322,10 @@
     }
     return '<main>' +
       '<div class="eyebrow">Settings</div>' +
+      '<div class="card" style="padding:14px 16px;margin:14px 0 20px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">' +
+        '<div><div style="font-weight:700;">'+esc(state.authUser?state.authUser.email:'')+'</div><div class="histmeta">Signed in</div></div>' +
+        '<button class="btn btn-ghost btn-sm" data-action="auth-signout">Sign out</button>' +
+      '</div>' +
       '<h1 style="font-size:26px;margin-top:6px;margin-bottom:6px;">Backup &amp; Restore</h1>' +
       '<div class="helper" style="margin-bottom:12px;">Everything is stored only on this device. Download a backup regularly, and use Restore if you switch devices, reinstall, or clear browser data.</div>' +
       '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:28px;">' +
@@ -2436,7 +2494,20 @@
     if (d && !d.correctiveActions) d.correctiveActions = [];
     if (action.indexOf('go-')===0) state.sidebarOpen = false;
 
-    if (action==='toggle-sidebar'){ state.sidebarOpen = !state.sidebarOpen; render(); }
+    if (action==='auth-toggle'){ state.authMode = state.authMode==='signup'?'login':'signup'; state.authError=''; render(); }
+    else if (action==='auth-submit'){
+      var authEmail = (app.querySelector('#authEmail')||{}).value || '';
+      var authPass = (app.querySelector('#authPassword')||{}).value || '';
+      state.authError = '';
+      if (!authEmail.trim() || !authPass){ state.authError = 'Enter both email and password.'; render(); return; }
+      t.disabled = true; t.textContent = 'Please wait…';
+      var authAction = state.authMode==='signup'
+        ? firebase.auth().createUserWithEmailAndPassword(authEmail.trim(), authPass)
+        : firebase.auth().signInWithEmailAndPassword(authEmail.trim(), authPass);
+      authAction.catch(function(err){ state.authError = authErrorMessage(err); render(); });
+    }
+    else if (action==='auth-signout'){ firebase.auth().signOut(); }
+    else if (action==='toggle-sidebar'){ state.sidebarOpen = !state.sidebarOpen; render(); }
     else if (action==='close-sidebar'){ state.sidebarOpen = false; render(); }
     else if (action==='go-dashboard'){ if(!state.draft){ state.view='dashboard'; render(); } }
     else if (action==='go-setup'){ if(!state.draft) { state.view='setup'; render(); } }
@@ -2978,7 +3049,12 @@
     }
   });
 
-  render();
+  firebase.auth().onAuthStateChanged(function(user){
+    state.authUser = user;
+    state.authReady = true;
+    state.authError = '';
+    render();
+  });
 })();
 </script>
 
