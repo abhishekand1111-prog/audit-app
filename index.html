@@ -315,6 +315,8 @@
   .edhead input{font-family:var(--font-d); font-weight:700; font-size:16px; border:none; background:none; color:var(--ink); padding:2px 0; width:100%;}
   .iconbtn{background:none; border:none; color:var(--ink-400); padding:4px; border-radius:6px; flex:none; transition:background .15s, color .15s;}
   .iconbtn:hover{color:var(--bad); background:var(--bad-soft);}
+  .copybtn{background:none; border:none; color:var(--accent); padding:4px 8px; border-radius:6px; flex:none; font-size:12px; font-weight:700; white-space:nowrap; transition:background .15s, color .15s;}
+  .copybtn:hover{background:var(--accent-soft);}
   .addrow{display:flex; gap:8px; margin-top:6px;}
   .addrow input{flex:1; border:1px solid var(--line-strong); border-radius:var(--r-s); padding:8px 10px; font-size:16px; background:var(--surface); color:var(--ink);}
   .itemrow{border:1px solid var(--line); border-radius:var(--r-s); padding:8px 10px; margin:8px 0; background:var(--surface); transition:border-color .15s, background .15s;}
@@ -1360,6 +1362,8 @@
   function renderEditor(){
     var tab = state.editorTab;
     var tmpl = state.templates[tab];
+    var otherTab = tab==='dinein' ? 'qsr' : 'dinein';
+    var otherLabel = state.templates[otherTab].label;
     return '<main>' +
       '<div class="eyebrow">Checklist Editor</div>' +
       '<h1 style="font-size:26px;margin-top:6px;margin-bottom:14px;">Edit sections & items</h1>' +
@@ -1370,6 +1374,7 @@
         return '<div class="card edsection">' +
           '<div class="edhead">' +
             '<input value="'+esc(sec.name)+'" data-action="rename-section" data-sec="'+sec.id+'">' +
+            '<button class="copybtn" data-action="copy-section-to-other" data-sec="'+sec.id+'" title="Copy this section to '+esc(otherLabel)+'">⇄ '+esc(otherLabel)+'</button>' +
             '<button class="iconbtn" data-action="delete-section" data-sec="'+sec.id+'" title="Delete section">✕</button>' +
           '</div>' +
           sec.items.map(function(it){
@@ -2955,6 +2960,26 @@
     else if (action==='delete-section'){
       var tmpl = state.templates[state.editorTab];
       tmpl.sections = tmpl.sections.filter(function(s){ return s.id!==t.dataset.sec; });
+      persistTemplates(); render();
+    }
+    else if (action==='copy-section-to-other'){
+      var srcTmpl = state.templates[state.editorTab];
+      var srcSec = srcTmpl.sections.filter(function(s){return s.id===t.dataset.sec;})[0];
+      if (!srcSec) return;
+      var otherKey = state.editorTab==='dinein' ? 'qsr' : 'dinein';
+      var otherTmpl = state.templates[otherKey];
+      var existing = otherTmpl.sections.filter(function(s){ return s.name.toLowerCase()===srcSec.name.toLowerCase(); })[0];
+      if (existing){
+        srcSec.items.forEach(function(it){
+          var already = existing.items.some(function(ei){ return ei.text.toLowerCase()===it.text.toLowerCase(); });
+          if (!already) existing.items.push({ id:uid(), text:it.text, requiresInfo:it.requiresInfo, infoLabel:it.infoLabel });
+        });
+      } else {
+        otherTmpl.sections.push({
+          id:uid(), name:srcSec.name,
+          items:srcSec.items.map(function(it){ return { id:uid(), text:it.text, requiresInfo:it.requiresInfo, infoLabel:it.infoLabel }; })
+        });
+      }
       persistTemplates(); render();
     }
     else if (action==='delete-item'){
