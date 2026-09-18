@@ -72,6 +72,10 @@
   .brand .mark, .sidebar-brand .mark{width:32px; height:32px; border-radius:50%; background:#000; color:#fff; display:flex; align-items:center; justify-content:center; font-family:var(--font-d); font-weight:800; font-style:italic; font-size:15px; letter-spacing:-0.03em; flex:none; overflow:hidden;}
   .brand .name, .sidebar-brand .name{font-family:var(--font-d); font-weight:800; font-size:18px; color:var(--ink);}
   .hamburger{width:36px; height:36px; flex:none; border:1px solid var(--line-strong); background:var(--surface); color:var(--ink); border-radius:var(--r-s); font-size:16px; display:flex; align-items:center; justify-content:center; padding:0; transition:background .15s;}
+  .syncpill{font-size:10.5px; font-weight:700; padding:4px 9px; border-radius:20px; white-space:nowrap; margin-right:10px;}
+  .syncpill.sp-good{color:var(--good); background:var(--good-soft);}
+  .syncpill.sp-accent{color:var(--accent-ink); background:var(--accent-soft);}
+  .syncpill.sp-bad{color:var(--bad); background:var(--bad-soft);}
   .hamburger:hover{background:var(--surface-2);}
   .sidebar-overlay{position:fixed; inset:0; background:rgba(0,0,0,.4); opacity:0; pointer-events:none; transition:opacity .2s ease; z-index:19;}
   .sidebar-overlay.show{opacity:1; pointer-events:auto;}
@@ -459,6 +463,8 @@
     authUser: null,
     authMode: 'login',
     authError: '',
+    online: navigator.onLine,
+    syncPending: false,
     templates: (function(){ var t = loadJSON(LS_T, null); return t ? t : seedTemplates(DEFAULT_TEMPLATES); })(),
     history: loadJSON(LS_H, []),
     draft: loadJSON(LS_D, null),
@@ -497,10 +503,12 @@
     if (!fsDb || !state.authUser) return;
     var obj = {};
     obj[fieldName] = value;
+    state.syncPending = true;
     fsUserDataDoc('config').set(obj, {merge:true}).catch(function(){});
   }
   function fsSyncList(collName, list){
     if (!fsDb || !state.authUser) return;
+    state.syncPending = true;
     fsUserDataDoc(collName).set({list:list}).catch(function(){});
   }
   function fsWatchDoc(name, isConfig){
@@ -537,6 +545,8 @@
     fsWatchDoc('contentIdeas', false);
     fsWatchDoc('lookups', false);
     fsWatchDoc('config', true);
+    var unsubSync = fsDb.onSnapshotsInSync(function(){ state.syncPending = false; render(); });
+    fsUnsubs.push(unsubSync);
   }
   function detachFirestoreSync(){
     fsUnsubs.forEach(function(u){ try{ u(); }catch(e){} });
@@ -817,6 +827,14 @@
     canvas.addEventListener('pointerleave', up);
   }
 
+  function renderSyncPill(){
+    if (!state.authUser) return '';
+    var tone = 'good', label = '✓ Synced';
+    if (!state.online){ tone = 'bad'; label = '⚠ Offline'; }
+    else if (state.syncPending){ tone = 'accent'; label = '↻ Syncing…'; }
+    return '<span class="syncpill sp-'+tone+'" style="margin-left:auto;" title="'+(state.online?(state.syncPending?'Saving changes to the cloud…':'All changes saved to the cloud'):'No connection — changes are saved on this device and will sync once you\'re back online')+'">'+label+'</span>';
+  }
+
   function topbar(){
     var draftActive = !!state.draft;
     var lockAttr = draftActive?'disabled title="Finish or discard the current audit first"':'';
@@ -828,7 +846,8 @@
       '<div class="topbar">' +
         '<button class="hamburger" data-action="toggle-sidebar" aria-label="Menu">☰</button>' +
         '<button class="brand" data-action="go-dashboard"><span class="mark">dr</span><span class="name">Diagnosis Room</span></button>' +
-        '<button class="hamburger" style="margin-left:auto;" data-action="go-search" '+lockAttr+' aria-label="Search">🔍</button>' +
+        renderSyncPill() +
+        '<button class="hamburger" data-action="go-search" '+lockAttr+' aria-label="Search">🔍</button>' +
       '</div>' +
       '<div class="sidebar-overlay '+(state.sidebarOpen?'show':'')+'" data-action="close-sidebar"></div>' +
       '<nav class="sidebar '+(state.sidebarOpen?'open':'')+'">' +
@@ -1820,6 +1839,44 @@
     '</div>';
   }
 
+  var SECTION_ACTION_MAP = {
+    'Delivery Management': 'Recommend a Delivery Process Audit & vendor compliance training.',
+    'Food Safety & Storage': 'Recommend a Food Safety Compliance training session.',
+    'Cleanliness & Sanitation': 'Recommend a Deep-Clean Protocol review and staff refresher.',
+    'Guest Experience & Service': 'Recommend a Service Standards training workshop.',
+    'Speed of Service': 'Recommend a Speed-of-Service optimization consult.'
+  };
+  function suggestActionForSection(name){
+    return SECTION_ACTION_MAP[name] || ('Recommend a focused review and staff refresher on '+name+'.');
+  }
+  function computeAuditRecommendations(rec){
+    if (!rec) return [];
+    return (rec.sections||[]).map(function(s){
+      var pct = s.total ? Math.round(s.checked/s.total*100) : 100;
+      return { name:s.name, pct:pct, suggestion: suggestActionForSection(s.name) };
+    }).filter(function(s){ return s.pct<70; }).sort(function(a,b){ return a.pct-b.pct; });
+  }
+  function renderNextActionsCard(p, audits){
+    if (!audits.length) return '';
+    var rec = audits[0];
+    var recs = computeAuditRecommendations(rec);
+    return sh('🧭','Recommended Next Actions') +
+      '<div class="card" style="padding:14px 16px;margin-bottom:20px;">' +
+        (recs.length===0 ?
+          '<div class="helper" style="margin:0;">No major gaps in the latest audit — a great sign. Consider proposing a monthly maintenance retainer to help them stay this way.</div>'
+        : (
+          '<div class="helper" style="margin:0 0 10px;">Based on the latest audit, these areas could use follow-up:</div>' +
+          recs.map(function(r){
+            return '<div style="padding:8px 0;border-top:1px solid var(--line);">' +
+              '<div style="display:flex;justify-content:space-between;gap:8px;"><span style="font-weight:700;">'+esc(r.name)+'</span><span class="pill bad">'+r.pct+'%</span></div>' +
+              '<div class="histmeta" style="margin-top:2px;">'+esc(r.suggestion)+'</div>' +
+            '</div>';
+          }).join('')
+        )) +
+        '<button type="button" class="btn btn-ghost btn-sm" style="margin-top:10px;" data-action="use-recommendations-as-proposal" data-id="'+rec.id+'">Use as proposal draft</button>' +
+      '</div>';
+  }
+
   function computeProgressSummary(p, audits){
     if (audits.length < 2) return null;
     var latest = audits[0], first = audits[audits.length-1];
@@ -1915,6 +1972,7 @@
           '<button type="button" class="btn btn-ghost btn-sm" data-action="start-reaudit" data-name="'+esc(p.name)+'" data-location="'+esc(p.location||'')+'" data-type="'+esc(audits[0].type)+'">🔁 Re-audit now</button>' +
         '</div>' +
         renderClientTimeline(p, audits) +
+        renderNextActionsCard(p, audits) +
         sh('🎯','Post-Audit Follow-up') +
         '<div class="card" style="padding:16px;margin-bottom:20px;border:1.5px solid var(--accent);background:var(--accent-soft);">' +
           '<div class="formstack" style="gap:14px;margin-bottom:0;">' +
@@ -2782,6 +2840,19 @@
         } else { fallbackCopyText(txtCS); doneCS(); }
       }
     }
+    else if (action==='use-recommendations-as-proposal'){
+      var recNA = state.history.filter(function(h){ return h.id===t.dataset.id; })[0];
+      var pNA = findProspect(state.activeProspectId);
+      if (recNA && pNA){
+        var recsNA = computeAuditRecommendations(recNA);
+        var textNA = recsNA.length
+          ? recsNA.map(function(r){ return '- '+r.name+' ('+r.pct+'%): '+r.suggestion; }).join('\n')
+          : 'Propose a monthly maintenance retainer to help maintain current standards.';
+        pNA.proposed = (pNA.proposed ? pNA.proposed+'\n\n' : '') + textNA;
+        pNA.updatedAt = Date.now();
+        persistProspects(); render();
+      }
+    }
     else if (action==='use-similar-storename'){
       state.setup.storeName = t.dataset.name; render();
     }
@@ -3120,6 +3191,9 @@
       reader.readAsText(file);
     }
   });
+
+  window.addEventListener('online', function(){ state.online = true; render(); });
+  window.addEventListener('offline', function(){ state.online = false; render(); });
 
   var authKicked = false;
   firebase.auth().onAuthStateChanged(function(user){
