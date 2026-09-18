@@ -1809,7 +1809,8 @@
   function findContent(id){ return state.contentIdeas.filter(function(c){ return c.id===id; })[0]; }
 
   function contentStatus(c){
-    if (c.shootDate) return { label:'Shoot '+fmtDateShort(new Date(c.shootDate+'T00:00:00').getTime()), tone: (c.shootDate<todayISO()?'bad':'good') };
+    if (c.posted) return { label:'✓ POSTED', tone:'good' };
+    if (c.shootDate) return { label:'Shoot '+fmtDateShort(new Date(c.shootDate+'T00:00:00').getTime()), tone: (c.shootDate<todayISO()?'bad':'warn') };
     if (c.notScheduled) return { label:'Not scheduled', tone:'warn' };
     return { label:'Draft', tone:'warn' };
   }
@@ -1827,12 +1828,12 @@
         '<div><div class="eyebrow">Content Planner</div><h1 style="font-size:26px;margin-top:6px;">Insta Content &amp; Scripts</h1></div>' +
         '<button class="btn btn-primary btn-sm" data-action="add-content">+ New Idea</button>' +
       '</div>' +
-      '<div class="helper" style="margin:8px 0 14px;">Idea, hook, insight, CTA and the full script — all against a shoot day, or park it with "Not scheduled" until ready.</div>' +
+      '<div class="helper" style="margin:8px 0 14px;">Idea → Insight → Hook → Context → CTA → Poll, against a shoot day, through to Posted.</div>' +
       (list.length===0 ? '<div class="empty"><div class="big">🎬</div>No content ideas yet.<br>Add one to start planning your next shoot.</div>' :
         list.map(function(c){
           var st = contentStatus(c);
           return '<div class="card histcard" data-action="open-content" data-id="'+c.id+'">' +
-            '<div class="histtop"><span class="badge">'+(c.script&&c.script.trim()?'Scripted':'No script yet')+'</span><span class="pill '+st.tone+'">'+esc(st.label)+'</span></div>' +
+            '<div class="histtop"><span class="badge">'+((c.context2||c.script||'').trim()?'Scripted':'No script yet')+'</span><span class="pill '+st.tone+'">'+esc(st.label)+'</span></div>' +
             '<div style="font-weight:700;margin-top:8px;">'+esc(c.topic||'Untitled idea')+'</div>' +
             (c.hook ? '<div class="histmeta">Hook: '+esc(c.hook)+'</div>' : '') +
           '</div>';
@@ -1844,22 +1845,31 @@
   function renderContentDetail(){
     var c = findContent(state.activeContentId);
     if (!c){ state.activeContentId = null; return renderContent(); }
+    var st2 = contentStatus(c);
     return '<main>' +
       '<button class="backrow" data-action="back-to-content">← Back to content</button>' +
       '<div class="eyebrow">Content Idea</div>' +
-      '<h1 style="font-size:24px;margin-top:6px;margin-bottom:16px;">'+esc(c.topic||'Untitled idea')+'</h1>' +
+      '<h1 style="font-size:24px;margin-top:6px;margin-bottom:8px;">'+esc(c.topic||'Untitled idea')+'</h1>' +
+      (st2.label ? '<div style="margin-bottom:14px;"><span class="pill '+st2.tone+'">'+esc(st2.label)+'</span></div>' : '') +
       '<div class="formstack">' +
         '<div class="field"><label for="cTopic">Idea / topic</label><input id="cTopic" data-bind-content="topic" value="'+esc(c.topic)+'" placeholder="e.g. 5 signs your kitchen would fail an audit"></div>' +
-        '<div class="field"><label for="cInsight">Insight to be shared</label><textarea id="cInsight" data-bind-content="insight" placeholder="The key point / value viewers walk away with">'+esc(c.insight)+'</textarea></div>' +
-        '<div class="field"><label for="cHook">Hook</label><input id="cHook" data-bind-content="hook" value="'+esc(c.hook)+'" placeholder="The first line that stops the scroll"></div>' +
+        '<div class="field"><label for="cInsight">Insight</label><textarea id="cInsight" data-bind-content="insight" placeholder="The key point / value viewers walk away with">'+esc(c.insight)+'</textarea></div>' +
+        '<div class="field"><label for="cHook">Hook</label><input id="cHook" data-bind-content="hook" value="'+esc(c.hook)+'" placeholder="The first line / on-screen text that stops the scroll"></div>' +
+        '<div class="field"><label for="cContext1">Context 1 — the problem</label><textarea id="cContext1" data-bind-content="context1" placeholder="The problem / pain point that makes viewers pay attention">'+esc(c.context1||'')+'</textarea></div>' +
+        '<div class="field"><label for="cContext2">Context 2 — the script</label><textarea id="cContext2" data-bind-content="context2" style="min-height:140px;" placeholder="Everything to say/do on shoot day — full script / shot list">'+esc(c.context2||c.script||'')+'</textarea></div>' +
         '<div class="field"><label for="cCta">CTA</label><input id="cCta" data-bind-content="cta" value="'+esc(c.cta)+'" placeholder="e.g. Comment AUDIT for a free checklist"></div>' +
+        '<div class="field"><label for="cPoll">Poll</label><input id="cPoll" data-bind-content="poll" value="'+esc(c.poll||'')+'" placeholder="e.g. Would your kitchen pass this? Yes / No"></div>' +
       '</div>' +
       '<h2 style="font-size:15px;margin-bottom:6px;">Shoot day</h2>' +
       '<div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:20px;">' +
         '<div class="field" style="flex:1; min-width:160px; margin-bottom:0;"><label for="cShootDate">Shoot date</label><input id="cShootDate" type="date" data-bind-content="shootDate" value="'+esc(c.shootDate)+'" '+(c.notScheduled?'disabled':'')+'></div>' +
         '<button type="button" class="naBtn '+(c.notScheduled?'on':'')+'" data-action="toggle-content-notscheduled" style="padding:9px 14px;">'+(c.notScheduled?'✓ Not scheduled':'Not now')+'</button>' +
       '</div>' +
-      '<div class="field"><label for="cScript">Script — everything to say/do on shoot day</label><textarea id="cScript" data-bind-content="script" style="min-height:160px;" placeholder="Full script / shot list for the shoot">'+esc(c.script)+'</textarea></div>' +
+      '<h2 style="font-size:15px;margin-bottom:6px;">Final action</h2>' +
+      '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:6px;">' +
+        '<button type="button" class="naBtn '+(c.posted?'on':'')+'" data-action="toggle-content-posted" style="padding:9px 14px;">'+(c.posted?'✓ Posted':'Mark as Posted')+'</button>' +
+      '</div>' +
+      (c.posted && c.postedAt ? '<div class="helper" style="margin:0 0 16px;">Posted '+fmtRelativeTime(c.postedAt)+'</div>' : '<div class="helper" style="margin:0 0 16px;">Not posted yet'+(c.shootDate?' — scheduled for '+fmtDateShort(new Date(c.shootDate+'T00:00:00').getTime()):'')+'.</div>') +
       '<button class="btn btn-text btn-danger" style="margin-top:10px;" data-action="delete-content" data-id="'+c.id+'">Delete idea</button>' +
     '</main>';
   }
@@ -2306,7 +2316,7 @@
     else if (action==='go-search'){ if(!state.draft){ state.view='search'; render(); } }
     else if (action==='go-content'){ if(!state.draft){ state.activeContentId=null; state.view='content'; render(); } }
     else if (action==='add-content'){
-      var newC = { id: uid(), topic:'', insight:'', hook:'', cta:'', shootDate:'', notScheduled:false, script:'', createdAt: Date.now() };
+      var newC = { id: uid(), topic:'', insight:'', hook:'', context1:'', context2:'', cta:'', poll:'', shootDate:'', notScheduled:false, posted:false, postedAt:null, createdAt: Date.now() };
       state.contentIdeas.unshift(newC); persistContentIdeas();
       state.activeContentId = newC.id; render();
     }
@@ -2323,6 +2333,10 @@
     else if (action==='toggle-content-notscheduled'){
       var nc = findContent(state.activeContentId);
       if (nc){ nc.notScheduled = !nc.notScheduled; if (nc.notScheduled) nc.shootDate=''; persistContentIdeas(); render(); }
+    }
+    else if (action==='toggle-content-posted'){
+      var pc = findContent(state.activeContentId);
+      if (pc){ pc.posted = !pc.posted; pc.postedAt = pc.posted ? Date.now() : null; persistContentIdeas(); render(); }
     }
     else if (action==='add-lookup'){
       var newLkCat = t.dataset.cat==='lookup' ? 'lookup' : 'task';
