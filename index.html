@@ -317,6 +317,15 @@
   .iconbtn:hover{color:var(--bad); background:var(--bad-soft);}
   .copybtn{background:none; border:none; color:var(--accent); padding:4px 8px; border-radius:6px; flex:none; font-size:12px; font-weight:700; white-space:nowrap; transition:background .15s, color .15s;}
   .copybtn:hover{background:var(--accent-soft);}
+  .cyclenote{width:100%; box-sizing:border-box; border:1px solid var(--line-strong); border-radius:var(--r-s); padding:8px 10px; font-size:15px; background:var(--surface); color:var(--ink); resize:vertical; min-height:48px;}
+  .cyclesteps{display:flex; align-items:flex-start;}
+  .cyclestep{display:flex; flex-direction:column; align-items:center; gap:6px; flex:1; min-width:0;}
+  .cycledot{width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px; background:var(--surface-2); color:var(--ink-400); border:2px solid var(--line-strong); flex:none;}
+  .cyclestep.cs-done .cycledot{background:var(--good); border-color:var(--good); color:#fff;}
+  .cyclestep.cs-current .cycledot{background:var(--accent); border-color:var(--accent); color:#fff;}
+  .cyclelabel{font-size:11px; text-align:center; color:var(--ink-400); font-weight:600; line-height:1.25;}
+  .cyclestep.cs-current .cyclelabel{color:var(--ink); font-weight:800;}
+  .cycleline{flex:0 0 16px; height:2px; background:var(--line-strong); margin-top:17px;}
   .addrow{display:flex; gap:8px; margin-top:6px;}
   .addrow input{flex:1; border:1px solid var(--line-strong); border-radius:var(--r-s); padding:8px 10px; font-size:16px; background:var(--surface); color:var(--ink);}
   .itemrow{border:1px solid var(--line); border-radius:var(--r-s); padding:8px 10px; margin:8px 0; background:var(--surface); transition:border-color .15s, background .15s;}
@@ -857,7 +866,7 @@
         item('dashboard','go-dashboard','Dashboard') +
         item('setup','go-setup','New Audit') +
         item('editor','go-editor','Checklist') +
-        item('prospects','go-prospects','Prospects') +
+        item('prospects','go-prospects','Clients') +
         item('content','go-content','Content', state.contentIdeas.length?String(state.contentIdeas.length):'') +
         item('lookup','go-lookup','Lookup', (function(){ var n=state.lookups.filter(function(l){ return !l.done; }).length; return n?String(n):''; })()) +
         item('actions','go-actions','Actions', openActions?String(openActions):'') +
@@ -1284,7 +1293,7 @@
   }
 
   function buildProspectsCSV(){
-    var cols = ['Prospect Name','Location','Category','Status','Class of Service','Contact Name','Contact Mobile','Audited','Converted','Final Price','Follow-up Date'];
+    var cols = ['Client Name','Location','Category','Status','Class of Service','Contact Name','Contact Mobile','Audited','Converted','Final Price','Follow-up Date'];
     var rows = [cols.join(',')];
     state.prospects.slice().sort(function(a,b){ return (b.createdAt||0)-(a.createdAt||0); }).forEach(function(p){
       var st = prospectStatus(p);
@@ -1525,7 +1534,7 @@
           var overdue = p.plannedAuditDate < todayStr;
           return '<div class="card histcard" data-action="goto-prospect" data-id="'+p.id+'" style="border-color:var(--accent);">' +
             '<div class="histtop"><span class="badge">⭐ Scheduled</span><span class="pill '+(overdue?'bad':'warn')+'">'+(overdue?'Overdue':fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime()))+'</span></div>' +
-            '<div style="font-weight:700;margin-top:8px;">'+esc(p.name||'Unnamed prospect')+'</div>' +
+            '<div style="font-weight:700;margin-top:8px;">'+esc(p.name||'Unnamed client')+'</div>' +
             '<div class="histmeta">'+esc(p.location||'—')+' · Audit planned for '+fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime())+'</div>' +
           '</div>';
         }).join('') +
@@ -1685,11 +1694,11 @@
 
     return '<main>' +
       '<div style="display:flex; justify-content:space-between; align-items:flex-end; gap:10px; flex-wrap:wrap;">' +
-        '<div><div class="eyebrow">Sales Pipeline &amp; Audit History</div><h1 style="font-size:26px;margin-top:6px;">Prospects</h1></div>' +
+        '<div><div class="eyebrow">Sales Pipeline &amp; Audit History</div><h1 style="font-size:26px;margin-top:6px;">Clients</h1></div>' +
         '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
-          (state.prospects.length ? '<button class="btn btn-ghost btn-sm" data-action="export-prospects-csv">Export Prospects CSV</button>' : '') +
+          (state.prospects.length ? '<button class="btn btn-ghost btn-sm" data-action="export-prospects-csv">Export Clients CSV</button>' : '') +
           (state.history.length ? '<button class="btn btn-ghost btn-sm" data-action="export-csv">Export Audit CSV</button>' : '') +
-          '<button class="btn btn-primary btn-sm" data-action="add-prospect">+ Add Prospect</button>' +
+          '<button class="btn btn-primary btn-sm" data-action="add-prospect">+ Add Client</button>' +
         '</div>' +
       '</div>' +
       '<div class="tabs" style="margin-top:14px;">' +
@@ -1718,7 +1727,7 @@
             var toneColor = { bad:'var(--bad)', warn:'var(--accent)', good:'var(--good)', accent:'var(--accent)' };
             return '<div class="card histcard" style="border-left:3px solid '+(toneColor[next.tone]||'var(--line)')+';" data-action="open-prospect" data-id="'+p.id+'">' +
               '<div class="histtop"><span><span class="badge">'+esc(prospectCategoryLabel(p))+'</span>'+serviceBadgeHtml(p)+'</span>'+(last?'<span class="histpct">'+last.completionPct+'%</span>':'')+'</div>' +
-              '<div style="font-weight:700;margin-top:8px;">'+esc(p.name||'Unnamed prospect')+'</div>' +
+              '<div style="font-weight:700;margin-top:8px;">'+esc(p.name||'Unnamed client')+'</div>' +
               '<div class="histmeta">'+esc(p.location||'—')+(p.address?' · '+esc(p.address):'')+'</div>' +
               '<div class="histmeta" style="margin-top:4px;">'+next.icon+' '+esc(next.text)+'</div>' +
             '</div>';
@@ -1731,7 +1740,7 @@
         '<div class="stattile"><div class="v">'+pipelineAuditedCount+'</div><div class="k">Audited</div></div>' +
         '<div class="stattile'+(pipelineDeclinedCount?' t-bad':'')+'"><div class="v">'+pipelineDeclinedCount+'</div><div class="k">Not Converted</div></div>' +
       '</div>' +
-      (pipelineList.length===0 ? '<div class="empty"><div class="big">🎯</div>No prospects yet.<br>Add one to start tracking your pipeline.</div>' :
+      (pipelineList.length===0 ? '<div class="empty"><div class="big">🎯</div>No clients yet.<br>Add one to start tracking your pipeline.</div>' :
         pipelineList.map(function(p){
           var st = prospectStatus(p);
           var priceStr = (p.priceMin||p.priceMax) ? (state.pricing.currency||'')+(p.priceMin||'0')+'–'+(state.pricing.currency||'')+(p.priceMax||'0') : '';
@@ -1739,7 +1748,7 @@
           var stColor = { good:'var(--good)', bad:'var(--bad)', warn:'var(--accent)' }[st.tone] || 'var(--line)';
           return '<div class="card histcard" style="border-left:3px solid '+stColor+';" data-action="open-prospect" data-id="'+p.id+'">' +
             '<div class="histtop"><span><span class="badge">'+esc(prospectCategoryLabel(p))+'</span>'+serviceBadgeHtml(p)+'</span><span class="pill '+st.tone+'">'+st.label+'</span></div>' +
-            '<div style="font-weight:700;margin-top:8px;'+(p.declined?'text-decoration:line-through;color:var(--ink-400);':'')+'">'+(revealName ? esc(p.name||'Unnamed prospect') : '🔒 Hidden until converted')+'</div>' +
+            '<div style="font-weight:700;margin-top:8px;'+(p.declined?'text-decoration:line-through;color:var(--ink-400);':'')+'">'+(revealName ? esc(p.name||'Unnamed client') : '🔒 Hidden until converted')+'</div>' +
             '<div class="histmeta">'+esc(p.location||'—')+(p.address?' · '+esc(p.address):'')+'</div>' +
             (priceStr || p.timeline ? '<div class="histmeta">'+priceStr+(priceStr && p.timeline?' · ':'')+(p.timeline?esc(p.timeline):'')+'</div>' : '') +
             (!p.declined && p.plannedAuditDate ? '<div class="histmeta">Audit day: '+fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime())+'</div>' : '') +
@@ -1882,6 +1891,38 @@
       '</div>';
   }
 
+  var CYCLE_STAGES = [
+    { icon:'📋', label:'Audit Completed', helper:'The floor audit for this cycle is done and logged.' },
+    { icon:'📊', label:'Data Analysis', helper:'Review the scored results and spot the real patterns behind the numbers.' },
+    { icon:'🪞', label:'Dashboard Reflection', helper:'Reflect the findings back — what do the trends say about this client\'s trajectory?' },
+    { icon:'🎯', label:'Line of Action', helper:'Turn the reflection into a concrete plan — what will change, and by when.' }
+  ];
+  function renderCycleTracker(p, audits){
+    if (!audits.length) return '';
+    var stage = p.cycleStage; if (stage===undefined || stage===null) stage = 0;
+    var complete = stage >= CYCLE_STAGES.length;
+    return sh('🔄','Consulting Cycle') +
+      '<div class="card cycletrack" style="padding:16px;margin-bottom:20px;">' +
+        '<div class="cyclesteps">' +
+          CYCLE_STAGES.map(function(s, i){
+            var st = i<stage ? 'done' : (i===stage && !complete ? 'current' : 'upcoming');
+            return '<div class="cyclestep cs-'+st+'">' +
+              '<div class="cycledot">'+(st==='done'?'✓':s.icon)+'</div>' +
+              '<div class="cyclelabel">'+esc(s.label)+'</div>' +
+            '</div>';
+          }).join('<div class="cycleline"></div>') +
+        '</div>' +
+        (complete ?
+          '<div class="helper" style="margin:12px 0 0;">✓ Full cycle complete for this audit — the next step is scheduling the re-audit to start the loop again.</div>'
+        : (
+          '<div class="helper" style="margin:12px 0 8px;">'+esc(CYCLE_STAGES[stage].helper)+'</div>' +
+          '<textarea rows="2" class="cyclenote" placeholder="Notes for this stage (optional)…" data-action="cycle-note-input" data-stage="'+stage+'">'+esc((p.cycleNotes&&p.cycleNotes[stage])||'')+'</textarea>' +
+          '<button type="button" class="btn btn-primary btn-sm" style="margin-top:8px;" data-action="advance-cycle-stage">'+(stage===CYCLE_STAGES.length-1?'Mark complete':'Mark done — next: '+CYCLE_STAGES[stage+1].label)+'</button>' +
+          (stage>0 ? '<button type="button" class="btn btn-text btn-sm" style="margin-top:8px;margin-left:8px;" data-action="rewind-cycle-stage">← Back a step</button>' : '')
+        )) +
+      '</div>';
+  }
+
   function computeProgressSummary(p, audits){
     if (audits.length < 2) return null;
     var latest = audits[0], first = audits[audits.length-1];
@@ -1945,14 +1986,14 @@
     var audits = prospectAudits(p);
     var similarProspectName = findSimilarStoreName(p.name);
     return '<main>' +
-      '<button class="backrow" data-action="back-to-prospects">← Back to prospects</button>' +
-      '<div class="eyebrow">Prospect</div>' +
-      '<h1 style="font-size:24px;margin-top:6px;margin-bottom:4px;">'+esc(p.name||'Unnamed prospect')+serviceBadgeHtml(p)+'</h1>' +
+      '<button class="backrow" data-action="back-to-prospects">← Back to clients</button>' +
+      '<div class="eyebrow">Client</div>' +
+      '<h1 style="font-size:24px;margin-top:6px;margin-bottom:4px;">'+esc(p.name||'Unnamed client')+serviceBadgeHtml(p)+'</h1>' +
       (p.updatedAt ? '<div class="helper" style="margin:0 0 12px;">Updated '+fmtRelativeTime(p.updatedAt)+'</div>' : '') +
       renderClientHealthCard(p, audits) +
       renderProgressSummary(p, audits) +
       '<div class="formstack">' +
-        '<div class="field"><label for="pName">Prospect / store name</label><input id="pName" data-bind-prospect="name" value="'+esc(p.name)+'" placeholder="e.g. Northside Grill"></div>' +
+        '<div class="field"><label for="pName">Client / store name</label><input id="pName" data-bind-prospect="name" value="'+esc(p.name)+'" placeholder="e.g. Northside Grill"></div>' +
         (similarProspectName ? '<div class="helper" style="margin-top:-10px;color:var(--accent-ink);">Did you mean <b>'+esc(similarProspectName)+'</b>? A similar store already exists — <span style="text-decoration:underline;cursor:pointer;" data-action="use-similar-prospectname" data-name="'+esc(similarProspectName)+'">use that name</span> to avoid splitting its history.</div>' : '') +
         '<div style="display:flex; gap:12px;">' +
           '<div class="field" style="flex:1;"><label for="pLocation">Location</label><input id="pLocation" data-bind-prospect="location" value="'+esc(p.location)+'" placeholder="e.g. Bandra West"></div>' +
@@ -1977,6 +2018,7 @@
           '<button type="button" class="btn btn-ghost btn-sm" data-action="start-reaudit" data-name="'+esc(p.name)+'" data-location="'+esc(p.location||'')+'" data-type="'+esc(audits[0].type)+'">🔁 Re-audit now</button>' +
         '</div>' +
         renderClientTimeline(p, audits) +
+        renderCycleTracker(p, audits) +
         renderNextActionsCard(p, audits) +
         sh('🎯','Post-Audit Follow-up') +
         '<div class="card" style="padding:16px;margin-bottom:20px;border:1.5px solid var(--accent);background:var(--accent-soft);">' +
@@ -2122,9 +2164,9 @@
     if (total===0) return '<div class="empty"><div class="big">🔍</div>No results for "'+esc(state.searchQuery)+'".</div>';
     var html = '';
     if (prospects.length){
-      html += sh('🧭','Prospects ('+prospects.length+')') +
+      html += sh('🧭','Clients ('+prospects.length+')') +
         prospects.map(function(p){
-          return '<div class="card histcard" data-action="goto-prospect" data-id="'+p.id+'"><div style="font-weight:700;">'+esc(p.name||'Unnamed prospect')+'</div><div class="histmeta">'+esc(p.location||'—')+'</div></div>';
+          return '<div class="card histcard" data-action="goto-prospect" data-id="'+p.id+'"><div style="font-weight:700;">'+esc(p.name||'Unnamed client')+'</div><div class="histmeta">'+esc(p.location||'—')+'</div></div>';
         }).join('');
     }
     if (audits.length){
@@ -2246,11 +2288,11 @@
     state.prospects.forEach(function(p){
       if (p.plannedAuditDate && p.plannedAuditDate<=todayStr && !p.auditId && !p.declined){
         var overdue = p.plannedAuditDate < todayStr;
-        alerts.push({ tone: overdue?'bad':'warn', icon:'⭐', text: (p.name||'Unnamed prospect')+' — scheduled audit '+(overdue?'was due '+fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime()):'due today')+', needs check-in', action:'goto-prospect', id:p.id });
+        alerts.push({ tone: overdue?'bad':'warn', icon:'⭐', text: (p.name||'Unnamed client')+' — scheduled audit '+(overdue?'was due '+fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime()):'due today')+', needs check-in', action:'goto-prospect', id:p.id });
       }
       if (p.proposalStatus==='meeting_scheduled' && p.proposalMeetingDate && p.proposalMeetingDate<=todayStr && !p.converted && !p.declined){
         var mOverdue = p.proposalMeetingDate < todayStr;
-        alerts.push({ tone: mOverdue?'bad':'warn', icon:'🤝', text: (p.name||'Unnamed prospect')+' — proposal meeting '+(mOverdue?'was due '+fmtDateShort(new Date(p.proposalMeetingDate+'T00:00:00').getTime()):'due today')+', follow up', action:'goto-prospect', id:p.id });
+        alerts.push({ tone: mOverdue?'bad':'warn', icon:'🤝', text: (p.name||'Unnamed client')+' — proposal meeting '+(mOverdue?'was due '+fmtDateShort(new Date(p.proposalMeetingDate+'T00:00:00').getTime()):'due today')+', follow up', action:'goto-prospect', id:p.id });
       }
     });
     state.contentIdeas.forEach(function(c){
@@ -2307,9 +2349,9 @@
     var events = [];
     state.history.forEach(function(h){ if (h.finishedAt>=todayStartMs) events.push({ t:h.finishedAt, icon:'📋', tone:'accent', text:'Audited '+(h.storeName||'Unnamed store')+' — '+h.completionPct+'% score', action:'view-audit', id:h.id }); });
     state.prospects.forEach(function(p){
-      if ((p.createdAt||0)>=todayStartMs) events.push({ t:p.createdAt, icon:'➕', tone:'accent', text:'Added prospect '+(p.name||'Unnamed prospect'), action:'goto-prospect', id:p.id });
-      if (p.converted && (p.convertedAt||0)>=todayStartMs) events.push({ t:p.convertedAt, icon:'🎉', tone:'good', text:(p.name||'Unnamed prospect')+' converted to client', action:'goto-prospect', id:p.id });
-      if (p.declined && (p.declinedAt||0)>=todayStartMs) events.push({ t:p.declinedAt, icon:'✗', tone:'bad', text:(p.name||'Unnamed prospect')+' marked not converted', action:'goto-prospect', id:p.id });
+      if ((p.createdAt||0)>=todayStartMs) events.push({ t:p.createdAt, icon:'➕', tone:'accent', text:'Added client '+(p.name||'Unnamed client'), action:'goto-prospect', id:p.id });
+      if (p.converted && (p.convertedAt||0)>=todayStartMs) events.push({ t:p.convertedAt, icon:'🎉', tone:'good', text:(p.name||'Unnamed client')+' converted to client', action:'goto-prospect', id:p.id });
+      if (p.declined && (p.declinedAt||0)>=todayStartMs) events.push({ t:p.declinedAt, icon:'✗', tone:'bad', text:(p.name||'Unnamed client')+' marked not converted', action:'goto-prospect', id:p.id });
     });
     state.correctiveActions.forEach(function(a){
       if ((a.createdAt||0)>=todayStartMs) events.push({ t:a.createdAt, icon:'⚠️', tone:'bad', text:'Logged issue at '+(a.storeName||'—')+' — '+(a.description||'(unspecified)'), action:'go-actions' });
@@ -2497,7 +2539,7 @@
       '<div class="statgrid" style="margin-top:0;margin-bottom:20px;">' +
         '<div class="stattile t-accent"><div class="v">'+auditsToday.length+'</div><div class="k">Audits Done</div></div>' +
         '<div class="stattile"><div class="v">'+(avgScoreToday===null?'—':avgScoreToday+'%')+'</div><div class="k">Avg. Score</div></div>' +
-        '<div class="stattile t-accent"><div class="v">'+prospectsAddedToday+'</div><div class="k">Prospects Added</div></div>' +
+        '<div class="stattile t-accent"><div class="v">'+prospectsAddedToday+'</div><div class="k">Clients Added</div></div>' +
         '<div class="stattile t-good"><div class="v">'+prospectsConvertedToday+'</div><div class="k">Converted</div></div>' +
         '<div class="stattile t-good"><div class="v">'+actionsResolvedToday+'</div><div class="k">Issues Resolved</div></div>' +
         '<div class="stattile t-good"><div class="v">'+esc(state.pricing.currency)+revenueToday+'</div><div class="k">Revenue Today</div></div>' +
@@ -2548,9 +2590,9 @@
         (openActionsNow>topOpenActions.length ? '<button class="btn btn-ghost btn-sm" style="margin-bottom:20px;" data-action="go-actions">View all '+openActionsNow+' open actions →</button>' : '')
       ) +
 
-      '<div class="sechead2"><span class="ic">🧭</span><h2>Prospects — Last 7 Days</h2></div>' +
+      '<div class="sechead2"><span class="ic">🧭</span><h2>Clients — Last 7 Days</h2></div>' +
       '<div class="card dashcard" style="margin-bottom:20px;">' +
-        (totalProspects===0 ? '<div class="helper" style="margin:0;">No prospects yet.</div>' : stackbarHtml) +
+        (totalProspects===0 ? '<div class="helper" style="margin:0;">No clients yet.</div>' : stackbarHtml) +
       '</div>' +
       '<div class="statgrid" style="margin-bottom:20px;">' +
         '<div class="stattile t-accent"><div class="v">'+prospectsAddedWeek+'</div><div class="k">Added (7d)</div></div>' +
@@ -2858,6 +2900,24 @@
         persistProspects(); render();
       }
     }
+    else if (action==='advance-cycle-stage'){
+      var acsP = findProspect(state.activeProspectId);
+      if (acsP){
+        var acsStage = acsP.cycleStage; if (acsStage===undefined || acsStage===null) acsStage = 0;
+        acsP.cycleStage = acsStage + 1;
+        acsP.cycleUpdatedAt = Date.now();
+        persistProspects(); render();
+      }
+    }
+    else if (action==='rewind-cycle-stage'){
+      var rcsP = findProspect(state.activeProspectId);
+      if (rcsP){
+        var rcsStage = rcsP.cycleStage; if (rcsStage===undefined || rcsStage===null) rcsStage = 0;
+        rcsP.cycleStage = Math.max(0, rcsStage - 1);
+        rcsP.cycleUpdatedAt = Date.now();
+        persistProspects(); render();
+      }
+    }
     else if (action==='use-similar-storename'){
       state.setup.storeName = t.dataset.name; render();
     }
@@ -2898,6 +2958,7 @@
           declined:false, declinedAt:null, followUpDate:'', finalPrice:'', timeline:'',
           servicesOffered:'', pricingType:'', proposalStatus:'', proposalMeetingDate:'', auditsPerMonth:'',
           contactName: d.contactName||'', contactDesignation: d.contactDesignation||'', contactMobile: d.contactMobile||'',
+          cycleStage:0, cycleNotes:{}, cycleUpdatedAt: Date.now(),
           createdAt: Date.now() };
         state.prospects.unshift(linkedP);
       } else if (linkedP){
@@ -2907,6 +2968,9 @@
         if (!linkedP.contactName) linkedP.contactName = d.contactName||linkedP.contactName||'';
         if (!linkedP.contactDesignation) linkedP.contactDesignation = d.contactDesignation||linkedP.contactDesignation||'';
         if (!linkedP.contactMobile) linkedP.contactMobile = d.contactMobile||linkedP.contactMobile||'';
+        linkedP.cycleStage = 0;
+        linkedP.cycleNotes = {};
+        linkedP.cycleUpdatedAt = Date.now();
       }
       state.pendingProspectId = null;
       if (linkedP){
@@ -3058,6 +3122,14 @@
     else if (el.dataset.bind === 'witnessName' && state.draft){ state.draft.witnessName = el.value; persistDraft(); }
     else if (el.dataset.bind === 'witnessDesignation' && state.draft){ state.draft.witnessDesignation = el.value; persistDraft(); }
     else if (el.dataset.bind === 'witnessMobile' && state.draft){ state.draft.witnessMobile = el.value; persistDraft(); }
+    else if (el.dataset.action === 'cycle-note-input'){
+      var cniP = findProspect(state.activeProspectId);
+      if (cniP){
+        if (!cniP.cycleNotes) cniP.cycleNotes = {};
+        cniP.cycleNotes[el.dataset.stage] = el.value;
+        persistProspects();
+      }
+    }
     else if (el.dataset.action === 'rename-section'){
       var tmpl = state.templates[state.editorTab];
       var sec = tmpl.sections.filter(function(s){return s.id===el.dataset.sec;})[0];
