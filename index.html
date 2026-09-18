@@ -465,6 +465,14 @@
     return String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
   }
   function fmtDateShort(ts){ var d = new Date(ts); return d.toLocaleDateString(undefined,{month:'short',day:'numeric'}); }
+  function fmtRelativeTime(ts){
+    if (!ts) return '';
+    var diffDays = Math.floor((Date.now()-ts)/86400000);
+    if (diffDays<=0) return 'today';
+    if (diffDays===1) return 'yesterday';
+    if (diffDays<30) return diffDays+' days ago';
+    return fmtDateShort(ts);
+  }
   function dayName(dateStr){ if(!dateStr) return ''; var d = new Date(dateStr+'T00:00:00'); if(isNaN(d)) return ''; return d.toLocaleDateString(undefined,{weekday:'long'}); }
   function fmtAuditWhen(dateStr, timeStr){
     if (!dateStr) return '';
@@ -476,6 +484,40 @@
     return day+' · '+date+(time?' · '+time:'');
   }
   function esc(s){ return String(s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+  function fallbackCopyText(txt){
+    var ta = document.createElement('textarea');
+    ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    try{ document.execCommand('copy'); }catch(e){}
+    document.body.removeChild(ta);
+  }
+
+  function buildAuditSummaryText(rec){
+    var tmpl = state.templates[rec.type] || {label:rec.type};
+    var lines = [];
+    lines.push(rec.storeName||'Unnamed store');
+    lines.push((tmpl.label||rec.type)+' audit · '+fmtAuditWhen(rec.auditDate,rec.auditTime));
+    if (rec.storeLocation) lines.push(rec.storeLocation);
+    lines.push('');
+    lines.push('Score: '+rec.completionPct+'% ('+rec.checked+'/'+rec.total+' checked)');
+    if (rec.prevScore!==null && rec.prevScore!==undefined){
+      var d = rec.completionPct - rec.prevScore;
+      lines.push((d>0?'+':'')+d+' pts vs last visit');
+    }
+    var anyFailed = false;
+    rec.sections.forEach(function(s){
+      var failed = (s.items||[]).filter(function(it){ return it.state==='unchecked'; });
+      if (failed.length){
+        anyFailed = true;
+        lines.push(''); lines.push(s.name+':');
+        failed.forEach(function(it){ lines.push('- '+it.text); });
+      }
+    });
+    if (!anyFailed){ lines.push(''); lines.push('No outstanding issues — all checked items passed.'); }
+    if (rec.remark){ lines.push(''); lines.push('Remark: '+rec.remark); }
+    return lines.join('\n');
+  }
 
   // ---------- timer math ----------
   function overallElapsed(d){
@@ -831,7 +873,10 @@
             '<span class="badge">'+tmpl.label+'</span>' +
             '<div class="storeline">'+(esc(d.storeName)||'Unnamed store')+'<div class="sub">'+(d.storeLocation?esc(d.storeLocation)+' · ':'')+fmtAuditWhen(d.auditDate,d.auditTime)+'</div></div>' +
           '</div>' +
-          '<div class="timerblock"><div class="t mono" data-timer="overall">'+fmtTime(overallElapsed(d))+'</div><div class="lbl">Total Time</div></div>' +
+          '<div style="display:flex;gap:14px;align-items:center;">' +
+            '<div class="timerblock" style="text-align:right;"><div class="t mono" style="color:'+(op.pct>=70?'var(--good)':(op.pct>=40?'var(--accent-ink)':'var(--bad)'))+';">'+op.pct+'%</div><div class="lbl">Score</div></div>' +
+            '<div class="timerblock"><div class="t mono" data-timer="overall">'+fmtTime(overallElapsed(d))+'</div><div class="lbl">Total Time</div></div>' +
+          '</div>' +
         '</div>' +
         '<div class="overallprog"><div class="progtrack"><div class="progfill" style="width:'+op.pct+'%"></div></div>' +
           '<div class="progtext"><span>'+op.checked+' / '+op.total+' items checked</span><span>'+op.pct+'%</span></div></div>' +
@@ -998,7 +1043,9 @@
     return '<main>' +
       '<button class="backrow" data-action="back-from-summary">← '+(state.summaryReturnView==='prospects'?'Back to prospect':'Back')+'</button>' +
       '<div class="sumhead"><div><span class="badge">'+esc(tmpl.label||rec.type)+'</span>' +
-        '<h1 style="font-size:24px;margin-top:8px;">'+esc(rec.storeName||'Unnamed store')+'</h1></div></div>' +
+        '<h1 style="font-size:24px;margin-top:8px;">'+esc(rec.storeName||'Unnamed store')+'</h1></div>' +
+        '<button type="button" class="btn btn-ghost btn-sm" data-action="copy-audit-summary" data-id="'+rec.id+'">📋 Copy Summary</button>' +
+      '</div>' +
       '<div class="helper" style="margin-bottom:16px;">'+(rec.storeLocation?esc(rec.storeLocation)+' · ':'')+fmtAuditWhen(rec.auditDate,rec.auditTime)+'</div>' +
       (rec.contactName || rec.contactMobile ? (
         '<div class="card" style="padding:4px 16px;margin-bottom:16px;">' +
@@ -1492,7 +1539,8 @@
           var priceStr = p.converted ? (p.finalPrice ? (state.pricing.currency||'')+p.finalPrice : '') :
             ((p.priceMin||p.priceMax) ? (state.pricing.currency||'')+(p.priceMin||'0')+'–'+(state.pricing.currency||'')+(p.priceMax||'0') : '');
           var revealName = p.converted || p.declined || !!p.plannedAuditDate;
-          return '<div class="card histcard" data-action="open-prospect" data-id="'+p.id+'">' +
+          var stColor = { good:'var(--good)', bad:'var(--bad)', warn:'var(--accent)' }[st.tone] || 'var(--line)';
+          return '<div class="card histcard" style="border-left:3px solid '+stColor+';" data-action="open-prospect" data-id="'+p.id+'">' +
             '<div class="histtop"><span><span class="badge">'+esc(prospectCategoryLabel(p))+'</span>'+serviceBadgeHtml(p)+'</span><span class="pill '+st.tone+'">'+st.label+'</span></div>' +
             '<div style="font-weight:700;margin-top:8px;'+(p.declined?'text-decoration:line-through;color:var(--ink-400);':'')+'">'+(revealName ? esc(p.name||'Unnamed prospect') : '🔒 Hidden until converted')+'</div>' +
             '<div class="histmeta">'+esc(p.location||'—')+(p.address?' · '+esc(p.address):'')+'</div>' +
@@ -1545,7 +1593,7 @@
       '<div class="statgrid" style="margin:0;">' +
         '<div class="stattile"><div class="v">'+(last?fmtDateShort(last.finishedAt):na)+'</div><div class="k">Last Audit</div></div>' +
         '<div class="stattile"><div class="v">'+(last?last.completionPct+'%':na)+'</div><div class="k">Latest Score</div></div>' +
-        '<div class="stattile"><div class="v" style="'+(openIssues.length?'color:var(--bad);':'')+'">'+openIssues.length+'</div><div class="k">Open Issues</div></div>' +
+        '<div class="stattile"><div class="v" style="'+(openIssues.length?'color:var(--bad);':'')+'">'+(audits.length?openIssues.length:na)+'</div><div class="k">Open Issues</div></div>' +
         '<div class="stattile"><div class="v">'+esc(state.pricing.currency)+totalRevenue+'</div><div class="k">Total Revenue</div></div>' +
       '</div>' +
     '</div>' +
@@ -1663,7 +1711,8 @@
     return '<main>' +
       '<button class="backrow" data-action="back-to-prospects">← Back to prospects</button>' +
       '<div class="eyebrow">Prospect</div>' +
-      '<h1 style="font-size:24px;margin-top:6px;margin-bottom:16px;">'+esc(p.name||'Unnamed prospect')+serviceBadgeHtml(p)+'</h1>' +
+      '<h1 style="font-size:24px;margin-top:6px;margin-bottom:4px;">'+esc(p.name||'Unnamed prospect')+serviceBadgeHtml(p)+'</h1>' +
+      (p.updatedAt ? '<div class="helper" style="margin:0 0 12px;">Updated '+fmtRelativeTime(p.updatedAt)+'</div>' : '') +
       renderClientHealthCard(p, audits) +
       renderProgressSummary(p, audits) +
       '<div class="formstack">' +
@@ -2146,10 +2195,16 @@
       '</div>';
     }).join('') + '</div>';
 
+    var greeting = 'Welcome back';
+    if (overdueDue>0) greeting = overdueDue+' re-audit'+(overdueDue>1?'s':'')+' overdue';
+    else if (dueSoon.length>0) greeting = dueSoon.length+' re-audit'+(dueSoon.length>1?'s':'')+' due this week';
+    else if (overdueActions>0) greeting = overdueActions+' corrective action'+(overdueActions>1?'s':'')+' overdue';
+    else if (openActionsNow>0) greeting = openActionsNow+' open issue'+(openActionsNow>1?'s':'')+' to resolve';
+
     return '<main>' +
       renderTargetCard(monthName, revenueMonth, clientsMonth) +
       '<div class="eyebrow">Last 7 Days</div>' +
-      '<h1 style="font-size:26px;margin-top:6px;margin-bottom:16px;">Welcome back</h1>' +
+      '<h1 style="font-size:26px;margin-top:6px;margin-bottom:16px;">'+esc(greeting)+'</h1>' +
       renderAlertsBanner() +
       '<button class="btn btn-primary" style="width:100%;padding:14px;margin-bottom:22px;" data-action="go-setup">+ Start New Audit</button>' +
 
@@ -2427,6 +2482,17 @@
     else if (action==='clear-witness-signature'){
       if (d){ d.witnessSignature = ''; persistDraft(); render(); }
     }
+    else if (action==='copy-audit-summary'){
+      var recCS = state.history.filter(function(h){ return h.id===t.dataset.id; })[0];
+      if (recCS){
+        var txtCS = buildAuditSummaryText(recCS);
+        var origLabel = t.textContent;
+        var doneCS = function(){ t.textContent = '✓ Copied'; setTimeout(function(){ t.textContent = origLabel; }, 1500); };
+        if (navigator.clipboard && navigator.clipboard.writeText){
+          navigator.clipboard.writeText(txtCS).then(doneCS).catch(function(){ fallbackCopyText(txtCS); doneCS(); });
+        } else { fallbackCopyText(txtCS); doneCS(); }
+      }
+    }
     else if (action==='use-similar-storename'){
       state.setup.storeName = t.dataset.name; render();
     }
@@ -2670,7 +2736,7 @@
     else if (el.dataset.bindProspect){
       var bp = findProspect(state.activeProspectId);
       if (bp){
-        bp[el.dataset.bindProspect] = el.value; persistProspects();
+        bp[el.dataset.bindProspect] = el.value; bp.updatedAt = Date.now(); persistProspects();
         if (el.dataset.bindProspect==='name'){
           var sabtn = app.querySelector('[data-action="start-audit-from-prospect"]');
           if (sabtn) sabtn.disabled = !el.value.trim();
