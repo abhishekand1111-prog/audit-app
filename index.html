@@ -2740,6 +2740,8 @@
       if (lk){ lk.done = !lk.done; lk.doneAt = lk.done ? Date.now() : null; persistLookups(); render(); }
     }
     else if (action==='delete-lookup'){
+      var dlk = state.lookups.filter(function(l){ return l.id===t.dataset.id; })[0];
+      if (!window.confirm('Delete "'+((dlk&&dlk.text)||'this item')+'"? This cannot be undone.')) return;
       state.lookups = state.lookups.filter(function(l){ return l.id!==t.dataset.id; });
       persistLookups(); render();
     }
