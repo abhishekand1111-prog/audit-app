@@ -220,6 +220,26 @@
   .stattile:hover{box-shadow:var(--shadow-sm);}
   .stattile .v{font-family:var(--font-m); font-size:19px; font-weight:600;}
   .stattile .k{font-size:11px; color:var(--ink-600); margin-top:2px;}
+  .stattile.t-accent{background:var(--accent-soft);}
+  .stattile.t-accent .v{color:var(--accent-ink);}
+  .stattile.t-good{background:var(--good-soft);}
+  .stattile.t-good .v{color:var(--good);}
+  .stattile.t-bad{background:var(--bad-soft);}
+  .stattile.t-bad .v{color:var(--bad);}
+
+  /* dashboard */
+  .dashhero{position:relative; overflow:hidden; background:linear-gradient(135deg, var(--accent-soft) 0%, var(--surface) 65%); border:1px solid var(--line); border-radius:var(--r-l); padding:18px 20px; margin-bottom:18px; box-shadow:var(--shadow-sm);}
+  .dashhero::after{content:''; position:absolute; top:-40px; right:-40px; width:140px; height:140px; border-radius:50%; background:radial-gradient(circle, var(--accent-soft) 0%, transparent 70%); opacity:.9; pointer-events:none;}
+  .dashhero .datepill{display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--accent-ink); background:var(--surface); border:1px solid var(--line); padding:4px 10px; border-radius:20px; position:relative; z-index:1;}
+  .dashhero h1{position:relative; z-index:1; margin-top:10px;}
+  .sechead2{display:flex; align-items:center; gap:9px; margin:24px 0 10px;}
+  .sechead2 .ic{width:28px; height:28px; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:14px; flex:none; background:var(--accent-soft);}
+  .sechead2 h2{font-size:15px; margin:0;}
+  .sechead2:first-of-type{margin-top:0;}
+  .actrow{display:flex; align-items:center; gap:10px; padding:10px 0; border-top:1px solid var(--line); cursor:pointer; transition:background .12s; margin:0 -16px; padding-left:16px; padding-right:16px; border-radius:var(--r-s);}
+  .actrow:first-child{border-top:none;}
+  .actrow:active{background:var(--surface-2);}
+  .acticon{width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:13.5px; flex:none; background:var(--surface-2);}
 
   /* summary */
   .sumhead{display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;}
@@ -1982,7 +2002,7 @@
     if (state.history.length<2) return '';
     var insights = computeSectionInsights();
     if (!insights.length) return '';
-    return '<h2 style="font-size:15px;margin-bottom:8px;">Recurring Problem Areas</h2>' +
+    return '<div class="sechead2"><span class="ic" style="background:var(--bad-soft);">🔥</span><h2>Recurring Problem Areas</h2></div>' +
       '<div class="card" style="padding:4px 16px;margin-bottom:20px;">' +
         insights.map(function(s){
           return '<div style="padding:10px 0;border-top:1px solid var(--line);">' +
@@ -2068,21 +2088,21 @@
 
   function buildTodayActivity(todayStartMs){
     var events = [];
-    state.history.forEach(function(h){ if (h.finishedAt>=todayStartMs) events.push({ t:h.finishedAt, icon:'📋', text:'Audited '+(h.storeName||'Unnamed store')+' — '+h.completionPct+'% score', action:'view-audit', id:h.id }); });
+    state.history.forEach(function(h){ if (h.finishedAt>=todayStartMs) events.push({ t:h.finishedAt, icon:'📋', tone:'accent', text:'Audited '+(h.storeName||'Unnamed store')+' — '+h.completionPct+'% score', action:'view-audit', id:h.id }); });
     state.prospects.forEach(function(p){
-      if ((p.createdAt||0)>=todayStartMs) events.push({ t:p.createdAt, icon:'➕', text:'Added prospect '+(p.name||'Unnamed prospect'), action:'goto-prospect', id:p.id });
-      if (p.converted && (p.convertedAt||0)>=todayStartMs) events.push({ t:p.convertedAt, icon:'🎉', text:(p.name||'Unnamed prospect')+' converted to client', action:'goto-prospect', id:p.id });
-      if (p.declined && (p.declinedAt||0)>=todayStartMs) events.push({ t:p.declinedAt, icon:'✗', text:(p.name||'Unnamed prospect')+' marked not converted', action:'goto-prospect', id:p.id });
+      if ((p.createdAt||0)>=todayStartMs) events.push({ t:p.createdAt, icon:'➕', tone:'accent', text:'Added prospect '+(p.name||'Unnamed prospect'), action:'goto-prospect', id:p.id });
+      if (p.converted && (p.convertedAt||0)>=todayStartMs) events.push({ t:p.convertedAt, icon:'🎉', tone:'good', text:(p.name||'Unnamed prospect')+' converted to client', action:'goto-prospect', id:p.id });
+      if (p.declined && (p.declinedAt||0)>=todayStartMs) events.push({ t:p.declinedAt, icon:'✗', tone:'bad', text:(p.name||'Unnamed prospect')+' marked not converted', action:'goto-prospect', id:p.id });
     });
     state.correctiveActions.forEach(function(a){
-      if ((a.createdAt||0)>=todayStartMs) events.push({ t:a.createdAt, icon:'⚠️', text:'Logged issue at '+(a.storeName||'—')+' — '+(a.description||'(unspecified)'), action:'go-actions' });
-      if (a.done && (a.resolvedAt||0)>=todayStartMs) events.push({ t:a.resolvedAt, icon:'✓', text:'Fixed at '+(a.storeName||'—')+' — '+(a.description||'(unspecified)'), action:'go-actions' });
+      if ((a.createdAt||0)>=todayStartMs) events.push({ t:a.createdAt, icon:'⚠️', tone:'bad', text:'Logged issue at '+(a.storeName||'—')+' — '+(a.description||'(unspecified)'), action:'go-actions' });
+      if (a.done && (a.resolvedAt||0)>=todayStartMs) events.push({ t:a.resolvedAt, icon:'✓', tone:'good', text:'Fixed at '+(a.storeName||'—')+' — '+(a.description||'(unspecified)'), action:'go-actions' });
     });
     state.contentIdeas.forEach(function(c){
-      if (c.posted && (c.postedAt||0)>=todayStartMs) events.push({ t:c.postedAt, icon:'🎬', text:'Posted "'+(c.topic||'Untitled idea')+'"', action:'goto-content', id:c.id });
+      if (c.posted && (c.postedAt||0)>=todayStartMs) events.push({ t:c.postedAt, icon:'🎬', tone:'accent', text:'Posted "'+(c.topic||'Untitled idea')+'"', action:'goto-content', id:c.id });
     });
     state.lookups.forEach(function(l){
-      if (l.done && (l.doneAt||0)>=todayStartMs) events.push({ t:l.doneAt, icon:'✔️', text:'Completed '+(l.category==='task'?'task':'lookup')+' — '+(l.text||'(untitled)'), action:'go-lookup' });
+      if (l.done && (l.doneAt||0)>=todayStartMs) events.push({ t:l.doneAt, icon:'✔️', tone:'good', text:'Completed '+(l.category==='task'?'task':'lookup')+' — '+(l.text||'(untitled)'), action:'go-lookup' });
     });
     events.sort(function(a,b){ return b.t-a.t; });
     return events;
@@ -2247,30 +2267,34 @@
     var todayLabel = new Date().toLocaleDateString(undefined,{weekday:'long', month:'short', day:'numeric'});
     var todayActivityShown = todayActivity.slice(0,8);
 
+    var toneBg = { accent:'var(--accent-soft)', good:'var(--good-soft)', bad:'var(--bad-soft)' };
+
     return '<main>' +
       renderTargetCard(monthName, revenueMonth, clientsMonth) +
-      '<div class="eyebrow">'+esc(todayLabel)+'</div>' +
-      '<h1 style="font-size:26px;margin-top:6px;margin-bottom:14px;">'+esc(greeting)+'</h1>' +
+      '<div class="dashhero">' +
+        '<span class="datepill">📅 '+esc(todayLabel)+'</span>' +
+        '<h1 style="font-size:25px;">'+esc(greeting)+'</h1>' +
+      '</div>' +
 
-      '<h2 style="font-size:15px;margin-bottom:8px;">Today\'s Summary</h2>' +
+      '<div class="sechead2"><span class="ic">📊</span><h2>Today\'s Summary</h2></div>' +
       '<div class="statgrid" style="margin-top:0;margin-bottom:20px;">' +
-        '<div class="stattile"><div class="v">'+auditsToday.length+'</div><div class="k">Audits Done</div></div>' +
+        '<div class="stattile t-accent"><div class="v">'+auditsToday.length+'</div><div class="k">Audits Done</div></div>' +
         '<div class="stattile"><div class="v">'+(avgScoreToday===null?'—':avgScoreToday+'%')+'</div><div class="k">Avg. Score</div></div>' +
-        '<div class="stattile"><div class="v">'+prospectsAddedToday+'</div><div class="k">Prospects Added</div></div>' +
-        '<div class="stattile"><div class="v">'+prospectsConvertedToday+'</div><div class="k">Converted</div></div>' +
-        '<div class="stattile"><div class="v">'+actionsResolvedToday+'</div><div class="k">Issues Resolved</div></div>' +
-        '<div class="stattile"><div class="v">'+esc(state.pricing.currency)+revenueToday+'</div><div class="k">Revenue Today</div></div>' +
+        '<div class="stattile t-accent"><div class="v">'+prospectsAddedToday+'</div><div class="k">Prospects Added</div></div>' +
+        '<div class="stattile t-good"><div class="v">'+prospectsConvertedToday+'</div><div class="k">Converted</div></div>' +
+        '<div class="stattile t-good"><div class="v">'+actionsResolvedToday+'</div><div class="k">Issues Resolved</div></div>' +
+        '<div class="stattile t-good"><div class="v">'+esc(state.pricing.currency)+revenueToday+'</div><div class="k">Revenue Today</div></div>' +
       '</div>' +
 
       renderAlertsBanner() +
       '<button class="btn btn-primary" style="width:100%;padding:14px;margin-bottom:22px;" data-action="go-setup">+ Start New Audit</button>' +
 
-      '<h2 style="font-size:15px;margin-bottom:8px;">Today\'s Activity</h2>' +
+      '<div class="sechead2"><span class="ic">🕘</span><h2>Today\'s Activity</h2></div>' +
       (todayActivity.length===0 ? '<div class="helper" style="margin-bottom:20px;">Nothing logged yet today — get started above.</div>' :
         '<div class="card" style="padding:4px 16px;margin-bottom:'+(todayActivity.length>8?'8px':'20px')+';">' +
           todayActivityShown.map(function(ev){
-            return '<div data-action="'+ev.action+'"'+(ev.id?' data-id="'+ev.id+'"':'')+' style="display:flex; align-items:flex-start; gap:10px; padding:10px 0; border-top:1px solid var(--line); cursor:pointer;">' +
-              '<span>'+ev.icon+'</span>' +
+            return '<div class="actrow" data-action="'+ev.action+'"'+(ev.id?' data-id="'+ev.id+'"':'')+'>' +
+              '<span class="acticon" style="background:'+(toneBg[ev.tone]||'var(--surface-2)')+';">'+ev.icon+'</span>' +
               '<span style="flex:1; font-size:13.5px; line-height:1.4;">'+esc(ev.text)+'</span>' +
               '<span class="histmeta" style="white-space:nowrap;">'+new Date(ev.t).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})+'</span>' +
             '</div>';
@@ -2283,14 +2307,14 @@
 
       renderProblemAreasHtml() +
 
-      '<h2 style="font-size:15px;margin-bottom:8px;">Shoot Days This Week</h2>' +
+      '<div class="sechead2"><span class="ic">🎬</span><h2>Shoot Days This Week</h2></div>' +
       weekCalHtml +
 
-      '<h2 style="font-size:15px;margin-bottom:8px;">Corrective Actions — Last 7 Days</h2>' +
+      '<div class="sechead2"><span class="ic" style="background:var(--bad-soft);">🛠️</span><h2>Corrective Actions — Last 7 Days</h2></div>' +
       '<div class="statgrid" style="margin-top:0;margin-bottom:12px;">' +
         '<div class="stattile"><div class="v">'+openActionsNow+'</div><div class="k">Open</div></div>' +
-        '<div class="stattile"><div class="v" style="'+(overdueActions?'color:var(--bad);':'')+'">'+overdueActions+'</div><div class="k">Overdue</div></div>' +
-        '<div class="stattile"><div class="v">'+actionsResolvedWeek+'</div><div class="k">Resolved (7d)</div></div>' +
+        '<div class="stattile'+(overdueActions?' t-bad':'')+'"><div class="v">'+overdueActions+'</div><div class="k">Overdue</div></div>' +
+        '<div class="stattile t-good"><div class="v">'+actionsResolvedWeek+'</div><div class="k">Resolved (7d)</div></div>' +
         '<div class="stattile"><div class="v">'+resolutionPct+'%</div><div class="k">Resolved All-time</div></div>' +
       '</div>' +
       (topOpenActions.length===0 ? '<div class="helper" style="margin-bottom:20px;">No open corrective actions.</div>' :
@@ -2307,21 +2331,21 @@
         (openActionsNow>topOpenActions.length ? '<button class="btn btn-ghost btn-sm" style="margin-bottom:20px;" data-action="go-actions">View all '+openActionsNow+' open actions →</button>' : '')
       ) +
 
-      '<h2 style="font-size:15px;margin-bottom:8px;">Prospects — Last 7 Days</h2>' +
+      '<div class="sechead2"><span class="ic">🧭</span><h2>Prospects — Last 7 Days</h2></div>' +
       '<div class="card dashcard" style="margin-bottom:20px;">' +
         (totalProspects===0 ? '<div class="helper" style="margin:0;">No prospects yet.</div>' : stackbarHtml) +
       '</div>' +
       '<div class="statgrid" style="margin-bottom:20px;">' +
-        '<div class="stattile"><div class="v">'+prospectsAddedWeek+'</div><div class="k">Added (7d)</div></div>' +
-        '<div class="stattile"><div class="v">'+prospectsConvertedWeek+'</div><div class="k">Converted (7d)</div></div>' +
+        '<div class="stattile t-accent"><div class="v">'+prospectsAddedWeek+'</div><div class="k">Added (7d)</div></div>' +
+        '<div class="stattile t-good"><div class="v">'+prospectsConvertedWeek+'</div><div class="k">Converted (7d)</div></div>' +
         '<div class="stattile"><div class="v">'+openPipeline+'</div><div class="k">Open Pipeline</div></div>' +
       '</div>' +
 
-      '<h2 style="font-size:15px;margin-bottom:8px;">Lookups &amp; Tasks</h2>' +
+      '<div class="sechead2"><span class="ic">🔎</span><h2>Lookups &amp; Tasks</h2></div>' +
       (state.lookups.length===0 ? '<div class="helper" style="margin-bottom:20px;">No lookups or tasks logged yet.</div>' : (
         '<div class="statgrid" style="margin-top:0;margin-bottom:12px;">' +
           '<div class="stattile"><div class="v">'+openLookups.length+'</div><div class="k">Open</div></div>' +
-          '<div class="stattile"><div class="v">'+doneLookups+'</div><div class="k">Completed</div></div>' +
+          '<div class="stattile t-good"><div class="v">'+doneLookups+'</div><div class="k">Completed</div></div>' +
         '</div>' +
         (openLookups.length===0 ? '<div class="helper" style="margin-bottom:20px;">Everything\'s cleared — nice work.</div>' : (
           '<div class="card" style="padding:4px 16px;margin-bottom:8px;">' +
@@ -2333,7 +2357,7 @@
         ))
       )) +
 
-      '<h2 style="font-size:15px;margin-bottom:8px;">Re-audits Due — Next 7</h2>' +
+      '<div class="sechead2"><span class="ic">🔁</span><h2>Re-audits Due — Next 7</h2></div>' +
       reCalHtml +
       (due.length===0 ? '<div class="helper" style="margin-top:8px;">Complete an audit to start tracking re-audit schedules.</div>' :
         '<button class="btn btn-ghost btn-sm" style="margin-top:8px;" data-action="go-actions">View schedule →</button>'
