@@ -1839,7 +1839,8 @@
         }
         if (e.type==='loop-step'){
           var ls = LOOP_STEPS[d.type] || LOOP_STEPS.other;
-          return '<div class="card histcard static"><div class="histtop"><span>'+ls.icon+' Step '+e.n+' — '+esc(ls.label)+'</span></div><div class="histmeta" style="margin-top:8px;">'+(d.note?esc(d.note)+' · ':'')+fmtDateShort(e.t)+'</div></div>';
+          return '<div class="card histcard static"><div class="histtop"><span>'+ls.icon+' Step '+e.n+' — '+esc(ls.label)+'</span><span class="histmeta">'+fmtDateShort(e.t)+'</span></div>' +
+            '<div style="margin-top:6px;">'+loopFieldRowsHtml(d.type, d.data, d.note)+'</div></div>';
         }
         if (e.type==='action-created'){
           return '<div class="card histcard static"><div class="histtop"><span>⚠️ Corrective action logged</span></div><div class="histmeta" style="margin-top:8px;">'+esc(d.description||'(unspecified)')+' · '+fmtDateShort(e.t)+'</div></div>';
@@ -1898,14 +1899,75 @@
 
   var LOOP_STEPS = {
     audit:{ icon:'📋', label:'Delivery Audit', helper:'Run the next delivery audit to see how things have moved since the last loop.' },
+    analysis:{ icon:'🔬', label:'Data Analysis', helper:'Collect the data, pull out the key inputs and read what they reflect.' },
     dashboard:{ icon:'📊', label:'Dashboard Build', helper:'Turn the audit data into a dashboard the client can act on.' },
     action:{ icon:'🎯', label:'Action Plan', helper:'Decide what needs to change, who owns it, and by when.' },
     implement:{ icon:'🛠️', label:'Implementation', helper:'Support the team while the agreed actions are carried out.' },
     review:{ icon:'🔎', label:'Review & Follow-up', helper:'Check whether the actions worked before the next audit.' },
     other:{ icon:'✏️', label:'Other', helper:'Any other work done for this client.' }
   };
-  var LOOP_ORDER = ['audit','dashboard','action','implement','review','other'];
-  var LOOP_NEXT = { audit:'dashboard', dashboard:'action', action:'implement', implement:'review', review:'audit', other:'review' };
+  var LOOP_ORDER = ['audit','analysis','dashboard','action','implement','review','other'];
+  var LOOP_NEXT = { audit:'analysis', analysis:'dashboard', dashboard:'action', action:'implement', implement:'review', review:'audit', other:'review' };
+  var LOOP_FIELDS = {
+    audit: [],
+    analysis: [
+      { k:'dataReceived', label:'Data received from client?', t:'yn' },
+      { k:'keyInputs', label:'Key inputs extracted?', t:'yn' },
+      { k:'reflects', label:'What does the data reflect?', t:'text' }
+    ],
+    dashboard: [
+      { k:'built', label:'Dashboard built?', t:'yn' },
+      { k:'shared', label:'Shared with client?', t:'yn' },
+      { k:'reflects', label:'What does the dashboard show?', t:'text' }
+    ],
+    action: [
+      { k:'agreed', label:'Actions agreed with client?', t:'yn' },
+      { k:'plan', label:'Actions to be taken', t:'text' },
+      { k:'owner', label:'Owner & target date', t:'line' }
+    ],
+    implement: [
+      { k:'started', label:'Actions started?', t:'yn' },
+      { k:'blockers', label:'Blockers', t:'line' }
+    ],
+    review: [
+      { k:'worked', label:'Did the actions work?', t:'yn' },
+      { k:'changed', label:'What changed?', t:'text' }
+    ],
+    other: []
+  };
+  function loopTypeOf(p){ return LOOP_STEPS[p.nextAction] ? p.nextAction : 'analysis'; }
+  function loopFieldRowsHtml(type, data, remarks){
+    var rows = (LOOP_FIELDS[type]||[]).map(function(f){
+      var v = (data||{})[f.k];
+      var out = f.t==='yn'
+        ? (v==='yes' ? '<span class="pill good">Yes</span>' : (v==='no' ? '<span class="pill bad">No</span>' : '<span class="histmeta">Not filled</span>'))
+        : (v ? esc(v) : '<span class="histmeta">Not filled</span>');
+      return '<div style="padding:5px 0;border-top:1px solid var(--line);"><div class="histmeta">'+esc(f.label)+'</div><div style="margin-top:2px;">'+out+'</div></div>';
+    });
+    if (remarks) rows.push('<div style="padding:5px 0;border-top:1px solid var(--line);"><div class="histmeta">Remarks</div><div style="margin-top:2px;">'+esc(remarks)+'</div></div>');
+    return rows.join('');
+  }
+  function renderLoopBoard(){
+    var live = state.prospects.filter(function(p){ return p.converted && !p.declined && !p.engagementEnded && prospectAudits(p).length; });
+    var ended = state.prospects.filter(function(p){ return p.converted && p.engagementEnded; }).length;
+    if (!live.length && !ended) return '';
+    var stages = LOOP_ORDER.map(function(k){
+      return { key:k, clients: live.filter(function(p){ return loopTypeOf(p)===k; }) };
+    }).filter(function(s){ return s.clients.length; });
+    return sh('🔄','Client Engagement Board') +
+      '<div class="card" style="padding:14px 16px;margin-bottom:20px;">' +
+        '<div class="helper" style="margin:0 0 8px;">'+live.length+' active client'+(live.length===1?'':'s')+(ended?' · '+ended+' closed':'')+' — where each one sits in the loop right now:</div>' +
+        stages.map(function(s){
+          var st = LOOP_STEPS[s.key];
+          return '<div style="padding:8px 0;border-top:1px solid var(--line);">' +
+            '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;"><span style="font-weight:700;">'+st.icon+' '+esc(st.label)+'</span><span class="pill warn">'+s.clients.length+'</span></div>' +
+            '<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">' +
+              s.clients.map(function(p){ return '<button type="button" class="btn btn-ghost btn-sm" data-action="goto-prospect" data-id="'+p.id+'">'+esc(p.name||'Unnamed client')+'</button>'; }).join('') +
+            '</div>' +
+          '</div>';
+        }).join('') +
+      '</div>';
+  }
   function renderEngagementLoop(p, audits){
     if (!p.converted || !audits.length) return '';
     var log = p.actionLog || [];
@@ -1916,8 +1978,21 @@
           '<button type="button" class="btn btn-ghost btn-sm" data-action="resume-engagement">Resume engagement</button>' +
         '</div>';
     }
-    var type = LOOP_STEPS[p.nextAction] ? p.nextAction : 'dashboard';
+    var type = loopTypeOf(p);
     var st = LOOP_STEPS[type];
+    var nd = p.nextData || {};
+    var fieldsHtml = (LOOP_FIELDS[type]||[]).map(function(f){
+      if (f.t==='yn'){
+        return '<div class="field"><label>'+esc(f.label)+'</label><div style="display:flex; gap:8px;">' +
+          '<button type="button" class="naBtn '+(nd[f.k]==='yes'?'on':'')+'" data-action="loop-yn" data-key="'+f.k+'" data-val="yes">Yes</button>' +
+          '<button type="button" class="naBtn '+(nd[f.k]==='no'?'on':'')+'" data-action="loop-yn" data-key="'+f.k+'" data-val="no">No</button>' +
+        '</div></div>';
+      }
+      if (f.t==='line'){
+        return '<div class="field"><label>'+esc(f.label)+'</label><input type="text" data-action="loop-field-input" data-key="'+f.k+'" value="'+esc(nd[f.k]||'')+'"></div>';
+      }
+      return '<div class="field"><label>'+esc(f.label)+'</label><textarea data-action="loop-field-input" data-key="'+f.k+'">'+esc(nd[f.k]||'')+'</textarea></div>';
+    }).join('');
     return sh('🔄','Engagement Loop') +
       '<div class="card" style="padding:16px;margin-bottom:20px;">' +
         '<div class="helper" style="margin:0 0 12px;">An ongoing loop — each finished step is logged in the timeline above and the next one is queued, until the engagement ends.</div>' +
@@ -1927,7 +2002,8 @@
         '<div class="helper" style="margin:-4px 0 10px;">'+esc(st.helper)+'</div>' +
         (type==='audit'
           ? '<button type="button" class="btn btn-primary btn-sm" data-action="start-reaudit" data-name="'+esc(p.name)+'" data-location="'+esc(p.location||'')+'" data-type="'+esc(audits[0].type)+'">🔁 Start the audit</button>'
-          : '<div class="field"><label for="pNextNote">What was done / outcome</label><textarea id="pNextNote" data-action="loop-note-input" placeholder="Optional — jot down what happened in this step">'+esc(p.nextNote||'')+'</textarea></div>' +
+          : fieldsHtml +
+            '<div class="field"><label for="pNextNote">Remarks</label><textarea id="pNextNote" data-action="loop-note-input" placeholder="Optional — anything else worth noting">'+esc(p.nextNote||'')+'</textarea></div>' +
             '<button type="button" class="btn btn-primary btn-sm" data-action="log-loop-step">✓ Done — log it &amp; queue "'+esc(LOOP_STEPS[LOOP_NEXT[type]].label)+'"</button>') +
         '<div style="margin-top:12px;"><button type="button" class="btn btn-text btn-danger btn-sm" data-action="end-engagement">End engagement</button></div>' +
       '</div>';
@@ -2574,6 +2650,8 @@
 
       sparkHtml +
 
+      renderLoopBoard() +
+
       renderProblemAreasHtml() +
 
       '<div class="sechead2"><span class="ic">🎬</span><h2>Shoot Days This Week</h2></div>' +
@@ -2915,12 +2993,21 @@
     else if (action==='log-loop-step'){
       var llP = findProspect(state.activeProspectId);
       if (llP){
-        var llType = LOOP_STEPS[llP.nextAction] ? llP.nextAction : 'dashboard';
+        var llType = loopTypeOf(llP);
         if (!llP.actionLog) llP.actionLog = [];
-        llP.actionLog.push({ id:uid(), type:llType, note:(llP.nextNote||'').trim(), doneAt:Date.now() });
+        llP.actionLog.push({ id:uid(), type:llType, note:(llP.nextNote||'').trim(), data:llP.nextData||{}, doneAt:Date.now() });
         llP.nextAction = LOOP_NEXT[llType];
         llP.nextNote = '';
+        llP.nextData = {};
         llP.updatedAt = Date.now();
+        persistProspects(); render();
+      }
+    }
+    else if (action==='loop-yn'){
+      var lyP = findProspect(state.activeProspectId);
+      if (lyP){
+        if (!lyP.nextData) lyP.nextData = {};
+        lyP.nextData[t.dataset.key] = (lyP.nextData[t.dataset.key]===t.dataset.val) ? '' : t.dataset.val;
         persistProspects(); render();
       }
     }
@@ -2984,8 +3071,9 @@
         if (!linkedP.contactName) linkedP.contactName = d.contactName||linkedP.contactName||'';
         if (!linkedP.contactDesignation) linkedP.contactDesignation = d.contactDesignation||linkedP.contactDesignation||'';
         if (!linkedP.contactMobile) linkedP.contactMobile = d.contactMobile||linkedP.contactMobile||'';
-        linkedP.nextAction = 'dashboard';
+        linkedP.nextAction = 'analysis';
         linkedP.nextNote = '';
+        linkedP.nextData = {};
       }
       state.pendingProspectId = null;
       if (linkedP){
@@ -3137,6 +3225,14 @@
     else if (el.dataset.bind === 'witnessName' && state.draft){ state.draft.witnessName = el.value; persistDraft(); }
     else if (el.dataset.bind === 'witnessDesignation' && state.draft){ state.draft.witnessDesignation = el.value; persistDraft(); }
     else if (el.dataset.bind === 'witnessMobile' && state.draft){ state.draft.witnessMobile = el.value; persistDraft(); }
+    else if (el.dataset.action === 'loop-field-input'){
+      var lfP = findProspect(state.activeProspectId);
+      if (lfP){
+        if (!lfP.nextData) lfP.nextData = {};
+        lfP.nextData[el.dataset.key] = el.value;
+        persistProspects();
+      }
+    }
     else if (el.dataset.action === 'loop-note-input'){
       var lniP = findProspect(state.activeProspectId);
       if (lniP){ lniP.nextNote = el.value; persistProspects(); }
@@ -3255,7 +3351,7 @@
     else if (el.dataset.bindProspect==='name'){ render(); }
     else if (el.dataset.action==='set-next-action'){
       var snaP = findProspect(state.activeProspectId);
-      if (snaP && LOOP_STEPS[el.value]){ snaP.nextAction = el.value; persistProspects(); render(); }
+      if (snaP && LOOP_STEPS[el.value]){ snaP.nextAction = el.value; snaP.nextData = {}; persistProspects(); render(); }
     }
     else if (el.dataset.action==='set-pricing-type-select'){
       var ptp = findProspect(state.activeProspectId);
