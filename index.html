@@ -1168,7 +1168,7 @@
     if (!rec) return renderSetup();
     var tmpl = state.templates[rec.type] || {label:rec.type};
     return '<main>' +
-      '<button class="backrow" data-action="back-from-summary">← '+(state.summaryReturnView==='prospects'?'Back to prospect':'Back')+'</button>' +
+      '<button class="backrow" data-action="back-from-summary">← '+(state.summaryReturnView==='prospects'?'Back to client':'Back')+'</button>' +
       '<div class="sumhead"><div><span class="badge">'+esc(tmpl.label||rec.type)+'</span>' +
         '<h1 style="font-size:24px;margin-top:8px;">'+esc(rec.storeName||'Unnamed store')+'</h1></div>' +
         '<button type="button" class="btn btn-ghost btn-sm" data-action="copy-audit-summary" data-id="'+rec.id+'">📋 Copy Summary</button>' +
@@ -1390,7 +1390,7 @@
       '</div>' +
 
       '<h1 style="font-size:20px;margin:0 0 4px;">Monthly Targets</h1>' +
-      '<div class="helper" style="margin-bottom:14px;margin-top:6px;">Set what you\'re aiming for this month. Progress is tracked automatically on the Dashboard against audits completed and prospects converted this calendar month.</div>' +
+      '<div class="helper" style="margin-bottom:14px;margin-top:6px;">Set what you\'re aiming for this month. Progress is tracked automatically on the Dashboard against audits completed and clients converted this calendar month.</div>' +
       '<div style="display:flex; gap:12px; margin-bottom:28px;">' +
         '<div class="field" style="flex:1;"><label>Revenue target ('+esc(state.pricing.currency)+')</label><input type="number" min="0" data-target="revenue" value="'+(state.targets.revenue||0)+'"></div>' +
         '<div class="field" style="flex:1;"><label>Clients to onboard</label><input type="number" min="0" data-target="clients" value="'+(state.targets.clients||0)+'"></div>' +
@@ -1403,7 +1403,7 @@
       '<button class="btn btn-text btn-danger" data-action="reset-pricing">Reset pricing to defaults</button>' +
 
       '<h1 style="font-size:20px;margin:28px 0 4px;">Service classes</h1>' +
-      '<div class="helper" style="margin-bottom:12px;">The numbered service classes a converted prospect can be assigned to. Shown as a badge on prospect cards and in the Re-audit Due list.</div>' +
+      '<div class="helper" style="margin-bottom:12px;">The numbered service classes a converted client can be assigned to. Shown as a badge on client cards and in the Re-audit Due list.</div>' +
       '<div class="card" style="padding:4px 16px;margin-bottom:12px;">' +
         state.serviceClasses.slice().sort(function(a,b){return a.number-b.number;}).map(function(sc){
           return '<div class="gradebandrow">' +
@@ -1683,7 +1683,7 @@
           '<div class="stattile'+(clientsDueSoon?' t-bad':'')+'"><div class="v">'+clientsDueSoon+'</div><div class="k">Due This Week</div></div>' +
           '<div class="stattile t-good"><div class="v">'+esc(state.pricing.currency)+clientsRevenue+'</div><div class="k">Total Revenue</div></div>' +
         '</div>' +
-        (clientsList.length===0 ? '<div class="empty"><div class="big">🤝</div>No clients yet.<br>Convert a prospect to see them here.</div>' :
+        (clientsList.length===0 ? '<div class="empty"><div class="big">🤝</div>No clients yet.<br>Convert a pipeline entry to see them here.</div>' :
           clientsList.map(function(p){
             var audits = prospectAudits(p);
             var next = computeClientNextAction(p, audits);
@@ -2149,7 +2149,7 @@
           '</div>'
         )
       )) +
-      '<button class="btn btn-text btn-danger" style="margin-top:10px;" data-action="delete-prospect" data-id="'+p.id+'">Delete prospect</button>' +
+      '<button class="btn btn-text btn-danger" style="margin-top:10px;" data-action="delete-prospect" data-id="'+p.id+'">Delete client</button>' +
     '</main>';
   }
 
@@ -2223,7 +2223,7 @@
 
   function renderSearchResultsHtml(){
     var q = (state.searchQuery||'').trim().toLowerCase();
-    if (!q) return '<div class="helper">Type to search across prospects, audit history, corrective actions and lookup/task items.</div>';
+    if (!q) return '<div class="helper">Type to search across clients, audit history, corrective actions and lookup/task items.</div>';
     var prospects = state.prospects.filter(function(p){ return (p.name||'').toLowerCase().indexOf(q)>=0 || (p.location||'').toLowerCase().indexOf(q)>=0; }).slice(0,20);
     var audits = state.history.filter(function(h){ return (h.storeName||'').toLowerCase().indexOf(q)>=0; }).slice(0,20);
     var actionsRes = state.correctiveActions.filter(function(a){ return (a.description||'').toLowerCase().indexOf(q)>=0 || (a.storeName||'').toLowerCase().indexOf(q)>=0; }).slice(0,20);
@@ -2262,7 +2262,7 @@
     return '<main>' +
       '<div class="eyebrow">Search</div>' +
       '<h1 style="font-size:26px;margin-top:6px;margin-bottom:14px;">Search everything</h1>' +
-      '<input type="text" data-action="search-input" value="'+esc(state.searchQuery||'')+'" placeholder="Search prospects, audits, actions, lookup items…" style="width:100%;border:1px solid var(--line-strong);border-radius:var(--r-s);padding:12px 14px;font-size:16px;background:var(--surface);color:var(--ink);margin-bottom:6px;" autofocus>' +
+      '<input type="text" data-action="search-input" value="'+esc(state.searchQuery||'')+'" placeholder="Search clients, audits, actions, lookup items…" style="width:100%;border:1px solid var(--line-strong);border-radius:var(--r-s);padding:12px 14px;font-size:16px;background:var(--surface);color:var(--ink);margin-bottom:6px;" autofocus>' +
       '<div id="searchResultsContainer">' + renderSearchResultsHtml() + '</div>' +
     '</main>';
   }
@@ -2826,7 +2826,7 @@
     else if (action==='goto-prospect'){ if(!state.draft){ state.activeProspectId = t.dataset.id; state.view='prospects'; render(); } }
     else if (action==='back-to-prospects'){ state.activeProspectId = null; render(); }
     else if (action==='delete-prospect'){
-      if (window.confirm('Delete this prospect? This cannot be undone.')){
+      if (window.confirm('Delete this client? This cannot be undone.')){
         state.prospects = state.prospects.filter(function(p){ return p.id!==t.dataset.id; });
         persistProspects();
         state.activeProspectId = null; render();
@@ -3112,6 +3112,8 @@
     else if (action==='editor-tab'){ state.editorTab = t.dataset.tab; render(); }
     else if (action==='delete-section'){
       var tmpl = state.templates[state.editorTab];
+      var delSec = tmpl.sections.filter(function(s){ return s.id===t.dataset.sec; })[0];
+      if (delSec && !window.confirm('Delete the section "'+delSec.name+'" and its '+delSec.items.length+' item'+(delSec.items.length===1?'':'s')+'? This cannot be undone.')) return;
       tmpl.sections = tmpl.sections.filter(function(s){ return s.id!==t.dataset.sec; });
       persistTemplates(); render();
     }
@@ -3372,7 +3374,7 @@
     else if (el.dataset.action==='restore-backup-file'){
       var file = el.files && el.files[0];
       if (!file) return;
-      if (!window.confirm('This will REPLACE all current data (audits, prospects, actions, settings) with the contents of this backup file. Continue?')){ el.value=''; return; }
+      if (!window.confirm('This will REPLACE all current data (audits, clients, actions, settings) with the contents of this backup file. Continue?')){ el.value=''; return; }
       var reader = new FileReader();
       reader.onload = function(ev){
         try {
