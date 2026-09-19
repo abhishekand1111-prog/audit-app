@@ -1467,6 +1467,13 @@
         '<div class="field"><label>Dine-In — re-check every (days)</label><input type="number" min="1" data-schedule="dinein.intervalDays" value="'+state.schedule.dinein.intervalDays+'"></div>' +
         '<div class="field"><label>QSR — re-check every (days)</label><input type="number" min="1" data-schedule="qsr.intervalDays" value="'+state.schedule.qsr.intervalDays+'"></div>' +
       '</div>' +
+
+      '<h1 style="font-size:20px;margin:28px 0 4px;">Stuck-step alert</h1>' +
+      '<div class="helper" style="margin-bottom:12px;">How many days a client can stay on one Engagement Loop step before the dashboard flags it for a nudge.</div>' +
+      '<div class="card edsection">' +
+        '<div class="field"><label>Dine-In — flag after (days)</label><input type="number" min="1" data-schedule="dinein.stuckDays" value="'+loopStuckDaysFor('dinein')+'"></div>' +
+        '<div class="field"><label>QSR — flag after (days)</label><input type="number" min="1" data-schedule="qsr.stuckDays" value="'+loopStuckDaysFor('qsr')+'"></div>' +
+      '</div>' +
     '</main>';
   }
 
@@ -1936,6 +1943,23 @@
     other: []
   };
   function loopTypeOf(p){ return LOOP_STEPS[p.nextAction] ? p.nextAction : 'analysis'; }
+  function loopStuckDaysFor(cat){
+    var n = parseInt(((state.schedule||{})[cat]||{}).stuckDays, 10);
+    return n >= 1 ? n : 7;
+  }
+  function loopStuckDays(p){
+    var cat = p.category;
+    if (cat!=='dinein' && cat!=='qsr'){ var a = prospectAudits(p)[0]; cat = a ? a.type : 'dinein'; }
+    return loopStuckDaysFor(cat);
+  }
+  function loopDaysOnStep(p){
+    var t = p.convertedAt || p.createdAt || 0;
+    var log = p.actionLog || [];
+    if (log.length) t = Math.max(t, log[log.length-1].doneAt || 0);
+    prospectAudits(p).forEach(function(h){ if (h.finishedAt > t) t = h.finishedAt; });
+    return t ? Math.floor((Date.now()-t)/86400000) : 0;
+  }
+  function isLiveClient(p){ return p.converted && !p.declined && !p.engagementEnded && prospectAudits(p).length; }
   function loopFieldRowsHtml(type, data, remarks){
     var rows = (LOOP_FIELDS[type]||[]).map(function(f){
       var v = (data||{})[f.k];
@@ -1948,7 +1972,7 @@
     return rows.join('');
   }
   function renderLoopBoard(){
-    var live = state.prospects.filter(function(p){ return p.converted && !p.declined && !p.engagementEnded && prospectAudits(p).length; });
+    var live = state.prospects.filter(isLiveClient);
     var ended = state.prospects.filter(function(p){ return p.converted && p.engagementEnded; }).length;
     if (!live.length && !ended) return '';
     var stages = LOOP_ORDER.map(function(k){
@@ -1962,7 +1986,7 @@
           return '<div style="padding:8px 0;border-top:1px solid var(--line);">' +
             '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;"><span style="font-weight:700;">'+st.icon+' '+esc(st.label)+'</span><span class="pill warn">'+s.clients.length+'</span></div>' +
             '<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">' +
-              s.clients.map(function(p){ return '<button type="button" class="btn btn-ghost btn-sm" data-action="goto-prospect" data-id="'+p.id+'">'+esc(p.name||'Unnamed client')+'</button>'; }).join('') +
+              s.clients.map(function(p){ return '<button type="button" class="btn btn-ghost btn-sm" data-action="goto-prospect" data-id="'+p.id+'">'+esc(p.name||'Unnamed client')+' · '+loopDaysOnStep(p)+'d</button>'; }).join('') +
             '</div>' +
           '</div>';
         }).join('') +
@@ -1996,6 +2020,7 @@
     return sh('🔄','Engagement Loop') +
       '<div class="card" style="padding:16px;margin-bottom:20px;">' +
         '<div class="helper" style="margin:0 0 12px;">An ongoing loop — each finished step is logged in the timeline above and the next one is queued, until the engagement ends.</div>' +
+        '<div class="helper" style="margin:0 0 12px;">On this step for '+loopDaysOnStep(p)+' day'+(loopDaysOnStep(p)===1?'':'s')+(loopDaysOnStep(p)>=loopStuckDays(p)?' — time for a nudge.':'.')+'</div>' +
         '<div class="field"><label for="pNextAction">Up next · step '+(log.length+1)+'</label><select id="pNextAction" data-action="set-next-action">' +
           LOOP_ORDER.map(function(k){ return '<option value="'+k+'" '+(k===type?'selected':'')+'>'+LOOP_STEPS[k].icon+' '+esc(LOOP_STEPS[k].label)+'</option>'; }).join('') +
         '</select></div>' +
@@ -2372,6 +2397,13 @@
       }
     });
     state.prospects.forEach(function(p){
+      if (isLiveClient(p)){
+        var stuckDays = loopDaysOnStep(p);
+        var stuckLimit = loopStuckDays(p);
+        if (stuckDays >= stuckLimit){
+          alerts.push({ tone: stuckDays>=stuckLimit*2?'bad':'warn', icon:'⏳', text: (p.name||'Unnamed client')+' — '+stuckDays+' days on "'+LOOP_STEPS[loopTypeOf(p)].label+'", needs a nudge', action:'goto-prospect', id:p.id });
+        }
+      }
       if (p.plannedAuditDate && p.plannedAuditDate<=todayStr && !p.auditId && !p.declined){
         var overdue = p.plannedAuditDate < todayStr;
         alerts.push({ tone: overdue?'bad':'warn', icon:'⭐', text: (p.name||'Unnamed client')+' — scheduled audit '+(overdue?'was due '+fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime()):'due today')+', needs check-in', action:'goto-prospect', id:p.id });
