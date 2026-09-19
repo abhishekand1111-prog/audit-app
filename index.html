@@ -485,6 +485,7 @@
     reauditOverrides: loadJSON(LS_RO, {}),
     activeContentId: null,
     contentCoverageTab: 'dinein',
+    fuDraft: null,
     searchQuery: '',
     setup: { type:null, storeName:'', storeLocation:'', contactName:'', contactDesignation:'', contactMobile:'', auditDate: todayISO(), auditTime: nowHHMM(), selectedSections:[], menuItemCount:'' },
     editorTab: 'dinein',
@@ -1532,9 +1533,9 @@
         scheduled.map(function(p){
           var overdue = p.plannedAuditDate < todayStr;
           return '<div class="card histcard" data-action="goto-prospect" data-id="'+p.id+'" style="border-color:var(--accent);">' +
-            '<div class="histtop"><span class="badge">⭐ Scheduled</span><span class="pill '+(overdue?'bad':'warn')+'">'+(overdue?'Overdue':fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime()))+'</span></div>' +
+            '<div class="histtop"><span class="badge">⭐ Scheduled</span><span class="pill '+(overdue?'bad':'warn')+'">'+(overdue?'Overdue':fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime())+plannedTimeSuffix(p))+'</span></div>' +
             '<div style="font-weight:700;margin-top:8px;">'+esc(p.name||'Unnamed client')+'</div>' +
-            '<div class="histmeta">'+esc(p.location||'—')+' · Audit planned for '+fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime())+'</div>' +
+            '<div class="histmeta">'+esc(p.location||'—')+' · Audit planned for '+fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime())+plannedTimeSuffix(p)+'</div>' +
           '</div>';
         }).join('') +
       '</div>';
@@ -1750,7 +1751,7 @@
             '<div style="font-weight:700;margin-top:8px;'+(p.declined?'text-decoration:line-through;color:var(--ink-400);':'')+'">'+(revealName ? esc(p.name||'Unnamed client') : '🔒 Hidden until converted')+'</div>' +
             '<div class="histmeta">'+esc(p.location||'—')+(p.address?' · '+esc(p.address):'')+'</div>' +
             (priceStr || p.timeline ? '<div class="histmeta">'+priceStr+(priceStr && p.timeline?' · ':'')+(p.timeline?esc(p.timeline):'')+'</div>' : '') +
-            (!p.declined && p.plannedAuditDate ? '<div class="histmeta">Audit day: '+fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime())+'</div>' : '') +
+            (!p.declined && p.plannedAuditDate ? '<div class="histmeta">Audit day: '+fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime())+plannedTimeSuffix(p)+'</div>' : '') +
             (p.declined && p.followUpDate ? '<div class="histmeta">Follow up: '+fmtDateShort(new Date(p.followUpDate+'T00:00:00').getTime())+'</div>' : '') +
           '</div>';
         }).join('')
@@ -1783,7 +1784,7 @@
       return { tone:'good', icon:'✓', text:'All caught up' };
     }
     if (p.plannedAuditDate && p.plannedAuditDate<=todayStr){
-      return { tone: p.plannedAuditDate<todayStr?'bad':'warn', icon:'⭐', text:'Scheduled audit '+(p.plannedAuditDate<todayStr?'was due '+fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime()):'due today')+', needs check-in' };
+      return { tone: p.plannedAuditDate<todayStr?'bad':'warn', icon:'⭐', text:'Scheduled audit '+(p.plannedAuditDate<todayStr?'was due '+fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime()):'due today'+plannedTimeSuffix(p))+', needs check-in' };
     }
     return { tone:'accent', icon:'▶', text:'No audit yet — start one to kick things off' };
   }
@@ -1817,6 +1818,7 @@
       if (a.done && a.resolvedAt) events.push({ t:a.resolvedAt, type:'action-resolved', data:a });
     });
     (p.actionLog||[]).forEach(function(s, i){ events.push({ t:s.doneAt, type:'loop-step', data:s, n:i+1 }); });
+    (p.followUps||[]).filter(function(f){ return f.done && f.doneAt; }).forEach(function(f){ events.push({ t:f.doneAt, type:'followup', data:f }); });
     if (p.convertedAt) events.push({ t:p.convertedAt, type:'converted', data:p });
     if (p.declinedAt) events.push({ t:p.declinedAt, type:'declined', data:p });
     if (p.createdAt) events.push({ t:p.createdAt, type:'added', data:p });
@@ -1835,6 +1837,9 @@
             '<div class="histtop"><span class="badge">'+esc((state.templates[d.type]||{}).label||d.type)+' audit</span><span class="histpct">'+d.completionPct+'%</span></div>' +
             '<div class="histmeta" style="margin-top:8px;">'+fmtDateShort(e.t)+' · Tap to view full report</div>' +
           '</div>';
+        }
+        if (e.type==='followup'){
+          return '<div class="card histcard static"><div class="histtop"><span>📞 Follow-up done</span><span class="histmeta">'+fmtDateShort(e.t)+'</span></div>' + (d.note ? '<div class="histmeta" style="margin-top:6px;">'+esc(d.note)+'</div>' : '') + '</div>';
         }
         if (e.type==='loop-step'){
           var ls = LOOP_STEPS[d.type] || LOOP_STEPS.other;
@@ -1963,6 +1968,103 @@
     if (remarks) rows.push('<div style="padding:5px 0;border-top:1px solid var(--line);"><div class="histmeta">Remarks</div><div style="margin-top:2px;">'+esc(remarks)+'</div></div>');
     return rows.join('');
   }
+  function fmtTime12(t){
+    if (!t) return '';
+    var d = new Date('1970-01-01T'+t+':00');
+    return isNaN(d) ? t : d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});
+  }
+  function plannedTimeSuffix(p){ return p.plannedAuditTime ? ' · '+fmtTime12(p.plannedAuditTime) : ''; }
+  function isoDaysFromNow(n){
+    var d = new Date(); d.setDate(d.getDate()+n);
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  }
+  function followUpDueAt(f){ return new Date(f.date+'T'+(f.time||'23:59')+':00').getTime(); }
+  function fmtFollowUpWhen(f){ return fmtDateShort(new Date(f.date+'T00:00:00').getTime())+(f.time?' · '+fmtTime12(f.time):''); }
+  function openFollowUps(p){
+    return (p.followUps||[]).filter(function(f){ return !f.done && f.date; }).sort(function(a,b){ return followUpDueAt(a)-followUpDueAt(b); });
+  }
+  function followUpTone(f){
+    if (followUpDueAt(f) < Date.now()) return { tone:'bad', label:'Overdue' };
+    if (f.date===todayISO()) return { tone:'warn', label:'Today' };
+    return { tone:'good', label:'Upcoming' };
+  }
+  function clientStageLabel(p){
+    if (p.declined) return 'Not converted';
+    if (p.converted){
+      if (p.engagementEnded) return 'Client · closed';
+      return prospectAudits(p).length ? 'Client · '+LOOP_STEPS[loopTypeOf(p)].label : 'Client';
+    }
+    return p.auditId ? 'Pipeline · audited' : 'Pipeline';
+  }
+  function fuDraftFor(p){ return (state.fuDraft && state.fuDraft.pid===p.id) ? state.fuDraft : { pid:p.id, date:'', time:'', note:'' }; }
+  function renderFollowUps(p){
+    var draft = fuDraftFor(p);
+    var open = openFollowUps(p);
+    var done = (p.followUps||[]).filter(function(f){ return f.done; }).sort(function(a,b){ return (b.doneAt||0)-(a.doneAt||0); }).slice(0,3);
+    return sh('📞','Follow-ups') +
+      '<div class="card" style="padding:14px 16px;margin-bottom:20px;">' +
+        '<div class="helper" style="margin:0 0 10px;">Schedule the next follow-up for this client, at any stage. It shows on the dashboard when it is due.</div>' +
+        '<div style="display:flex; gap:12px;">' +
+          '<div class="field" style="flex:1;"><label for="fuDate">Date</label><input id="fuDate" type="date" data-fu-field="date" value="'+esc(draft.date)+'"></div>' +
+          '<div class="field" style="flex:1;"><label for="fuTime">Time (optional)</label><input id="fuTime" type="time" data-fu-field="time" value="'+esc(draft.time)+'"></div>' +
+        '</div>' +
+        '<div style="display:flex; gap:8px; flex-wrap:wrap; margin:-6px 0 12px;">' +
+          [['Tomorrow',1],['In 3 days',3],['Next week',7]].map(function(q){ return '<button type="button" class="naBtn" data-action="fu-quick" data-days="'+q[1]+'">'+q[0]+'</button>'; }).join('') +
+        '</div>' +
+        '<div class="field"><label for="fuNote">What to follow up on</label><input id="fuNote" data-fu-field="note" value="'+esc(draft.note)+'" placeholder="e.g. Call about the proposal, share the dashboard"></div>' +
+        '<button type="button" class="btn btn-primary btn-sm" data-action="add-followup" '+(draft.date?'':'disabled')+'>+ Add follow-up</button>' +
+        (open.length ? open.map(function(f){
+          var tn = followUpTone(f);
+          return '<div style="padding:10px 0 4px;margin-top:10px;border-top:1px solid var(--line);">' +
+            '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;"><span style="font-weight:700;">📅 '+esc(fmtFollowUpWhen(f))+'</span><span class="pill '+tn.tone+'">'+tn.label+'</span></div>' +
+            (f.note ? '<div style="margin-top:2px;">'+esc(f.note)+'</div>' : '') +
+            '<div style="margin-top:6px;display:flex;gap:8px;align-items:center;">' +
+              '<button type="button" class="btn btn-ghost btn-sm" data-action="done-followup" data-pid="'+p.id+'" data-fid="'+f.id+'">✓ Done</button>' +
+              '<button type="button" class="iconbtn" data-action="delete-followup" data-pid="'+p.id+'" data-fid="'+f.id+'" title="Delete">✕</button>' +
+            '</div>' +
+          '</div>';
+        }).join('') : '<div class="helper" style="margin:12px 0 0;">No open follow-ups for this client.</div>') +
+        (done.length ? '<div class="histmeta" style="margin-top:12px;">Recently done: '+done.map(function(f){ return esc(fmtDateShort(f.doneAt))+(f.note?' — '+esc(f.note):''); }).join(' · ')+'</div>' : '') +
+      '</div>';
+  }
+  function renderFollowUpBoard(){
+    var now = Date.now(), todayStr = todayISO();
+    var all = [];
+    state.prospects.forEach(function(p){ openFollowUps(p).forEach(function(f){ all.push({ p:p, f:f, due:followUpDueAt(f) }); }); });
+    if (!all.length){
+      return sh('📞','Follow-ups') + '<div class="helper" style="margin-bottom:20px;">No follow-ups scheduled. Open any client and add one under Follow-ups.</div>';
+    }
+    all.sort(function(a,b){ return a.due-b.due; });
+    var overdue = all.filter(function(x){ return x.due < now; });
+    var today = all.filter(function(x){ return x.due >= now && x.f.date===todayStr; });
+    var weekEnd = isoDaysFromNow(7);
+    var week = all.filter(function(x){ return x.f.date>todayStr && x.f.date<=weekEnd; });
+    var list = overdue.concat(today, week);
+    var shown = list.slice(0, 8);
+    var hot = overdue.length > 0;
+    return sh('📞','Follow-ups','var(--accent-soft)') +
+      '<div class="card" style="padding:14px 16px;margin-bottom:20px;border:1.5px solid '+(hot?'var(--bad)':'var(--accent)')+';">' +
+        '<div class="statgrid" style="margin:0 0 6px;">' +
+          '<div class="stattile'+(overdue.length?' t-bad':'')+'"><div class="v">'+overdue.length+'</div><div class="k">Overdue</div></div>' +
+          '<div class="stattile t-accent"><div class="v">'+today.length+'</div><div class="k">Today</div></div>' +
+          '<div class="stattile"><div class="v">'+week.length+'</div><div class="k">Next 7 days</div></div>' +
+        '</div>' +
+        (shown.length ? shown.map(function(x){
+          var tn = followUpTone(x.f);
+          return '<div style="padding:10px 0 4px;border-top:1px solid var(--line);">' +
+            '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;">' +
+              '<button type="button" class="btn btn-text btn-sm" style="padding:0;font-weight:700;text-align:left;" data-action="goto-prospect" data-id="'+x.p.id+'">'+esc(x.p.name||'Unnamed client')+'</button>' +
+              '<span class="pill '+tn.tone+'">'+tn.label+'</span>' +
+            '</div>' +
+            '<div class="histmeta">'+esc(clientStageLabel(x.p))+' · '+esc(fmtFollowUpWhen(x.f))+'</div>' +
+            (x.f.note ? '<div style="font-size:13.5px;margin-top:2px;">'+esc(x.f.note)+'</div>' : '') +
+            '<button type="button" class="btn btn-ghost btn-sm" style="margin-top:6px;" data-action="done-followup" data-pid="'+x.p.id+'" data-fid="'+x.f.id+'">✓ Done</button>' +
+          '</div>';
+        }).join('') : '<div class="helper" style="margin:8px 0 0;">Nothing due in the next 7 days.</div>') +
+        (list.length>shown.length ? '<div class="helper" style="margin:8px 0 0;">+'+(list.length-shown.length)+' more due soon</div>' : '') +
+      '</div>';
+  }
+
   function renderLoopBoard(){
     var live = state.prospects.filter(isLiveClient);
     var ended = state.prospects.filter(function(p){ return p.converted && p.engagementEnded; }).length;
@@ -2119,6 +2221,7 @@
         '</div>' +
         '<div class="helper" data-pmobile-err style="margin-top:-6px;color:var(--bad);">'+esc(mobileErrorText(p.contactMobile))+'</div>' +
       '</div>' +
+      renderFollowUps(p) +
       (audits.length ? (
         '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:6px;">' +
           '<div class="sechead2" style="margin:0;"><span class="ic">🕒</span><h2>Timeline</h2></div>' +
@@ -2171,7 +2274,7 @@
           (p.plannedAuditDate && p.plannedAuditDate<=todayISO() ? (
             '<div class="card" style="padding:14px 16px;margin-bottom:16px;border:1.5px solid var(--bad);background:var(--bad-soft);">' +
               '<div style="font-weight:700;margin-bottom:6px;">Scheduled audit check-in</div>' +
-              '<div class="helper" style="margin:0 0 10px;">This audit was scheduled for '+fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime())+'. Was it done?</div>' +
+              '<div class="helper" style="margin:0 0 10px;">This audit was scheduled for '+fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime())+plannedTimeSuffix(p)+'. Was it done?</div>' +
               '<button type="button" class="btn btn-primary btn-sm" style="margin-bottom:10px;" data-action="start-audit-from-prospect">✓ Yes — start it now</button>' +
               '<div class="field" style="margin-bottom:0;"><label for="pCheckin">If not done — next action</label><textarea id="pCheckin" data-bind-prospect="checkinNote" placeholder="e.g. Call back next week, reschedule for Friday">'+esc(p.checkinNote||'')+'</textarea></div>' +
             '</div>'
@@ -2180,7 +2283,10 @@
           '<div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;">' +
             '<button class="btn btn-primary" style="flex:1; min-width:150px; padding:13px;" data-action="start-audit-from-prospect" '+(p.name&&p.name.trim()?'':'disabled')+'>▶ Start Audit Now</button>' +
           '</div>' +
-          '<div class="field"><label for="pPlannedDate">📅 Schedule audit for later</label><input id="pPlannedDate" type="date" data-bind-prospect="plannedAuditDate" value="'+esc(p.plannedAuditDate||'')+'"></div>' +
+          '<div style="display:flex; gap:12px;">' +
+            '<div class="field" style="flex:1;"><label for="pPlannedDate">📅 Schedule audit for later</label><input id="pPlannedDate" type="date" data-bind-prospect="plannedAuditDate" value="'+esc(p.plannedAuditDate||'')+'"></div>' +
+            '<div class="field" style="flex:1;"><label for="pPlannedTime">Time</label><input id="pPlannedTime" type="time" data-bind-prospect="plannedAuditTime" value="'+esc(p.plannedAuditTime||'')+'"></div>' +
+          '</div>' +
           '<div class="helper" style="margin-top:-10px;margin-bottom:16px;">'+(p.name&&p.name.trim()?'Starting runs the normal audit checklist and brings you back here to log the proposal.':'Enter a name above to start the audit.')+'</div>' +
           '<div class="field">' +
             '<label>Not interested?</label>' +
@@ -2460,7 +2566,7 @@
       }
       if (p.plannedAuditDate && p.plannedAuditDate<=todayStr && !p.auditId && !p.declined){
         var overdue = p.plannedAuditDate < todayStr;
-        alerts.push({ tone: overdue?'bad':'warn', icon:'⭐', text: (p.name||'Unnamed client')+' — scheduled audit '+(overdue?'was due '+fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime()):'due today')+', needs check-in', action:'goto-prospect', id:p.id });
+        alerts.push({ tone: overdue?'bad':'warn', icon:'⭐', text: (p.name||'Unnamed client')+' — scheduled audit '+(overdue?'was due '+fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime()):'due today'+plannedTimeSuffix(p))+', needs check-in', action:'goto-prospect', id:p.id });
       }
       if (p.proposalStatus==='meeting_scheduled' && p.proposalMeetingDate && p.proposalMeetingDate<=todayStr && !p.converted && !p.declined){
         var mOverdue = p.proposalMeetingDate < todayStr;
@@ -2718,6 +2824,7 @@
       '</div>' +
 
       renderAlertsBanner() +
+      renderFollowUpBoard() +
       '<button class="btn btn-primary" style="width:100%;padding:14px;margin-bottom:22px;" data-action="go-setup">+ Start New Audit</button>' +
 
       '<div class="sechead2"><span class="ic">🕘</span><h2>Today\'s Activity</h2></div>' +
@@ -2871,6 +2978,38 @@
       var newC = { id: uid(), topic:'', insight:'', hook:'', context1:'', context2:'', cta:'', poll:'', segment:'', area:'', shootDate:'', notScheduled:false, posted:false, postedAt:null, createdAt: Date.now() };
       state.contentIdeas.unshift(newC); persistContentIdeas();
       state.activeContentId = newC.id; render();
+    }
+    else if (action==='fu-quick'){
+      var fqP = findProspect(state.activeProspectId);
+      if (fqP){
+        var fqD = fuDraftFor(fqP);
+        state.fuDraft = { pid:fqP.id, date:isoDaysFromNow(parseInt(t.dataset.days,10)), time:fqD.time, note:fqD.note };
+        render();
+      }
+    }
+    else if (action==='add-followup'){
+      var afP = findProspect(state.activeProspectId);
+      if (afP){
+        var afD = fuDraftFor(afP);
+        if (!afD.date) return;
+        if (!afP.followUps) afP.followUps = [];
+        afP.followUps.push({ id:uid(), date:afD.date, time:afD.time||'', note:(afD.note||'').trim(), done:false, doneAt:null, createdAt:Date.now() });
+        afP.updatedAt = Date.now();
+        state.fuDraft = null;
+        persistProspects(); render();
+      }
+    }
+    else if (action==='done-followup'){
+      var dfP = findProspect(t.dataset.pid);
+      var dfF = dfP && (dfP.followUps||[]).filter(function(f){ return f.id===t.dataset.fid; })[0];
+      if (dfF){ dfF.done = true; dfF.doneAt = Date.now(); dfP.updatedAt = Date.now(); persistProspects(); render(); }
+    }
+    else if (action==='delete-followup'){
+      var xfP = findProspect(t.dataset.pid);
+      if (xfP && window.confirm('Delete this follow-up?')){
+        xfP.followUps = (xfP.followUps||[]).filter(function(f){ return f.id!==t.dataset.fid; });
+        persistProspects(); render();
+      }
     }
     else if (action==='content-coverage-tab'){ state.contentCoverageTab = t.dataset.tab; render(); }
     else if (action==='set-content-segment'){
@@ -3327,6 +3466,16 @@
     else if (el.dataset.bind === 'witnessName' && state.draft){ state.draft.witnessName = el.value; persistDraft(); }
     else if (el.dataset.bind === 'witnessDesignation' && state.draft){ state.draft.witnessDesignation = el.value; persistDraft(); }
     else if (el.dataset.bind === 'witnessMobile' && state.draft){ state.draft.witnessMobile = el.value; persistDraft(); }
+    else if (el.dataset.fuField){
+      var fuP = findProspect(state.activeProspectId);
+      if (fuP){
+        var fuD = fuDraftFor(fuP);
+        state.fuDraft = { pid:fuP.id, date:fuD.date, time:fuD.time, note:fuD.note };
+        state.fuDraft[el.dataset.fuField] = el.value;
+        var fuBtn = app.querySelector('[data-action="add-followup"]');
+        if (fuBtn) fuBtn.disabled = !state.fuDraft.date;
+      }
+    }
     else if (el.dataset.action === 'loop-field-input'){
       var lfP = findProspect(state.activeProspectId);
       if (lfP){
