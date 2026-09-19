@@ -2201,7 +2201,11 @@
     return { label:'Draft', tone:'warn' };
   }
 
-  var GOV_AREA = '__gov';
+  var CONTENT_HEADS = [
+    { key:'__gov', label:'System', icon:'⚙️' },
+    { key:'__sop', label:'SOP', icon:'📘' }
+  ];
+  function contentHeadFor(area){ return CONTENT_HEADS.filter(function(h){ return h.key===area; })[0]; }
   var SEGMENT_LABELS = { dinein:'Dine-In', qsr:'QSR', both:'Dine-In + QSR' };
   function contentAreaOptions(segment){
     var keys = segment==='qsr' ? ['qsr'] : (segment==='dinein' ? ['dinein'] : ['dinein','qsr']);
@@ -2216,8 +2220,8 @@
   }
   function contentMatchesSegment(c, seg){ return c.segment===seg || c.segment==='both'; }
   function contentAreaLabel(c){
-    if (c.area===GOV_AREA) return 'Governance';
-    return c.area || '';
+    var head = contentHeadFor(c.area);
+    return head ? head.label : (c.area || '');
   }
   function contentTagHtml(c){
     if (!c.segment) return '<span class="pill warn">Untagged</span>';
@@ -2231,12 +2235,15 @@
       var made = m.filter(function(c){ return c.posted; }).length;
       return { made:made, planned:m.length-made, total:m.length };
     }
-    var gov = stat(function(c){ return c.area===GOV_AREA; });
+    var heads = CONTENT_HEADS.map(function(h){
+      var s = stat(function(c){ return c.area===h.key; });
+      s.name = h.label; s.icon = h.icon; return s;
+    });
     var depts = contentAreaOptions(seg).map(function(n){
       var s = stat(function(c){ return (c.area||'').toLowerCase()===n.toLowerCase(); });
       s.name = n; return s;
     });
-    var max = depts.reduce(function(m, s){ return Math.max(m, s.total); }, Math.max(1, gov.total));
+    var max = depts.concat(heads).reduce(function(m, s){ return Math.max(m, s.total); }, 1);
     function row(icon, name, s, strong){
       return '<div style="padding:10px 0;border-top:1px solid var(--line);">' +
         '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;">' +
@@ -2258,7 +2265,8 @@
         ['dinein','qsr'].map(function(k){ return '<button class="tab '+(seg===k?'on':'')+'" data-action="content-coverage-tab" data-tab="'+k+'">'+SEGMENT_LABELS[k]+'</button>'; }).join('') +
       '</div>' +
       '<div class="card" style="padding:4px 16px 8px;margin-bottom:12px;border:1.5px solid var(--accent);background:var(--accent-soft);">' +
-        row('🏛️', 'Governance — across all departments', gov, true) +
+        '<div class="histmeta" style="padding:10px 0 2px;">Across all departments</div>' +
+        heads.map(function(h){ return row(h.icon, h.name, h, true); }).join('') +
       '</div>' +
       '<div class="card" style="padding:4px 16px 8px;margin-bottom:12px;">' +
         '<div class="histmeta" style="padding:10px 0 2px;">'+SEGMENT_LABELS[seg]+' departments</div>' +
@@ -2313,7 +2321,7 @@
         '</div></div>' +
         (c.segment
           ? '<div class="field"><label for="cArea">Area / department</label><select id="cArea" data-action="set-content-area"><option value="">— Select —</option>' +
-              '<option value="'+GOV_AREA+'" '+(c.area===GOV_AREA?'selected':'')+'>🏛️ Governance (across all departments)</option>' +
+              CONTENT_HEADS.map(function(h){ return '<option value="'+h.key+'" '+(c.area===h.key?'selected':'')+'>'+h.icon+' '+h.label+' (across all departments)</option>'; }).join('') +
               contentAreaOptions(c.segment).map(function(n){ return '<option value="'+esc(n)+'" '+((c.area||'').toLowerCase()===n.toLowerCase()?'selected':'')+'>'+esc(n)+'</option>'; }).join('') +
             '</select></div>'
           : '<div class="helper" style="margin-top:-6px;">Pick a segment to choose the area this content covers.</div>') +
@@ -2869,7 +2877,7 @@
       var scc = findContent(state.activeContentId);
       if (scc){
         scc.segment = scc.segment===t.dataset.val ? '' : t.dataset.val;
-        if (scc.area && scc.area!==GOV_AREA){
+        if (scc.area && !contentHeadFor(scc.area)){
           var validAreas = scc.segment ? contentAreaOptions(scc.segment).map(function(n){ return n.toLowerCase(); }) : [];
           if (validAreas.indexOf(scc.area.toLowerCase())===-1) scc.area = '';
         }
