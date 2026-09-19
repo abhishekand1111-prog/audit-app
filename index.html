@@ -484,6 +484,7 @@
     contentIdeas: loadJSON(LS_CI, []),
     reauditOverrides: loadJSON(LS_RO, {}),
     activeContentId: null,
+    contentCoverageTab: 'dinein',
     searchQuery: '',
     setup: { type:null, storeName:'', storeLocation:'', contactName:'', contactDesignation:'', contactMobile:'', auditDate: todayISO(), auditTime: nowHHMM(), selectedSections:[], menuItemCount:'' },
     editorTab: 'dinein',
@@ -2200,6 +2201,73 @@
     return { label:'Draft', tone:'warn' };
   }
 
+  var GOV_AREA = '__gov';
+  var SEGMENT_LABELS = { dinein:'Dine-In', qsr:'QSR', both:'Dine-In + QSR' };
+  function contentAreaOptions(segment){
+    var keys = segment==='qsr' ? ['qsr'] : (segment==='dinein' ? ['dinein'] : ['dinein','qsr']);
+    var seen = {}, out = [];
+    keys.forEach(function(k){
+      state.templates[k].sections.forEach(function(s){
+        var n = (s.name||'').trim(), lk = n.toLowerCase();
+        if (n && !seen[lk]){ seen[lk] = true; out.push(n); }
+      });
+    });
+    return out;
+  }
+  function contentMatchesSegment(c, seg){ return c.segment===seg || c.segment==='both'; }
+  function contentAreaLabel(c){
+    if (c.area===GOV_AREA) return 'Governance';
+    return c.area || '';
+  }
+  function contentTagHtml(c){
+    if (!c.segment) return '<span class="pill warn">Untagged</span>';
+    return '<span class="pill good">'+esc(SEGMENT_LABELS[c.segment])+'</span>' + (c.area ? ' <span class="pill warn">'+esc(contentAreaLabel(c))+'</span>' : ' <span class="pill bad">No area</span>');
+  }
+  function renderContentCoverage(){
+    var seg = state.contentCoverageTab==='qsr' ? 'qsr' : 'dinein';
+    var items = state.contentIdeas.filter(function(c){ return contentMatchesSegment(c, seg); });
+    function stat(match){
+      var m = items.filter(match);
+      var made = m.filter(function(c){ return c.posted; }).length;
+      return { made:made, planned:m.length-made, total:m.length };
+    }
+    var gov = stat(function(c){ return c.area===GOV_AREA; });
+    var depts = contentAreaOptions(seg).map(function(n){
+      var s = stat(function(c){ return (c.area||'').toLowerCase()===n.toLowerCase(); });
+      s.name = n; return s;
+    });
+    var max = depts.reduce(function(m, s){ return Math.max(m, s.total); }, Math.max(1, gov.total));
+    function row(icon, name, s, strong){
+      return '<div style="padding:10px 0;border-top:1px solid var(--line);">' +
+        '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;">' +
+          '<span style="font-weight:'+(strong?800:700)+';">'+icon+' '+esc(name)+'</span>' +
+          (s.total ? '<span class="histmeta">'+s.made+' posted · '+s.planned+' planned</span>' : '<span class="pill bad">No content yet</span>') +
+        '</div>' +
+        '<div class="progtrack" style="margin-top:6px;"><div class="progfill" style="width:'+Math.round(s.total/max*100)+'%"></div></div>' +
+      '</div>';
+    }
+    var covered = depts.filter(function(s){ return s.total>0; });
+    var empty = depts.filter(function(s){ return s.total===0; });
+    var top = depts.slice().sort(function(a,b){ return b.total-a.total; })[0];
+    var untagged = state.contentIdeas.filter(function(c){ return !c.segment || !c.area; }).length;
+    var summary = 'Departments covered: '+covered.length+' of '+depts.length+'.' +
+      (top && top.total ? ' Most content: '+top.name+' ('+top.total+').' : '') +
+      (empty.length ? ' Nothing yet on: '+empty.map(function(s){ return s.name; }).join(', ')+'.' : ' Every department has content.');
+    return sh('🧭','Content coverage') +
+      '<div class="tabs">' +
+        ['dinein','qsr'].map(function(k){ return '<button class="tab '+(seg===k?'on':'')+'" data-action="content-coverage-tab" data-tab="'+k+'">'+SEGMENT_LABELS[k]+'</button>'; }).join('') +
+      '</div>' +
+      '<div class="card" style="padding:4px 16px 8px;margin-bottom:12px;border:1.5px solid var(--accent);background:var(--accent-soft);">' +
+        row('🏛️', 'Governance — across all departments', gov, true) +
+      '</div>' +
+      '<div class="card" style="padding:4px 16px 8px;margin-bottom:12px;">' +
+        '<div class="histmeta" style="padding:10px 0 2px;">'+SEGMENT_LABELS[seg]+' departments</div>' +
+        depts.map(function(s){ return row('🍴', s.name, s, false); }).join('') +
+      '</div>' +
+      '<div class="helper" style="margin:0 0 '+(untagged?'6':'20')+'px;">'+esc(summary)+'</div>' +
+      (untagged ? '<div class="helper" style="margin:0 0 20px;color:var(--accent-ink);">'+untagged+' idea'+(untagged===1?' has':'s have')+' no segment or area yet, so they aren\'t counted above.</div>' : '');
+  }
+
   function renderContent(){
     if (state.activeContentId) return renderContentDetail();
     var list = state.contentIdeas.slice().sort(function(a,b){
@@ -2214,12 +2282,14 @@
         '<button class="btn btn-primary btn-sm" data-action="add-content">+ New Idea</button>' +
       '</div>' +
       '<div class="helper" style="margin:8px 0 14px;">Idea → Insight → Hook → Context → CTA → Poll, against a shoot day, through to Posted.</div>' +
+      renderContentCoverage() +
       (list.length===0 ? '<div class="empty"><div class="big">🎬</div>No content ideas yet.<br>Add one to start planning your next shoot.</div>' :
         list.map(function(c){
           var st = contentStatus(c);
           return '<div class="card histcard" data-action="open-content" data-id="'+c.id+'">' +
             '<div class="histtop"><span class="badge">'+((c.context2||c.script||'').trim()?'Scripted':'No script yet')+'</span><span class="pill '+st.tone+'">'+esc(st.label)+'</span></div>' +
             '<div style="font-weight:700;margin-top:8px;">'+esc(c.topic||'Untitled idea')+'</div>' +
+            '<div style="margin-top:6px;">'+contentTagHtml(c)+'</div>' +
             (c.hook ? '<div class="histmeta">Hook: '+esc(c.hook)+'</div>' : '') +
           '</div>';
         }).join('')
@@ -2236,6 +2306,18 @@
       '<div class="eyebrow">Content Idea</div>' +
       '<h1 style="font-size:24px;margin-top:6px;margin-bottom:8px;">'+esc(c.topic||'Untitled idea')+'</h1>' +
       (st2.label ? '<div style="margin-bottom:14px;"><span class="pill '+st2.tone+'">'+esc(st2.label)+'</span></div>' : '') +
+      sh('🧭','Where this content belongs') +
+      '<div class="formstack">' +
+        '<div class="field"><label>Segment</label><div style="display:flex; gap:8px; flex-wrap:wrap;">' +
+          ['dinein','qsr','both'].map(function(k){ return '<button type="button" class="naBtn '+(c.segment===k?'on':'')+'" data-action="set-content-segment" data-val="'+k+'">'+SEGMENT_LABELS[k]+'</button>'; }).join('') +
+        '</div></div>' +
+        (c.segment
+          ? '<div class="field"><label for="cArea">Area / department</label><select id="cArea" data-action="set-content-area"><option value="">— Select —</option>' +
+              '<option value="'+GOV_AREA+'" '+(c.area===GOV_AREA?'selected':'')+'>🏛️ Governance (across all departments)</option>' +
+              contentAreaOptions(c.segment).map(function(n){ return '<option value="'+esc(n)+'" '+((c.area||'').toLowerCase()===n.toLowerCase()?'selected':'')+'>'+esc(n)+'</option>'; }).join('') +
+            '</select></div>'
+          : '<div class="helper" style="margin-top:-6px;">Pick a segment to choose the area this content covers.</div>') +
+      '</div>' +
       '<div class="formstack">' +
         '<div class="field"><label for="cTopic">Idea / topic</label><input id="cTopic" data-bind-content="topic" value="'+esc(c.topic)+'" placeholder="e.g. 5 signs your kitchen would fail an audit"></div>' +
         '<div class="field"><label for="cInsight">Insight</label><textarea id="cInsight" data-bind-content="insight" placeholder="The key point / value viewers walk away with">'+esc(c.insight)+'</textarea></div>' +
@@ -2778,9 +2860,22 @@
     else if (action==='go-search'){ if(!state.draft){ state.view='search'; render(); } }
     else if (action==='go-content'){ if(!state.draft){ state.activeContentId=null; state.view='content'; render(); } }
     else if (action==='add-content'){
-      var newC = { id: uid(), topic:'', insight:'', hook:'', context1:'', context2:'', cta:'', poll:'', shootDate:'', notScheduled:false, posted:false, postedAt:null, createdAt: Date.now() };
+      var newC = { id: uid(), topic:'', insight:'', hook:'', context1:'', context2:'', cta:'', poll:'', segment:'', area:'', shootDate:'', notScheduled:false, posted:false, postedAt:null, createdAt: Date.now() };
       state.contentIdeas.unshift(newC); persistContentIdeas();
       state.activeContentId = newC.id; render();
+    }
+    else if (action==='content-coverage-tab'){ state.contentCoverageTab = t.dataset.tab; render(); }
+    else if (action==='set-content-segment'){
+      var scc = findContent(state.activeContentId);
+      if (scc){
+        scc.segment = scc.segment===t.dataset.val ? '' : t.dataset.val;
+        if (scc.area && scc.area!==GOV_AREA){
+          var validAreas = scc.segment ? contentAreaOptions(scc.segment).map(function(n){ return n.toLowerCase(); }) : [];
+          if (validAreas.indexOf(scc.area.toLowerCase())===-1) scc.area = '';
+        }
+        if (!scc.segment) scc.area = '';
+        persistContentIdeas(); render();
+      }
     }
     else if (action==='open-content'){ state.activeContentId = t.dataset.id; render(); }
     else if (action==='goto-content'){ if(!state.draft){ state.activeContentId = t.dataset.id; state.view='content'; render(); } }
@@ -3350,6 +3445,10 @@
     var el = e.target;
     if (el.dataset.bind==='storeName'){ render(); }
     else if (el.dataset.bindProspect==='name'){ render(); }
+    else if (el.dataset.action==='set-content-area'){
+      var sca = findContent(state.activeContentId);
+      if (sca){ sca.area = el.value; persistContentIdeas(); render(); }
+    }
     else if (el.dataset.action==='set-next-action'){
       var snaP = findProspect(state.activeProspectId);
       if (snaP && LOOP_STEPS[el.value]){ snaP.nextAction = el.value; snaP.nextData = {}; persistProspects(); render(); }
