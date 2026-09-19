@@ -722,14 +722,19 @@
       var perMonth = pr ? Number(pr.auditsPerMonth) : 0;
       if (perMonth > 0) intervalDays = Math.max(1, Math.round(30/perMonth));
       var computedDueAt = h.finishedAt + intervalDays*86400000;
-      var override = state.reauditOverrides[key];
-      var dueAt = override ? new Date(override+'T00:00:00').getTime() : computedDueAt;
+      var ov = splitReaudit(state.reauditOverrides[key]);
+      var dueAt = ov.date ? new Date(ov.date+'T'+(ov.time||'00:00')+':00').getTime() : computedDueAt;
       return {
         key: key, storeName: h.storeName, storeLocation: h.storeLocation, type: h.type,
-        lastAuditAt: h.finishedAt, dueAt: dueAt, overridden: !!override, overrideDate: override||'',
+        lastAuditAt: h.finishedAt, dueAt: dueAt, overridden: !!ov.date, overrideDate: ov.date, overrideTime: ov.time,
         daysUntil: Math.ceil((dueAt-todayMs)/86400000), intervalDays: intervalDays, customCadence: perMonth>0
       };
     }).sort(function(a,b){ return a.dueAt-b.dueAt; });
+  }
+
+  function splitReaudit(v){
+    var parts = String(v||'').split(' ');
+    return { date:parts[0]||'', time:parts[1]||'' };
   }
 
   // ---------- build a fresh draft ----------
@@ -1570,13 +1575,18 @@
         '<div class="histtop"><span class="badge">'+esc(tmpl.label||x.type)+'</span><span class="pill '+tone+'">'+statusText+'</span></div>' +
         '<div style="font-weight:700;margin-top:8px;">'+esc(x.storeName||'Unnamed store')+serviceBadgeHtml(dueProspect)+'</div>' +
         '<div class="histmeta">'+(x.storeLocation?esc(x.storeLocation)+' · ':'')+'Last audited '+fmtDateShort(x.lastAuditAt)+'</div>' +
-        '<div class="histmeta">Next due '+fmtDateShort(x.dueAt)+(x.overridden?' (manually set)':(x.customCadence?' (every '+x.intervalDays+'d — custom cadence)':''))+'</div>' +
-        '<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:10px;">' +
-          '<input type="date" data-reaudit-key="'+esc(x.key)+'" value="'+esc(x.overrideDate)+'" style="border:1px solid var(--line-strong); border-radius:var(--r-s); padding:6px 8px; font-size:12.5px; background:var(--surface); color:var(--ink);" title="Reschedule this re-audit">' +
-          (x.overridden ? '<button type="button" class="btn btn-ghost btn-sm" data-action="clear-reaudit-override" data-key="'+esc(x.key)+'">Reopen schedule</button>' : '') +
-          '<button type="button" class="btn btn-primary btn-sm" data-action="start-reaudit" data-name="'+esc(x.storeName)+'" data-location="'+esc(x.storeLocation||'')+'" data-type="'+esc(x.type)+'" style="margin-left:auto;">Start Audit</button>' +
+        '<div class="histmeta">Next due '+fmtDateShort(x.dueAt)+(x.overrideTime?' · '+fmtTime12(x.overrideTime):'')+(x.overridden?' (manually set)':(x.customCadence?' (every '+x.intervalDays+'d — custom cadence)':''))+'</div>' +
+        '<div class="cardstack" style="margin-top:12px;">' +
+          '<div style="display:flex; gap:10px;">' +
+            '<div class="field" style="flex:1;"><label>Reschedule to</label><input type="date" data-reaudit-key="'+esc(x.key)+'" data-reaudit-part="date" value="'+esc(x.overrideDate)+'"></div>' +
+            '<div class="field" style="flex:1;"><label>Time</label><input type="time" data-reaudit-key="'+esc(x.key)+'" data-reaudit-part="time" value="'+esc(x.overrideTime)+'"></div>' +
+          '</div>' +
+          '<div style="display:flex; gap:8px;">' +
+            (x.overridden ? '<button type="button" class="btn btn-ghost btn-sm" style="flex:1;" data-action="clear-reaudit-override" data-key="'+esc(x.key)+'">Reopen schedule</button>' : '') +
+            '<button type="button" class="btn btn-primary btn-sm" style="flex:1;" data-action="start-reaudit" data-name="'+esc(x.storeName)+'" data-location="'+esc(x.storeLocation||'')+'" data-type="'+esc(x.type)+'">Start Audit</button>' +
+          '</div>' +
         '</div>' +
-        '<button type="button" class="btn btn-text btn-danger btn-sm" style="margin-top:4px;" data-action="delete-store-audits" data-key="'+esc(x.key)+'" data-name="'+esc(x.storeName)+'">Delete audit history for this store</button>' +
+        '<button type="button" class="btn btn-text btn-danger btn-sm" style="margin-top:8px;" data-action="delete-store-audits" data-key="'+esc(x.key)+'" data-name="'+esc(x.storeName)+'">Delete audit history for this store</button>' +
       '</div>';
     }).join('');
   }
@@ -2289,17 +2299,20 @@
             '</div>'
           ) : '') +
           sh('▶️','Audit') +
-          '<div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;">' +
-            '<button class="btn btn-primary" style="flex:1; min-width:150px; padding:13px;" data-action="start-audit-from-prospect" '+(p.name&&p.name.trim()?'':'disabled')+'>▶ Start Audit Now</button>' +
-          '</div>' +
-          '<div style="display:flex; gap:12px;">' +
-            '<div class="field" style="flex:1;"><label for="pPlannedDate">📅 Schedule audit for later</label><input id="pPlannedDate" type="date" data-bind-prospect="plannedAuditDate" value="'+esc(p.plannedAuditDate||'')+'"></div>' +
-            '<div class="field" style="flex:1;"><label for="pPlannedTime">Time</label><input id="pPlannedTime" type="time" data-bind-prospect="plannedAuditTime" value="'+esc(p.plannedAuditTime||'')+'"></div>' +
-          '</div>' +
-          '<div class="helper" style="margin-top:-10px;margin-bottom:16px;">'+(p.name&&p.name.trim()?'Starting runs the normal audit checklist and brings you back here to log the proposal.':'Enter a name above to start the audit.')+'</div>' +
-          '<div class="field">' +
-            '<label>Not interested?</label>' +
-            '<button type="button" class="naBtn" data-action="toggle-prospect-declined" style="padding:8px 14px;">Mark as not converted</button>' +
+          '<div class="cardstack" style="margin-bottom:22px;">' +
+            '<button class="btn btn-primary" style="width:100%; padding:13px;" data-action="start-audit-from-prospect" '+(p.name&&p.name.trim()?'':'disabled')+'>▶ Start Audit Now</button>' +
+            '<div class="helper" style="margin:0;">'+(p.name&&p.name.trim()?'Starting runs the normal audit checklist and brings you back here to log the proposal.':'Enter a name above to start the audit.')+'</div>' +
+            '<div class="card cardstack" style="padding:14px 16px;">' +
+              '<div style="font-weight:700;">📅 Schedule audit for later</div>' +
+              '<div style="display:flex; gap:12px;">' +
+                '<div class="field" style="flex:1;"><label for="pPlannedDate">Date</label><input id="pPlannedDate" type="date" data-bind-prospect="plannedAuditDate" value="'+esc(p.plannedAuditDate||'')+'"></div>' +
+                '<div class="field" style="flex:1;"><label for="pPlannedTime">Time</label><input id="pPlannedTime" type="time" data-bind-prospect="plannedAuditTime" value="'+esc(p.plannedAuditTime||'')+'"></div>' +
+              '</div>' +
+            '</div>' +
+            '<div class="field">' +
+              '<label>Not interested?</label>' +
+              '<button type="button" class="naBtn" data-action="toggle-prospect-declined" style="padding:8px 14px;">Mark as not converted</button>' +
+            '</div>' +
           '</div>'
         )
       )) +
@@ -3571,11 +3584,6 @@
         if (el.dataset.bindProspect==='plannedAuditDate' || el.dataset.bindProspect==='servicesOffered') render();
       }
     }
-    else if (el.dataset.reauditKey){
-      var rkey = el.dataset.reauditKey;
-      if (el.value){ state.reauditOverrides[rkey] = el.value; } else { delete state.reauditOverrides[rkey]; }
-      persistReauditOverrides(); render();
-    }
     else if (el.dataset.bindContent){
       var bc = findContent(state.activeContentId);
       if (bc){
@@ -3612,6 +3620,17 @@
   app.addEventListener('change', function(e){
     var el = e.target;
     if (el.dataset.bind==='storeName'){ render(); }
+    else if (el.dataset.reauditKey){
+      var rkey = el.dataset.reauditKey;
+      var rcur = splitReaudit(state.reauditOverrides[rkey]);
+      if (el.dataset.reauditPart==='time') rcur.time = el.value; else rcur.date = el.value;
+      if (!rcur.date && rcur.time){
+        var rdue = computeDueList().filter(function(y){ return y.key===rkey; })[0];
+        if (rdue){ var rd = new Date(rdue.dueAt); rcur.date = rd.getFullYear()+'-'+String(rd.getMonth()+1).padStart(2,'0')+'-'+String(rd.getDate()).padStart(2,'0'); }
+      }
+      if (rcur.date){ state.reauditOverrides[rkey] = rcur.date + (rcur.time ? ' '+rcur.time : ''); } else { delete state.reauditOverrides[rkey]; }
+      persistReauditOverrides(); render();
+    }
     else if (el.dataset.bindProspect==='name'){ render(); }
     else if (el.dataset.action==='set-content-area'){
       var sca = findContent(state.activeContentId);
