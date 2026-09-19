@@ -853,6 +853,27 @@
   function mobileErrorText(v){
     return ((v||'').trim() && !isValidMobile(v)) ? 'Enter a valid 10-digit mobile number (starts with 6, 7, 8 or 9).' : '';
   }
+  function prospectProblems(p){
+    var pr = [];
+    if (!(p.name||'').trim()) pr.push('client / store name');
+    if (!(p.location||'').trim()) pr.push('location');
+    if (p.category!=='dinein' && p.category!=='qsr') pr.push('category');
+    if (!(p.address||'').trim()) pr.push('address');
+    if (!(p.contactName||'').trim()) pr.push('contact name');
+    if (!(p.contactDesignation||'').trim()) pr.push('designation');
+    if (!(p.contactMobile||'').trim()) pr.push('mobile number');
+    else if (!isValidMobile(p.contactMobile)) pr.push('a valid mobile number');
+    return pr;
+  }
+  function prospectHintText(problems){
+    return problems.length ? 'Still needed to complete this client: '+problems.join(', ')+'.' : '✓ All required details are filled in.';
+  }
+  function updateProspectGate(p){
+    var hint = app.querySelector('[data-prospect-hint]');
+    if (hint) hint.textContent = prospectHintText(prospectProblems(p));
+    var mob = app.querySelector('[data-pmobile-err]');
+    if (mob) mob.textContent = mobileErrorText(p.contactMobile);
+  }
   function setupProblems(s){
     var p = [];
     if (!s.type) p.push('audit type');
@@ -2066,6 +2087,8 @@
     if (!p){ state.activeProspectId = null; return renderProspects(); }
     var audits = prospectAudits(p);
     var similarProspectName = findSimilarStoreName(p.name);
+    var pProblems = prospectProblems(p);
+    var req = ' <span style="color:var(--bad)">*</span>';
     return '<main>' +
       '<button class="backrow" data-action="back-to-prospects">← Back to clients</button>' +
       '<div class="eyebrow">Client</div>' +
@@ -2073,25 +2096,27 @@
       (p.updatedAt ? '<div class="helper" style="margin:0 0 12px;">Updated '+fmtRelativeTime(p.updatedAt)+'</div>' : '') +
       renderClientHealthCard(p, audits) +
       renderProgressSummary(p, audits) +
+      '<div class="helper" data-prospect-hint style="margin:0 0 12px;'+(pProblems.length?'color:var(--accent-ink);':'color:var(--good);')+'">'+esc(prospectHintText(pProblems))+'</div>' +
       '<div class="formstack">' +
-        '<div class="field"><label for="pName">Client / store name</label><input id="pName" data-bind-prospect="name" value="'+esc(p.name)+'" placeholder="e.g. Northside Grill"></div>' +
+        '<div class="field"><label for="pName">Client / store name'+req+'</label><input id="pName" data-bind-prospect="name" value="'+esc(p.name)+'" placeholder="e.g. Northside Grill"></div>' +
         (similarProspectName ? '<div class="helper" style="margin-top:-10px;color:var(--accent-ink);">Did you mean <b>'+esc(similarProspectName)+'</b>? A similar store already exists — <span style="text-decoration:underline;cursor:pointer;" data-action="use-similar-prospectname" data-name="'+esc(similarProspectName)+'">use that name</span> to avoid splitting its history.</div>' : '') +
         '<div style="display:flex; gap:12px;">' +
-          '<div class="field" style="flex:1;"><label for="pLocation">Location</label><input id="pLocation" data-bind-prospect="location" value="'+esc(p.location)+'" placeholder="e.g. Bandra West"></div>' +
-          '<div class="field" style="flex:1;"><label>Category</label><div style="display:flex; gap:8px;">' +
+          '<div class="field" style="flex:1;"><label for="pLocation">Location'+req+'</label><input id="pLocation" data-bind-prospect="location" value="'+esc(p.location)+'" placeholder="e.g. Bandra West"></div>' +
+          '<div class="field" style="flex:1;"><label>Category'+req+'</label><div style="display:flex; gap:8px;">' +
             '<button type="button" class="naBtn '+(p.category==='dinein'?'on':'')+'" data-action="set-prospect-category" data-val="dinein">Dine-In</button>' +
             '<button type="button" class="naBtn '+(p.category==='qsr'?'on':'')+'" data-action="set-prospect-category" data-val="qsr">QSR</button>' +
           '</div></div>' +
         '</div>' +
-        '<div class="field"><label for="pAddress">Address</label><input id="pAddress" data-bind-prospect="address" value="'+esc(p.address)+'" placeholder="Full address"></div>' +
+        '<div class="field"><label for="pAddress">Address'+req+'</label><input id="pAddress" data-bind-prospect="address" value="'+esc(p.address)+'" placeholder="Full address"></div>' +
       '</div>' +
       sh('👤','Point of Contact') +
       '<div class="formstack">' +
-        '<div class="field"><label for="pContactName">Contact person name</label><input id="pContactName" data-bind-prospect="contactName" value="'+esc(p.contactName||'')+'" placeholder="e.g. Priya Sharma"></div>' +
+        '<div class="field"><label for="pContactName">Contact person name'+req+'</label><input id="pContactName" data-bind-prospect="contactName" value="'+esc(p.contactName||'')+'" placeholder="e.g. Priya Sharma"></div>' +
         '<div style="display:flex; gap:12px;">' +
-          '<div class="field" style="flex:1;"><label for="pContactDesignation">Designation</label><input id="pContactDesignation" data-bind-prospect="contactDesignation" value="'+esc(p.contactDesignation||'')+'" placeholder="e.g. Store Manager"></div>' +
-          '<div class="field" style="flex:1;"><label for="pContactMobile">Mobile number</label><input id="pContactMobile" type="tel" inputmode="tel" data-bind-prospect="contactMobile" value="'+esc(p.contactMobile||'')+'" placeholder="e.g. 98765 43210"></div>' +
+          '<div class="field" style="flex:1;"><label for="pContactDesignation">Designation'+req+'</label><input id="pContactDesignation" data-bind-prospect="contactDesignation" value="'+esc(p.contactDesignation||'')+'" placeholder="e.g. Store Manager"></div>' +
+          '<div class="field" style="flex:1;"><label for="pContactMobile">Mobile number'+req+'</label><input id="pContactMobile" type="tel" inputmode="tel" data-bind-prospect="contactMobile" value="'+esc(p.contactMobile||'')+'" placeholder="e.g. 98765 43210"></div>' +
         '</div>' +
+        '<div class="helper" data-pmobile-err style="margin-top:-6px;color:var(--bad);">'+esc(mobileErrorText(p.contactMobile))+'</div>' +
       '</div>' +
       (audits.length ? (
         '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:6px;">' +
@@ -2804,7 +2829,12 @@
     }
     else if (action==='open-prospect'){ state.activeProspectId = t.dataset.id; render(); }
     else if (action==='goto-prospect'){ if(!state.draft){ state.activeProspectId = t.dataset.id; state.view='prospects'; render(); } }
-    else if (action==='back-to-prospects'){ state.activeProspectId = null; render(); }
+    else if (action==='back-to-prospects'){
+      var btpP = findProspect(state.activeProspectId);
+      var btpProblems = btpP ? prospectProblems(btpP) : [];
+      if (btpProblems.length && !window.confirm('This client is still missing: '+btpProblems.join(', ')+'.\n\nLeave anyway? Tap Cancel to keep filling it in.')) return;
+      state.activeProspectId = null; render();
+    }
     else if (action==='delete-prospect'){
       if (window.confirm('Delete this client? This cannot be undone.')){
         state.prospects = state.prospects.filter(function(p){ return p.id!==t.dataset.id; });
@@ -2818,7 +2848,7 @@
       state.setup.type = null;
       state.setup.storeName = sp.name;
       state.setup.storeLocation = [sp.location, sp.address].filter(Boolean).join(', ');
-      state.setup.contactName = ''; state.setup.contactDesignation = ''; state.setup.contactMobile = '';
+      state.setup.contactName = sp.contactName||''; state.setup.contactDesignation = sp.contactDesignation||''; state.setup.contactMobile = sp.contactMobile||'';
       state.setup.selectedSections = [];
       state.setup.menuItemCount = '';
       state.pendingProspectId = sp.id;
@@ -3270,6 +3300,7 @@
       var bp = findProspect(state.activeProspectId);
       if (bp){
         bp[el.dataset.bindProspect] = el.value; bp.updatedAt = Date.now(); persistProspects();
+        updateProspectGate(bp);
         if (el.dataset.bindProspect==='name'){
           var sabtn = app.querySelector('[data-action="start-audit-from-prospect"]');
           if (sabtn) sabtn.disabled = !el.value.trim();
