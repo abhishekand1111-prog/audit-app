@@ -1049,7 +1049,7 @@
         '<div class="sumrow"><span class="k">Menu items ('+(d.menuItemCount||0)+')</span><span class="v">'+price.currency+price.menuCost+'</span></div>' +
         '<div class="sumrow pricerow"><span class="k" style="font-weight:700;color:var(--ink);">Total</span><span class="pricetotal">'+price.currency+price.total+'</span></div>' +
       '</div>' +
-      renderCorrectiveEditor(d) +
+      renderSectionIssues(d) +
       renderWitnessEditor(d) +
       '<div class="field remarkwrap"><label for="remarkInput">Final remark <span style="color:var(--bad)">*</span></label>' +
         '<textarea id="remarkInput" data-bind="remark" placeholder="Summarise findings, corrective actions and overall condition of the floor…">'+esc(d.remark||'')+'</textarea>' +
@@ -1078,50 +1078,16 @@
       '</div>';
   }
 
-  function renderCorrectiveEditor(d){
-    if (!d.correctiveActions) d.correctiveActions = [];
-    var uncheckedItems = [];
-    d.sections.forEach(function(s){
-      s.items.forEach(function(it){
-        if (it.state==='unchecked' || it.state==='na') uncheckedItems.push(it);
-      });
-    });
-    var addedIds = {};
-    (d.correctiveActions||[]).forEach(function(ca){ if (ca.sourceItemId) addedIds[ca.sourceItemId]=true; });
-    var availableItems = uncheckedItems.filter(function(it){ return !addedIds[it.id]; });
-    var chipsHtml = availableItems.length ? (
-      '<div class="field" style="margin-bottom:12px;">' +
-        '<select data-action="add-ca-from-select">' +
-          '<option value="">+ Add corrective action for an unchecked item…</option>' +
-          availableItems.map(function(it){ return '<option value="'+it.id+'">'+esc(it.text)+'</option>'; }).join('') +
-        '</select>' +
-      '</div>'
-    ) : '';
-    var itemById = {};
-    uncheckedItems.forEach(function(it){ itemById[it.id] = it; });
-    var rowsHtml = (d.correctiveActions||[]).map(function(ca){
-      var fieldHtml;
-      if (ca.sourceItemId && itemById[ca.sourceItemId]){
-        var swapOpts = [{id:ca.sourceItemId, text:itemById[ca.sourceItemId].text}].concat(
-          availableItems.map(function(it){ return {id:it.id, text:it.text}; })
-        );
-        fieldHtml = '<select data-action="swap-ca-item" data-ca="'+ca.id+'" title="Choose a different item">' +
-          swapOpts.map(function(o){ return '<option value="'+o.id+'" '+(o.id===ca.sourceItemId?'selected':'')+'>'+esc(o.text)+'</option>'; }).join('') +
-        '</select>';
-      } else {
-        fieldHtml = '<input type="text" data-ca-field="description" data-ca="'+ca.id+'" value="'+esc(ca.description)+'" placeholder="What needs fixing?">';
-      }
-      return '<div class="careow">' +
-        fieldHtml +
-        '<input type="date" data-ca-field="dueDate" data-ca="'+ca.id+'" value="'+esc(ca.dueDate||'')+'">' +
-        '<button class="iconbtn" data-action="ca-remove" data-ca="'+ca.id+'" title="Delete">✕</button>' +
+  function renderSectionIssues(d){
+    return sh('🛠️','Issues by area','var(--bad-soft)') +
+      '<div class="helper" style="margin-top:0;margin-bottom:10px;">Note what went wrong in each area of the checklist. Anything you write is tracked as an open issue for this client until it is marked fixed. Leave a box empty if the area was fine.</div>' +
+      '<div class="formstack" style="margin-bottom:20px;">' +
+        d.sections.map(function(s){
+          var p = sectionProgress(s);
+          return '<div class="field"><label for="issue-'+s.id+'">'+esc(s.name)+' <span class="histmeta">· '+p.checked+'/'+p.total+' checked</span></label>' +
+            '<textarea id="issue-'+s.id+'" data-bind-issue="'+s.id+'" placeholder="Issues found in '+esc(s.name)+'…">'+esc(s.issue||'')+'</textarea></div>';
+        }).join('') +
       '</div>';
-    }).join('');
-    return sh('🛠️','Corrective actions','var(--bad-soft)') +
-      '<div class="helper" style="margin-top:0;margin-bottom:8px;">Pick an unchecked item to log a fix and due date for it. Use the dropdown on a row to swap it for a different item, or ✕ to delete it.</div>' +
-      chipsHtml +
-      (rowsHtml ? '<div class="card" style="padding:4px 16px;margin-bottom:10px;">'+rowsHtml+'</div>' : '') +
-      '<button class="btn btn-ghost btn-sm" style="margin-bottom:20px;" data-action="add-custom-action">+ Add custom action</button>';
   }
 
   function previousAuditForStore(storeName, excludeId){
@@ -1150,7 +1116,7 @@
       prevScore: prev ? prev.completionPct : null, prevAuditDate: prev ? prev.auditDate : null,
       sections: d.sections.map(function(s){
         var p=sectionProgress(s);
-        return { id:s.id, name:s.name, accumMs:s.accumMs, checked:p.checked, total:p.total, na:p.na, items:s.items.slice() };
+        return { id:s.id, name:s.name, accumMs:s.accumMs, checked:p.checked, total:p.total, na:p.na, items:s.items.slice(), issue:(s.issue||'').trim() };
       })
     };
   }
@@ -1201,6 +1167,7 @@
       rec.sections.map(function(s){
         return '<div class="card" style="padding:4px 16px;margin-bottom:10px;">' +
           '<div style="font-weight:700;font-size:13px;padding:10px 0 4px;">'+esc(s.name)+'</div>' +
+          (s.issue ? '<div style="margin:2px 0 6px;padding:8px 10px;border-radius:var(--r-s);background:var(--bad-soft);color:var(--bad);font-size:13px;">⚠ '+esc(s.issue)+'</div>' : '') +
           (s.items||[]).map(function(it){
             var tone = it.state==='checked' ? 'good' : (it.state==='na' ? 'warn' : 'bad');
             var label = it.state==='checked' ? '✓ Checked' : (it.state==='na' ? '– N/A' : '○ Not checked');
@@ -3015,14 +2982,6 @@
       var uspn = findProspect(state.activeProspectId);
       if (uspn){ uspn.name = t.dataset.name; persistProspects(); render(); }
     }
-    else if (action==='add-custom-action'){
-      d.correctiveActions.push({ id: uid(), sourceItemId: null, description: '', dueDate: '' });
-      persistDraft(); render();
-    }
-    else if (action==='ca-remove'){
-      d.correctiveActions = d.correctiveActions.filter(function(ca){ return ca.id!==t.dataset.ca; });
-      persistDraft(); render();
-    }
     else if (action==='complete-audit'){
       if (!(d.remark||'').trim()) return;
       var rec = computeRecord(d);
@@ -3034,10 +2993,19 @@
           sourceItemId: ca.sourceItemId||null, done: false, createdAt: Date.now()
         });
       });
+      d.sections.forEach(function(s){
+        var issueText = (s.issue||'').trim();
+        if (!issueText) return;
+        state.correctiveActions.push({
+          id: uid(), auditId: rec.id, storeName: d.storeName, storeLocation: d.storeLocation,
+          type: d.type, description: s.name+': '+issueText, dueDate: '',
+          sectionId: s.id, sourceItemId: null, done: false, createdAt: Date.now()
+        });
+      });
       persistActions();
       clearDraft();
 
-      var linkedP = state.pendingProspectId ? findProspect(state.pendingProspectId) : null;
+      var linkedP =state.pendingProspectId ? findProspect(state.pendingProspectId) : null;
       var key = (d.storeName||'').trim().toLowerCase();
       if (!linkedP && key){
         linkedP = state.prospects.filter(function(p){ return (p.name||'').trim().toLowerCase()===key; })[0];
@@ -3273,9 +3241,9 @@
         if (el.dataset.caEditField==='dueDate') render();
       }
     }
-    else if (el.dataset.caField && state.draft){
-      var ca = state.draft.correctiveActions.filter(function(c){ return c.id===el.dataset.ca; })[0];
-      if (ca){ ca[el.dataset.caField] = el.value; persistDraft(); }
+    else if (el.dataset.bindIssue && state.draft){
+      var issSec = state.draft.sections.filter(function(s){ return s.id===el.dataset.bindIssue; })[0];
+      if (issSec){ issSec.issue = el.value; persistDraft(); }
     }
     else if (el.dataset.svcField){
       var sc2 = state.serviceClasses.filter(function(s){ return s.id===el.dataset.svc; })[0];
@@ -3348,28 +3316,6 @@
     else if (el.dataset.action==='set-proposal-status-select'){
       var psp = findProspect(state.activeProspectId);
       if (psp){ psp.proposalStatus = el.value; persistProspects(); render(); }
-    }
-    else if (el.dataset.action==='add-ca-from-select'){
-      var itemId = el.value;
-      if (!itemId || !state.draft) return;
-      var d = state.draft;
-      var text = '';
-      d.sections.forEach(function(s){ s.items.forEach(function(it){ if (it.id===itemId) text = it.text; }); });
-      d.correctiveActions.push({ id: uid(), sourceItemId: itemId, description: text, dueDate: '' });
-      persistDraft(); render();
-    }
-    else if (el.dataset.action==='swap-ca-item'){
-      if (!state.draft) return;
-      var dS = state.draft;
-      var caS = dS.correctiveActions.filter(function(c){ return c.id===el.dataset.ca; })[0];
-      if (caS){
-        var newId = el.value;
-        var newText = '';
-        dS.sections.forEach(function(s){ s.items.forEach(function(it){ if (it.id===newId) newText = it.text; }); });
-        caS.sourceItemId = newId;
-        caS.description = newText;
-        persistDraft(); render();
-      }
     }
     else if (el.dataset.action==='restore-backup-file'){
       var file = el.files && el.files[0];
