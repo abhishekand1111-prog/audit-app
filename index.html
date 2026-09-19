@@ -67,12 +67,14 @@
   .authbrand .mark{width:32px; height:32px; border-radius:50%; background:#000; color:#fff; display:flex; align-items:center; justify-content:center; font-family:var(--font-d); font-weight:800; font-style:italic; font-size:15px;}
   .authbrand .name{font-family:var(--font-d); font-weight:800; font-size:16px;}
   .authloading{color:var(--ink-400); font-size:14px;}
-  .topbar{position:sticky; top:0; z-index:10; background:var(--paper); border-bottom:1px solid var(--line); padding:14px 18px; display:flex; align-items:center; gap:12px;}
+  .topbar{position:sticky; top:0; z-index:10; background:var(--paper); border-bottom:1px solid var(--line); padding:12px 16px; display:flex; align-items:center; gap:10px;}
   .brand{display:flex; align-items:center; gap:9px; cursor:pointer; border:none; background:none; padding:0;}
   .brand .mark, .sidebar-brand .mark{width:32px; height:32px; border-radius:50%; background:#000; color:#fff; display:flex; align-items:center; justify-content:center; font-family:var(--font-d); font-weight:800; font-style:italic; font-size:15px; letter-spacing:-0.03em; flex:none; overflow:hidden;}
   .brand .name, .sidebar-brand .name{font-family:var(--font-d); font-weight:800; font-size:18px; color:var(--ink);}
+  .brand{min-width:0;}
+  .brand .name{font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   .hamburger{width:36px; height:36px; flex:none; border:1px solid var(--line-strong); background:var(--surface); color:var(--ink); border-radius:var(--r-s); font-size:16px; display:flex; align-items:center; justify-content:center; padding:0; transition:background .15s;}
-  .syncpill{font-size:10.5px; font-weight:700; padding:4px 9px; border-radius:20px; white-space:nowrap; margin-right:10px;}
+  .syncpill{font-size:10.5px; font-weight:700; padding:4px 9px; border-radius:20px; white-space:nowrap; flex:none;}
   .syncpill.sp-good{color:var(--good); background:var(--good-soft);}
   .syncpill.sp-accent{color:var(--accent-ink); background:var(--accent-soft);}
   .syncpill.sp-bad{color:var(--bad); background:var(--bad-soft);}
@@ -118,6 +120,9 @@
   .typecard .tname{font-family:var(--font-d); font-weight:800; font-size:16px; margin-top:8px;}
   .typecard .tmeta{font-size:12.5px; color:var(--ink-600); margin-top:3px;}
   .formstack{display:flex; flex-direction:column; gap:14px; margin-bottom:22px;}
+  .cardstack{display:flex; flex-direction:column; gap:12px;}
+  .fuquick{display:grid; grid-template-columns:repeat(3,1fr); gap:8px;}
+  .fuquick .naBtn{padding:9px 6px; font-size:13px; border-radius:10px; text-align:center;}
   .helper{font-size:12.5px; color:var(--ink-400); margin-top:6px;}
 
   /* audit header */
@@ -814,7 +819,7 @@
     if (!state.authUser) return '';
     var tone = 'good', label = '✓ Synced';
     if (!state.online){ tone = 'bad'; label = '⚠ Offline'; }
-    else if (state.syncPending){ tone = 'accent'; label = '↻ Syncing…'; }
+    else if (state.syncPending){ tone = 'accent'; label = '↻ Syncing'; }
     return '<span class="syncpill sp-'+tone+'" style="margin-left:auto;" title="'+(state.online?(state.syncPending?'Saving changes to the cloud…':'All changes saved to the cloud'):'No connection — changes are saved on this device and will sync once you\'re back online')+'">'+label+'</span>';
   }
 
@@ -1501,7 +1506,7 @@
       var overdue = !isDone && a.dueDate && a.dueDate < todayStr;
       return '<div class="card cacard2">' +
         '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">' +
-          '<input type="text" data-ca-edit-field="description" data-ca-edit-id="'+a.id+'" value="'+esc(a.description||'')+'" placeholder="What needs fixing?" style="flex:1;border:none;background:none;font-weight:700;color:var(--ink);font-size:16px;padding:2px 0;">' +
+          '<textarea rows="1" class="lookuptext" data-ca-edit-field="description" data-ca-edit-id="'+a.id+'" placeholder="What needs fixing?" style="font-weight:700;">'+esc(a.description||'')+'</textarea>' +
           '<button class="btn btn-ghost btn-sm" style="flex:none;" data-action="'+(isDone?'reopen-action':'resolve-action')+'" data-id="'+a.id+'">'+(isDone?'Reopen':'Mark done')+'</button>' +
         '</div>' +
         '<div class="histmeta">'+esc(a.storeName||'Unnamed store')+(a.storeLocation?' · '+esc(a.storeLocation):'')+'</div>' +
@@ -1695,14 +1700,16 @@
     }
 
     return '<main>' +
-      '<div style="display:flex; justify-content:space-between; align-items:flex-end; gap:10px; flex-wrap:wrap;">' +
+      '<div style="display:flex; justify-content:space-between; align-items:flex-end; gap:10px;">' +
         '<div><div class="eyebrow">Sales Pipeline &amp; Audit History</div><h1 style="font-size:26px;margin-top:6px;">Clients</h1></div>' +
-        '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
-          (state.prospects.length ? '<button class="btn btn-ghost btn-sm" data-action="export-prospects-csv">Export Clients CSV</button>' : '') +
-          (state.history.length ? '<button class="btn btn-ghost btn-sm" data-action="export-csv">Export Audit CSV</button>' : '') +
-          '<button class="btn btn-primary btn-sm" data-action="add-prospect">+ Add Client</button>' +
-        '</div>' +
+        '<button class="btn btn-primary btn-sm" style="flex:none;" data-action="add-prospect">+ Add Client</button>' +
       '</div>' +
+      (state.prospects.length || state.history.length ? (
+        '<div style="display:flex; gap:8px; margin-top:12px;">' +
+          (state.prospects.length ? '<button class="btn btn-ghost btn-sm" style="flex:1;" data-action="export-prospects-csv">Export Clients CSV</button>' : '') +
+          (state.history.length ? '<button class="btn btn-ghost btn-sm" style="flex:1;" data-action="export-csv">Export Audit CSV</button>' : '') +
+        '</div>'
+      ) : '') +
       '<div class="tabs" style="margin-top:14px;">' +
         '<button class="tab '+(pTab==='pipeline'?'on':'')+'" data-action="prospects-tab" data-tab="pipeline">Pipeline</button>' +
         '<button class="tab '+(pTab==='clients'?'on':'')+'" data-action="prospects-tab" data-tab="clients">Clients</button>' +
@@ -2004,29 +2011,29 @@
     var open = openFollowUps(p);
     var done = (p.followUps||[]).filter(function(f){ return f.done; }).sort(function(a,b){ return (b.doneAt||0)-(a.doneAt||0); }).slice(0,3);
     return sh('📞','Follow-ups') +
-      '<div class="card" style="padding:14px 16px;margin-bottom:20px;">' +
-        '<div class="helper" style="margin:0 0 10px;">Schedule the next follow-up for this client, at any stage. It shows on the dashboard when it is due.</div>' +
+      '<div class="card cardstack" style="padding:14px 16px;margin-bottom:20px;">' +
+        '<div class="helper" style="margin:0;">Schedule the next follow-up for this client, at any stage. It shows on the dashboard when it is due.</div>' +
         '<div style="display:flex; gap:12px;">' +
           '<div class="field" style="flex:1;"><label for="fuDate">Date</label><input id="fuDate" type="date" data-fu-field="date" value="'+esc(draft.date)+'"></div>' +
           '<div class="field" style="flex:1;"><label for="fuTime">Time (optional)</label><input id="fuTime" type="time" data-fu-field="time" value="'+esc(draft.time)+'"></div>' +
         '</div>' +
-        '<div style="display:flex; gap:8px; flex-wrap:wrap; margin:-6px 0 12px;">' +
+        '<div class="fuquick">' +
           [['Tomorrow',1],['In 3 days',3],['Next week',7]].map(function(q){ return '<button type="button" class="naBtn" data-action="fu-quick" data-days="'+q[1]+'">'+q[0]+'</button>'; }).join('') +
         '</div>' +
         '<div class="field"><label for="fuNote">What to follow up on</label><input id="fuNote" data-fu-field="note" value="'+esc(draft.note)+'" placeholder="e.g. Call about the proposal, share the dashboard"></div>' +
-        '<button type="button" class="btn btn-primary btn-sm" data-action="add-followup" '+(draft.date?'':'disabled')+'>+ Add follow-up</button>' +
-        (open.length ? open.map(function(f){
+        '<button type="button" class="btn btn-primary" style="width:100%;" data-action="add-followup" '+(draft.date?'':'disabled')+'>+ Add follow-up</button>' +
+        (open.length ? '<div>' + open.map(function(f){
           var tn = followUpTone(f);
-          return '<div style="padding:10px 0 4px;margin-top:10px;border-top:1px solid var(--line);">' +
+          return '<div style="padding:12px 0;border-top:1px solid var(--line);">' +
             '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;"><span style="font-weight:700;">📅 '+esc(fmtFollowUpWhen(f))+'</span><span class="pill '+tn.tone+'">'+tn.label+'</span></div>' +
-            (f.note ? '<div style="margin-top:2px;">'+esc(f.note)+'</div>' : '') +
-            '<div style="margin-top:6px;display:flex;gap:8px;align-items:center;">' +
+            (f.note ? '<div style="margin-top:4px;">'+esc(f.note)+'</div>' : '') +
+            '<div style="margin-top:10px;display:flex;gap:8px;align-items:center;">' +
               '<button type="button" class="btn btn-ghost btn-sm" data-action="done-followup" data-pid="'+p.id+'" data-fid="'+f.id+'">✓ Done</button>' +
               '<button type="button" class="iconbtn" data-action="delete-followup" data-pid="'+p.id+'" data-fid="'+f.id+'" title="Delete">✕</button>' +
             '</div>' +
           '</div>';
-        }).join('') : '<div class="helper" style="margin:12px 0 0;">No open follow-ups for this client.</div>') +
-        (done.length ? '<div class="histmeta" style="margin-top:12px;">Recently done: '+done.map(function(f){ return esc(fmtDateShort(f.doneAt))+(f.note?' — '+esc(f.note):''); }).join(' · ')+'</div>' : '') +
+        }).join('') + '</div>' : '<div class="helper" style="margin:0;">No open follow-ups for this client.</div>') +
+        (done.length ? '<div class="histmeta">Recently done: '+done.map(function(f){ return esc(fmtDateShort(f.doneAt))+(f.note?' — '+esc(f.note):''); }).join(' · ')+'</div>' : '') +
       '</div>';
   }
   function renderFollowUpBoard(){
@@ -2114,19 +2121,19 @@
       return '<div class="field"><label>'+esc(f.label)+'</label><textarea data-action="loop-field-input" data-key="'+f.k+'">'+esc(nd[f.k]||'')+'</textarea></div>';
     }).join('');
     return sh('🔄','Engagement Loop') +
-      '<div class="card" style="padding:16px;margin-bottom:20px;">' +
-        '<div class="helper" style="margin:0 0 12px;">An ongoing loop — each finished step is logged in the timeline above and the next one is queued, until the engagement ends.</div>' +
-        '<div class="helper" style="margin:0 0 12px;">On this step for '+loopDaysOnStep(p)+' day'+(loopDaysOnStep(p)===1?'':'s')+(loopDaysOnStep(p)>=loopStuckDays(p)?' — time for a nudge.':'.')+'</div>' +
+      '<div class="card cardstack" style="padding:16px;margin-bottom:20px;">' +
+        '<div class="helper" style="margin:0;">An ongoing loop — each finished step is logged in the timeline above and the next one is queued, until the engagement ends.</div>' +
+        '<div class="helper" style="margin:0;">On this step for '+loopDaysOnStep(p)+' day'+(loopDaysOnStep(p)===1?'':'s')+(loopDaysOnStep(p)>=loopStuckDays(p)?' — time for a nudge.':'.')+'</div>' +
         '<div class="field"><label for="pNextAction">Up next · step '+(log.length+1)+'</label><select id="pNextAction" data-action="set-next-action">' +
           LOOP_ORDER.map(function(k){ return '<option value="'+k+'" '+(k===type?'selected':'')+'>'+LOOP_STEPS[k].icon+' '+esc(LOOP_STEPS[k].label)+'</option>'; }).join('') +
         '</select></div>' +
-        '<div class="helper" style="margin:-4px 0 10px;">'+esc(st.helper)+'</div>' +
+        '<div class="helper" style="margin:-6px 0 0;">'+esc(st.helper)+'</div>' +
         (type==='audit'
-          ? '<button type="button" class="btn btn-primary btn-sm" data-action="start-reaudit" data-name="'+esc(p.name)+'" data-location="'+esc(p.location||'')+'" data-type="'+esc(audits[0].type)+'">🔁 Start the audit</button>'
+          ? '<button type="button" class="btn btn-primary" style="width:100%;" data-action="start-reaudit" data-name="'+esc(p.name)+'" data-location="'+esc(p.location||'')+'" data-type="'+esc(audits[0].type)+'">🔁 Start the audit</button>'
           : fieldsHtml +
             '<div class="field"><label for="pNextNote">Remarks</label><textarea id="pNextNote" data-action="loop-note-input" placeholder="Optional — anything else worth noting">'+esc(p.nextNote||'')+'</textarea></div>' +
-            '<button type="button" class="btn btn-primary btn-sm" data-action="log-loop-step">✓ Done — log it &amp; queue "'+esc(LOOP_STEPS[LOOP_NEXT[type]].label)+'"</button>') +
-        '<div style="margin-top:12px;"><button type="button" class="btn btn-text btn-danger btn-sm" data-action="end-engagement">End engagement</button></div>' +
+            '<button type="button" class="btn btn-primary" style="width:100%;" data-action="log-loop-step">✓ Done — log it &amp; queue "'+esc(LOOP_STEPS[LOOP_NEXT[type]].label)+'"</button>') +
+        '<div><button type="button" class="btn btn-text btn-danger btn-sm" data-action="end-engagement">End engagement</button></div>' +
       '</div>';
   }
 
@@ -2354,10 +2361,11 @@
     var max = depts.concat(heads).reduce(function(m, s){ return Math.max(m, s.total); }, 1);
     function row(icon, name, s, strong){
       return '<div style="padding:10px 0;border-top:1px solid var(--line);">' +
-        '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;">' +
-          '<span style="font-weight:'+(strong?800:700)+';">'+icon+' '+esc(name)+'</span>' +
-          (s.total ? '<span class="histmeta">'+s.made+' posted · '+s.planned+' planned</span>' : '<span class="pill bad">No content yet</span>') +
+        '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">' +
+          '<span style="font-weight:'+(strong?800:700)+';min-width:0;">'+icon+' '+esc(name)+'</span>' +
+          (s.total ? '<span class="pill good" style="white-space:nowrap;flex:none;">'+s.total+'</span>' : '<span class="pill bad" style="white-space:nowrap;flex:none;">None yet</span>') +
         '</div>' +
+        (s.total ? '<div class="histmeta" style="margin-top:2px;">'+s.made+' posted · '+s.planned+' planned</div>' : '') +
         '<div class="progtrack" style="margin-top:6px;"><div class="progfill" style="width:'+Math.round(s.total/max*100)+'%"></div></div>' +
       '</div>';
     }
@@ -3535,6 +3543,7 @@
       if (caEdit){
         caEdit[el.dataset.caEditField] = el.value;
         persistActions();
+        if (el.tagName==='TEXTAREA'){ el.style.height = 'auto'; el.style.height = el.scrollHeight+'px'; }
         if (el.dataset.caEditField==='dueDate') render();
       }
     }
