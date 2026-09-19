@@ -617,6 +617,8 @@
     document.body.removeChild(ta);
   }
 
+  function sectionWasAudited(s){ return (s.checked||0)>0 || (s.na||0)>0 || !!s.issue; }
+
   function buildAuditSummaryText(rec){
     var tmpl = state.templates[rec.type] || {label:rec.type};
     var lines = [];
@@ -630,7 +632,7 @@
       lines.push((d>0?'+':'')+d+' pts vs last visit');
     }
     var anyFailed = false;
-    rec.sections.forEach(function(s){
+    rec.sections.filter(sectionWasAudited).forEach(function(s){
       var failed = (s.items||[]).filter(function(it){ return it.state==='unchecked'; });
       if (failed.length){
         anyFailed = true;
@@ -840,8 +842,51 @@
       '</nav>';
   }
 
+  function normalizeMobile(v){
+    var digits = String(v||'').replace(/[\s\-().]/g, '');
+    if (/^\+91/.test(digits)) return digits.slice(3);
+    if (/^91\d{10}$/.test(digits)) return digits.slice(2);
+    if (/^0\d{10}$/.test(digits)) return digits.slice(1);
+    return digits;
+  }
+  function isValidMobile(v){ return /^[6-9]\d{9}$/.test(normalizeMobile(v)); }
+  function mobileErrorText(v){
+    return ((v||'').trim() && !isValidMobile(v)) ? 'Enter a valid 10-digit mobile number (starts with 6, 7, 8 or 9).' : '';
+  }
+  function setupProblems(s){
+    var p = [];
+    if (!s.type) p.push('audit type');
+    else if (!s.selectedSections.length) p.push('at least one area');
+    if (!(s.contactName||'').trim()) p.push('contact name');
+    if (!(s.contactDesignation||'').trim()) p.push('designation');
+    if (!(s.contactMobile||'').trim()) p.push('mobile number');
+    else if (!isValidMobile(s.contactMobile)) p.push('a valid mobile number');
+    if (!(s.storeName||'').trim()) p.push('store name');
+    if (!(s.storeLocation||'').trim()) p.push('store location');
+    if (!s.auditDate) p.push('audit date');
+    if (!s.auditTime) p.push('audit time');
+    if (!(parseInt(s.menuItemCount,10) >= 1)) p.push('number of menu items');
+    return p;
+  }
+  function setupHintText(problems){
+    return problems.length
+      ? 'To start, still needed: '+problems.join(', ')+'.'
+      : 'The overall timer starts the moment you begin — tap a section below to time it individually.';
+  }
+  function updateSetupGate(){
+    var problems = setupProblems(state.setup);
+    var btn = app.querySelector('[data-action="start-audit"]');
+    if (btn) btn.disabled = problems.length > 0;
+    var hint = app.querySelector('[data-setup-hint]');
+    if (hint) hint.textContent = setupHintText(problems);
+    var mob = app.querySelector('[data-mobile-err]');
+    if (mob) mob.textContent = mobileErrorText(state.setup.contactMobile);
+  }
+
   function renderSetup(){
     var s = state.setup;
+    var problems = setupProblems(s);
+    var req = ' <span style="color:var(--bad)">*</span>';
     var types = ['dinein','qsr'];
     var icons = { dinein:'🍽️', qsr:'⚡' };
     var descs = { dinein:'Full-service floor & kitchen walkthrough', qsr:'Counter, drive-thru & speed-of-service' };
@@ -850,11 +895,12 @@
       '<div class="eyebrow">New Audit</div>' +
       '<h1 style="font-size:26px;margin-top:6px;">Start a floor check</h1>' +
       '<div class="formstack" style="margin-top:16px;margin-bottom:8px;">' +
-        '<div class="field"><label for="contactName">Point of contact — name</label><input id="contactName" data-bind="contactName" placeholder="e.g. Priya Sharma" value="'+esc(s.contactName)+'"></div>' +
+        '<div class="field"><label for="contactName">Point of contact — name'+req+'</label><input id="contactName" data-bind="contactName" placeholder="e.g. Priya Sharma" value="'+esc(s.contactName)+'"></div>' +
         '<div style="display:flex; gap:12px;">' +
-          '<div class="field" style="flex:1;"><label for="contactDesignation">Designation</label><input id="contactDesignation" data-bind="contactDesignation" placeholder="e.g. Store Manager" value="'+esc(s.contactDesignation)+'"></div>' +
-          '<div class="field" style="flex:1;"><label for="contactMobile">Mobile number</label><input id="contactMobile" type="tel" inputmode="tel" data-bind="contactMobile" placeholder="e.g. 98765 43210" value="'+esc(s.contactMobile)+'"></div>' +
+          '<div class="field" style="flex:1;"><label for="contactDesignation">Designation'+req+'</label><input id="contactDesignation" data-bind="contactDesignation" placeholder="e.g. Store Manager" value="'+esc(s.contactDesignation)+'"></div>' +
+          '<div class="field" style="flex:1;"><label for="contactMobile">Mobile number'+req+'</label><input id="contactMobile" type="tel" inputmode="tel" data-bind="contactMobile" placeholder="e.g. 98765 43210" value="'+esc(s.contactMobile)+'"></div>' +
         '</div>' +
+        '<div class="helper" data-mobile-err style="margin-top:-6px;color:var(--bad);">'+esc(mobileErrorText(s.contactMobile))+'</div>' +
       '</div>' +
       '<div class="typegrid">' +
         types.map(function(t){
@@ -870,18 +916,18 @@
       '</div>' +
       (s.type ? renderAreaFilter(s) : '') +
       '<div class="formstack">' +
-        '<div class="field"><label for="storeName">Store name</label><input id="storeName" data-bind="storeName" placeholder="e.g. Northside Grill" value="'+esc(s.storeName)+'"></div>' +
+        '<div class="field"><label for="storeName">Store name'+req+'</label><input id="storeName" data-bind="storeName" placeholder="e.g. Northside Grill" value="'+esc(s.storeName)+'"></div>' +
         (similarName ? '<div class="helper" style="margin-top:-6px;color:var(--accent-ink);">Did you mean <b>'+esc(similarName)+'</b>? A similar store already exists — <span style="text-decoration:underline;cursor:pointer;" data-action="use-similar-storename" data-name="'+esc(similarName)+'">use that name</span> to keep its history together.</div>' : '') +
-        '<div class="field"><label for="storeLocation">Store location</label><input id="storeLocation" data-bind="storeLocation" placeholder="e.g. 44 Riverside Ave, Unit 2" value="'+esc(s.storeLocation)+'"></div>' +
+        '<div class="field"><label for="storeLocation">Store location'+req+'</label><input id="storeLocation" data-bind="storeLocation" placeholder="e.g. 44 Riverside Ave, Unit 2" value="'+esc(s.storeLocation)+'"></div>' +
         '<div style="display:flex; gap:12px;">' +
-          '<div class="field" style="flex:1;"><label for="auditDate">Audit date</label><input id="auditDate" type="date" data-bind="auditDate" value="'+esc(s.auditDate)+'"></div>' +
-          '<div class="field" style="flex:1;"><label for="auditTime">Audit time</label><input id="auditTime" type="time" data-bind="auditTime" value="'+esc(s.auditTime)+'"></div>' +
+          '<div class="field" style="flex:1;"><label for="auditDate">Audit date'+req+'</label><input id="auditDate" type="date" data-bind="auditDate" value="'+esc(s.auditDate)+'"></div>' +
+          '<div class="field" style="flex:1;"><label for="auditTime">Audit time'+req+'</label><input id="auditTime" type="time" data-bind="auditTime" value="'+esc(s.auditTime)+'"></div>' +
         '</div>' +
         '<div class="helper" data-dayname style="margin-top:-6px;">'+esc(dayName(s.auditDate))+'</div>' +
-        '<div class="field"><label for="menuItemCount">Number of menu items</label><input id="menuItemCount" type="number" min="0" inputmode="numeric" data-bind="menuItemCount" placeholder="e.g. 42" value="'+esc(s.menuItemCount)+'"></div>' +
+        '<div class="field"><label for="menuItemCount">Number of menu items'+req+'</label><input id="menuItemCount" type="number" min="1" inputmode="numeric" data-bind="menuItemCount" placeholder="e.g. 42" value="'+esc(s.menuItemCount)+'"></div>' +
       '</div>' +
-      '<button class="btn btn-primary" style="width:100%;padding:14px;" data-action="start-audit" '+(s.type && s.selectedSections.length ? '' : 'disabled')+'>Start Audit &amp; Timer</button>' +
-      '<div class="helper" style="text-align:center;margin-top:10px;">'+(s.type && !s.selectedSections.length ? 'Select at least one area to audit.' : 'The overall timer starts the moment you begin — tap a section below to time it individually.')+'</div>' +
+      '<button class="btn btn-primary" style="width:100%;padding:14px;" data-action="start-audit" '+(problems.length ? 'disabled' : '')+'>Start Audit &amp; Timer</button>' +
+      '<div class="helper" data-setup-hint style="text-align:center;margin-top:10px;">'+esc(setupHintText(problems))+'</div>' +
     '</main>';
   }
 
@@ -1161,10 +1207,10 @@
       (scoreDeltaHtml(rec.prevScore, rec.completionPct) ? '<div style="margin:-10px 0 16px;">'+scoreDeltaHtml(rec.prevScore, rec.completionPct)+'</div>' : '') +
       sh('⏱️','Section timing') +
       '<div class="card" style="padding:4px 16px;margin-bottom:20px;">' +
-        rec.sections.map(function(s){ return '<div class="sumrow"><span class="k">'+esc(s.name)+'</span><span class="v">'+fmtTime(s.accumMs)+' · '+s.checked+'/'+s.total+'</span></div>'; }).join('') +
+        rec.sections.filter(sectionWasAudited).map(function(s){ return '<div class="sumrow"><span class="k">'+esc(s.name)+'</span><span class="v">'+fmtTime(s.accumMs)+' · '+s.checked+'/'+s.total+'</span></div>'; }).join('') +
       '</div>' +
       sh('📋','Full checklist responses') +
-      rec.sections.map(function(s){
+      rec.sections.filter(sectionWasAudited).map(function(s){
         return '<div class="card" style="padding:4px 16px;margin-bottom:10px;">' +
           '<div style="font-weight:700;font-size:13px;padding:10px 0 4px;">'+esc(s.name)+'</div>' +
           (s.issue ? '<div style="margin:2px 0 6px;padding:8px 10px;border-radius:var(--r-s);background:var(--bad-soft);color:var(--bad);font-size:13px;">⚠ '+esc(s.issue)+'</div>' : '') +
@@ -1802,7 +1848,7 @@
   }
   function computeAuditRecommendations(rec){
     if (!rec) return [];
-    return (rec.sections||[]).map(function(s){
+    return (rec.sections||[]).filter(sectionWasAudited).map(function(s){
       var pct = s.total ? Math.round(s.checked/s.total*100) : 100;
       return { name:s.name, pct:pct, suggestion: suggestActionForSection(s.name) };
     }).filter(function(s){ return s.pct<70; }).sort(function(a,b){ return a.pct-b.pct; });
@@ -2276,37 +2322,6 @@
     '</main>';
   }
 
-  function computeSectionInsights(){
-    var stats = {};
-    state.history.forEach(function(h){
-      (h.sections||[]).forEach(function(s){
-        var key = h.type+'|'+s.name;
-        if (!stats[key]) stats[key] = { name: s.name, type: h.type, sum:0, count:0 };
-        var pct = s.total ? (s.checked/s.total*100) : 100;
-        stats[key].sum += pct; stats[key].count++;
-      });
-    });
-    var arr = Object.keys(stats).map(function(k){ return stats[k]; });
-    arr.forEach(function(s){ s.avgPct = Math.round(s.sum/s.count); });
-    arr.sort(function(a,b){ return a.avgPct-b.avgPct; });
-    return arr.slice(0,3);
-  }
-
-  function renderProblemAreasHtml(){
-    if (state.history.length<2) return '';
-    var insights = computeSectionInsights();
-    if (!insights.length) return '';
-    return '<div class="sechead2"><span class="ic" style="background:var(--bad-soft);">🔥</span><h2>Recurring Problem Areas</h2></div>' +
-      '<div class="card" style="padding:4px 16px;margin-bottom:20px;">' +
-        insights.map(function(s){
-          return '<div style="padding:10px 0;border-top:1px solid var(--line);">' +
-            '<div style="display:flex;justify-content:space-between;gap:8px;"><span style="font-weight:700;">'+esc(s.name)+'</span><span class="pill '+(s.avgPct<60?'bad':'warn')+'">'+s.avgPct+'% avg</span></div>' +
-            '<div class="histmeta">'+esc((state.templates[s.type]||{}).label||s.type)+' · across '+s.count+' audit'+(s.count>1?'s':'')+'</div>' +
-          '</div>';
-        }).join('') +
-      '</div>';
-  }
-
   function computeAlerts(){
     var todayStr = todayISO();
     var nowMs = Date.now();
@@ -2608,8 +2623,6 @@
 
       renderLoopBoard() +
 
-      renderProblemAreasHtml() +
-
       '<div class="sechead2"><span class="ic">🎬</span><h2>Shoot Days This Week</h2></div>' +
       weekCalHtml +
 
@@ -2876,7 +2889,7 @@
       render();
     }
     else if (action==='start-audit'){
-      if (!state.setup.type || !state.setup.selectedSections.length) return;
+      if (setupProblems(state.setup).length) return;
       state.draft = newDraft(state.setup.type, state.setup.storeName, state.setup.storeLocation, state.setup.contactName, state.setup.contactDesignation, state.setup.contactMobile, state.setup.auditDate, state.setup.auditTime, state.setup.selectedSections, state.setup.menuItemCount);
       persistDraft();
       state.view='audit'; render();
@@ -3299,6 +3312,7 @@
       state.schedule[spath[0]][spath[1]] = sday;
       persistSchedule();
     }
+    if (state.view==='setup') updateSetupGate();
   });
 
   app.addEventListener('change', function(e){
