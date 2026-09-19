@@ -317,15 +317,6 @@
   .iconbtn:hover{color:var(--bad); background:var(--bad-soft);}
   .copybtn{background:none; border:none; color:var(--accent); padding:4px 8px; border-radius:6px; flex:none; font-size:12px; font-weight:700; white-space:nowrap; transition:background .15s, color .15s;}
   .copybtn:hover{background:var(--accent-soft);}
-  .cyclenote{width:100%; box-sizing:border-box; border:1px solid var(--line-strong); border-radius:var(--r-s); padding:8px 10px; font-size:15px; background:var(--surface); color:var(--ink); resize:vertical; min-height:48px;}
-  .cyclesteps{display:flex; align-items:flex-start;}
-  .cyclestep{display:flex; flex-direction:column; align-items:center; gap:6px; flex:1; min-width:0;}
-  .cycledot{width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px; background:var(--surface-2); color:var(--ink-400); border:2px solid var(--line-strong); flex:none;}
-  .cyclestep.cs-done .cycledot{background:var(--good); border-color:var(--good); color:#fff;}
-  .cyclestep.cs-current .cycledot{background:var(--accent); border-color:var(--accent); color:#fff;}
-  .cyclelabel{font-size:11px; text-align:center; color:var(--ink-400); font-weight:600; line-height:1.25;}
-  .cyclestep.cs-current .cyclelabel{color:var(--ink); font-weight:800;}
-  .cycleline{flex:0 0 16px; height:2px; background:var(--line-strong); margin-top:17px;}
   .addrow{display:flex; gap:8px; margin-top:6px;}
   .addrow input{flex:1; border:1px solid var(--line-strong); border-radius:var(--r-s); padding:8px 10px; font-size:16px; background:var(--surface); color:var(--ink);}
   .itemrow{border:1px solid var(--line); border-radius:var(--r-s); padding:8px 10px; margin:8px 0; background:var(--surface); transition:border-color .15s, background .15s;}
@@ -1826,6 +1817,7 @@
       if (a.createdAt) events.push({ t:a.createdAt, type:'action-created', data:a });
       if (a.done && a.resolvedAt) events.push({ t:a.resolvedAt, type:'action-resolved', data:a });
     });
+    (p.actionLog||[]).forEach(function(s, i){ events.push({ t:s.doneAt, type:'loop-step', data:s, n:i+1 }); });
     if (p.convertedAt) events.push({ t:p.convertedAt, type:'converted', data:p });
     if (p.declinedAt) events.push({ t:p.declinedAt, type:'declined', data:p });
     if (p.createdAt) events.push({ t:p.createdAt, type:'added', data:p });
@@ -1844,6 +1836,10 @@
             '<div class="histtop"><span class="badge">'+esc((state.templates[d.type]||{}).label||d.type)+' audit</span><span class="histpct">'+d.completionPct+'%</span></div>' +
             '<div class="histmeta" style="margin-top:8px;">'+fmtDateShort(e.t)+' · Tap to view full report</div>' +
           '</div>';
+        }
+        if (e.type==='loop-step'){
+          var ls = LOOP_STEPS[d.type] || LOOP_STEPS.other;
+          return '<div class="card histcard static"><div class="histtop"><span>'+ls.icon+' Step '+e.n+' — '+esc(ls.label)+'</span></div><div class="histmeta" style="margin-top:8px;">'+(d.note?esc(d.note)+' · ':'')+fmtDateShort(e.t)+'</div></div>';
         }
         if (e.type==='action-created'){
           return '<div class="card histcard static"><div class="histtop"><span>⚠️ Corrective action logged</span></div><div class="histmeta" style="margin-top:8px;">'+esc(d.description||'(unspecified)')+' · '+fmtDateShort(e.t)+'</div></div>';
@@ -1900,35 +1896,40 @@
       '</div>';
   }
 
-  var CYCLE_STAGES = [
-    { icon:'📋', label:'Audit Completed', helper:'The floor audit for this cycle is done and logged.' },
-    { icon:'📊', label:'Data Analysis', helper:'Review the scored results and spot the real patterns behind the numbers.' },
-    { icon:'🪞', label:'Dashboard Reflection', helper:'Reflect the findings back — what do the trends say about this client\'s trajectory?' },
-    { icon:'🎯', label:'Line of Action', helper:'Turn the reflection into a concrete plan — what will change, and by when.' }
-  ];
-  function renderCycleTracker(p, audits){
-    if (!audits.length) return '';
-    var stage = p.cycleStage; if (stage===undefined || stage===null) stage = 0;
-    var complete = stage >= CYCLE_STAGES.length;
-    return sh('🔄','Consulting Cycle') +
-      '<div class="card cycletrack" style="padding:16px;margin-bottom:20px;">' +
-        '<div class="cyclesteps">' +
-          CYCLE_STAGES.map(function(s, i){
-            var st = i<stage ? 'done' : (i===stage && !complete ? 'current' : 'upcoming');
-            return '<div class="cyclestep cs-'+st+'">' +
-              '<div class="cycledot">'+(st==='done'?'✓':s.icon)+'</div>' +
-              '<div class="cyclelabel">'+esc(s.label)+'</div>' +
-            '</div>';
-          }).join('<div class="cycleline"></div>') +
-        '</div>' +
-        (complete ?
-          '<div class="helper" style="margin:12px 0 0;">✓ Full cycle complete for this audit — the next step is scheduling the re-audit to start the loop again.</div>'
-        : (
-          '<div class="helper" style="margin:12px 0 8px;">'+esc(CYCLE_STAGES[stage].helper)+'</div>' +
-          '<textarea rows="2" class="cyclenote" placeholder="Notes for this stage (optional)…" data-action="cycle-note-input" data-stage="'+stage+'">'+esc((p.cycleNotes&&p.cycleNotes[stage])||'')+'</textarea>' +
-          '<button type="button" class="btn btn-primary btn-sm" style="margin-top:8px;" data-action="advance-cycle-stage">'+(stage===CYCLE_STAGES.length-1?'Mark complete':'Mark done — next: '+CYCLE_STAGES[stage+1].label)+'</button>' +
-          (stage>0 ? '<button type="button" class="btn btn-text btn-sm" style="margin-top:8px;margin-left:8px;" data-action="rewind-cycle-stage">← Back a step</button>' : '')
-        )) +
+  var LOOP_STEPS = {
+    audit:{ icon:'📋', label:'Delivery Audit', helper:'Run the next delivery audit to see how things have moved since the last loop.' },
+    dashboard:{ icon:'📊', label:'Dashboard Build', helper:'Turn the audit data into a dashboard the client can act on.' },
+    action:{ icon:'🎯', label:'Action Plan', helper:'Decide what needs to change, who owns it, and by when.' },
+    implement:{ icon:'🛠️', label:'Implementation', helper:'Support the team while the agreed actions are carried out.' },
+    review:{ icon:'🔎', label:'Review & Follow-up', helper:'Check whether the actions worked before the next audit.' },
+    other:{ icon:'✏️', label:'Other', helper:'Any other work done for this client.' }
+  };
+  var LOOP_ORDER = ['audit','dashboard','action','implement','review','other'];
+  var LOOP_NEXT = { audit:'dashboard', dashboard:'action', action:'implement', implement:'review', review:'audit', other:'review' };
+  function renderEngagementLoop(p, audits){
+    if (!p.converted || !audits.length) return '';
+    var log = p.actionLog || [];
+    if (p.engagementEnded){
+      return sh('🔄','Engagement Loop') +
+        '<div class="card" style="padding:16px;margin-bottom:20px;">' +
+          '<div class="helper" style="margin:0 0 10px;">This engagement is closed. '+log.length+' step'+(log.length===1?'':'s')+' were logged.</div>' +
+          '<button type="button" class="btn btn-ghost btn-sm" data-action="resume-engagement">Resume engagement</button>' +
+        '</div>';
+    }
+    var type = LOOP_STEPS[p.nextAction] ? p.nextAction : 'dashboard';
+    var st = LOOP_STEPS[type];
+    return sh('🔄','Engagement Loop') +
+      '<div class="card" style="padding:16px;margin-bottom:20px;">' +
+        '<div class="helper" style="margin:0 0 12px;">An ongoing loop — each finished step is logged in the timeline above and the next one is queued, until the engagement ends.</div>' +
+        '<div class="field"><label for="pNextAction">Up next · step '+(log.length+1)+'</label><select id="pNextAction" data-action="set-next-action">' +
+          LOOP_ORDER.map(function(k){ return '<option value="'+k+'" '+(k===type?'selected':'')+'>'+LOOP_STEPS[k].icon+' '+esc(LOOP_STEPS[k].label)+'</option>'; }).join('') +
+        '</select></div>' +
+        '<div class="helper" style="margin:-4px 0 10px;">'+esc(st.helper)+'</div>' +
+        (type==='audit'
+          ? '<button type="button" class="btn btn-primary btn-sm" data-action="start-reaudit" data-name="'+esc(p.name)+'" data-location="'+esc(p.location||'')+'" data-type="'+esc(audits[0].type)+'">🔁 Start the audit</button>'
+          : '<div class="field"><label for="pNextNote">What was done / outcome</label><textarea id="pNextNote" data-action="loop-note-input" placeholder="Optional — jot down what happened in this step">'+esc(p.nextNote||'')+'</textarea></div>' +
+            '<button type="button" class="btn btn-primary btn-sm" data-action="log-loop-step">✓ Done — log it &amp; queue "'+esc(LOOP_STEPS[LOOP_NEXT[type]].label)+'"</button>') +
+        '<div style="margin-top:12px;"><button type="button" class="btn btn-text btn-danger btn-sm" data-action="end-engagement">End engagement</button></div>' +
       '</div>';
   }
 
@@ -2027,7 +2028,7 @@
           '<button type="button" class="btn btn-ghost btn-sm" data-action="start-reaudit" data-name="'+esc(p.name)+'" data-location="'+esc(p.location||'')+'" data-type="'+esc(audits[0].type)+'">🔁 Re-audit now</button>' +
         '</div>' +
         renderClientTimeline(p, audits) +
-        renderCycleTracker(p, audits) +
+        renderEngagementLoop(p, audits) +
         renderNextActionsCard(p, audits) +
         sh('🎯','Post-Audit Follow-up') +
         '<div class="card" style="padding:16px;margin-bottom:20px;border:1.5px solid var(--accent);background:var(--accent-soft);">' +
@@ -2911,23 +2912,28 @@
         persistProspects(); render();
       }
     }
-    else if (action==='advance-cycle-stage'){
-      var acsP = findProspect(state.activeProspectId);
-      if (acsP){
-        var acsStage = acsP.cycleStage; if (acsStage===undefined || acsStage===null) acsStage = 0;
-        acsP.cycleStage = acsStage + 1;
-        acsP.cycleUpdatedAt = Date.now();
+    else if (action==='log-loop-step'){
+      var llP = findProspect(state.activeProspectId);
+      if (llP){
+        var llType = LOOP_STEPS[llP.nextAction] ? llP.nextAction : 'dashboard';
+        if (!llP.actionLog) llP.actionLog = [];
+        llP.actionLog.push({ id:uid(), type:llType, note:(llP.nextNote||'').trim(), doneAt:Date.now() });
+        llP.nextAction = LOOP_NEXT[llType];
+        llP.nextNote = '';
+        llP.updatedAt = Date.now();
         persistProspects(); render();
       }
     }
-    else if (action==='rewind-cycle-stage'){
-      var rcsP = findProspect(state.activeProspectId);
-      if (rcsP){
-        var rcsStage = rcsP.cycleStage; if (rcsStage===undefined || rcsStage===null) rcsStage = 0;
-        rcsP.cycleStage = Math.max(0, rcsStage - 1);
-        rcsP.cycleUpdatedAt = Date.now();
+    else if (action==='end-engagement'){
+      var eeP = findProspect(state.activeProspectId);
+      if (eeP && window.confirm('End the engagement with "'+(eeP.name||'this client')+'"? The loop stops, and you can resume it later.')){
+        eeP.engagementEnded = true; eeP.updatedAt = Date.now();
         persistProspects(); render();
       }
+    }
+    else if (action==='resume-engagement'){
+      var reP = findProspect(state.activeProspectId);
+      if (reP){ reP.engagementEnded = false; reP.updatedAt = Date.now(); persistProspects(); render(); }
     }
     else if (action==='use-similar-storename'){
       state.setup.storeName = t.dataset.name; render();
@@ -2969,7 +2975,6 @@
           declined:false, declinedAt:null, followUpDate:'', finalPrice:'', timeline:'',
           servicesOffered:'', pricingType:'', proposalStatus:'', proposalMeetingDate:'', auditsPerMonth:'',
           contactName: d.contactName||'', contactDesignation: d.contactDesignation||'', contactMobile: d.contactMobile||'',
-          cycleStage:0, cycleNotes:{}, cycleUpdatedAt: Date.now(),
           createdAt: Date.now() };
         state.prospects.unshift(linkedP);
       } else if (linkedP){
@@ -2979,9 +2984,8 @@
         if (!linkedP.contactName) linkedP.contactName = d.contactName||linkedP.contactName||'';
         if (!linkedP.contactDesignation) linkedP.contactDesignation = d.contactDesignation||linkedP.contactDesignation||'';
         if (!linkedP.contactMobile) linkedP.contactMobile = d.contactMobile||linkedP.contactMobile||'';
-        linkedP.cycleStage = 0;
-        linkedP.cycleNotes = {};
-        linkedP.cycleUpdatedAt = Date.now();
+        linkedP.nextAction = 'dashboard';
+        linkedP.nextNote = '';
       }
       state.pendingProspectId = null;
       if (linkedP){
@@ -3133,13 +3137,9 @@
     else if (el.dataset.bind === 'witnessName' && state.draft){ state.draft.witnessName = el.value; persistDraft(); }
     else if (el.dataset.bind === 'witnessDesignation' && state.draft){ state.draft.witnessDesignation = el.value; persistDraft(); }
     else if (el.dataset.bind === 'witnessMobile' && state.draft){ state.draft.witnessMobile = el.value; persistDraft(); }
-    else if (el.dataset.action === 'cycle-note-input'){
-      var cniP = findProspect(state.activeProspectId);
-      if (cniP){
-        if (!cniP.cycleNotes) cniP.cycleNotes = {};
-        cniP.cycleNotes[el.dataset.stage] = el.value;
-        persistProspects();
-      }
+    else if (el.dataset.action === 'loop-note-input'){
+      var lniP = findProspect(state.activeProspectId);
+      if (lniP){ lniP.nextNote = el.value; persistProspects(); }
     }
     else if (el.dataset.action === 'rename-section'){
       var tmpl = state.templates[state.editorTab];
@@ -3253,6 +3253,10 @@
     var el = e.target;
     if (el.dataset.bind==='storeName'){ render(); }
     else if (el.dataset.bindProspect==='name'){ render(); }
+    else if (el.dataset.action==='set-next-action'){
+      var snaP = findProspect(state.activeProspectId);
+      if (snaP && LOOP_STEPS[el.value]){ snaP.nextAction = el.value; persistProspects(); render(); }
+    }
     else if (el.dataset.action==='set-pricing-type-select'){
       var ptp = findProspect(state.activeProspectId);
       if (ptp){ ptp.pricingType = el.value; persistProspects(); }
