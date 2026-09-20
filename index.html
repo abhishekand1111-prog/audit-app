@@ -313,6 +313,8 @@
   .revdot{display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:5px;}
   .cgroup{padding:0; margin-bottom:10px; overflow:hidden;}
   .cgroup.head{border:1.5px solid var(--accent);}
+  .cgroup.overdue{border:1.5px solid var(--bad);}
+  .cgbody .weekrow{margin:10px 0 0; box-shadow:none; background:var(--surface-2);}
   .cghead{width:100%; display:flex; align-items:center; justify-content:space-between; gap:10px; text-align:left; border:none; background:none; color:var(--ink); padding:14px 16px;}
   .cghead .cgtitle{font-weight:800; min-width:0;}
   .cghead .cgright{display:flex; align-items:center; gap:8px; flex:none;}
@@ -3006,8 +3008,7 @@
     var groups = [];
     for (var i=0; i<days; i++){
       var ds = isoDaysFromNow(i);
-      var items = all.filter(function(e){ return e.date===ds; });
-      if (items.length) groups.push({ date:ds, offset:i, items:items });
+      groups.push({ date:ds, offset:i, items:all.filter(function(e){ return e.date===ds; }) });
     }
     return {
       overdue: all.filter(function(e){ return e.date<todayStr; }),
@@ -3032,7 +3033,8 @@
   }
   function renderWeekView(){
     var g = weekGroups(7);
-    var todayCount = g.days.length && g.days[0].offset===0 ? g.days[0].items.length : 0;
+    var todayCount = g.days[0].items.length;
+    var firstBusy = g.days.filter(function(d){ return d.items.length; })[0];
     return '<main>' +
       '<div class="eyebrow">Planner</div>' +
       '<h1 style="font-size:26px;margin-top:6px;">Week Ahead</h1>' +
@@ -3042,18 +3044,27 @@
         '<div class="stattile"><div class="v">'+g.count+'</div><div class="k">Next 7 days</div></div>' +
         '<div class="stattile'+(g.overdue.length?' t-bad':'')+'"><div class="v">'+g.overdue.length+'</div><div class="k">Overdue</div></div>' +
       '</div>' +
-      (g.overdue.length ? (
-        '<div class="wdayhead" style="color:var(--bad);"><span>⏰ Overdue</span><span class="pill bad">'+g.overdue.length+'</span></div>' +
-        g.overdue.slice(0, 5).map(function(e){ return weekRowHtml(e, true); }).join('') +
-        (g.overdue.length>5 ? '<div class="helper" style="margin-bottom:8px;">+'+(g.overdue.length-5)+' more overdue — see Actions and Clients.</div>' : '')
-      ) : '') +
-      (g.days.length===0 ? '<div class="empty"><div class="big">📅</div>Nothing scheduled in the next 7 days.</div>' :
-        g.days.map(function(day){
-          return '<div class="wdayhead"><span>'+esc(weekDayLabel(day))+'</span><span class="pill '+(day.offset===0?'good':'warn')+'">'+day.items.length+'</span></div>' +
-            day.items.map(function(e){ return weekRowHtml(e, false); }).join('');
-        }).join('')
-      ) +
+      '<div class="helper" style="margin:14px 0 12px;">Tap a day to open it. The days are in date order, and overdue items sit on top.</div>' +
+      (g.overdue.length ? weekGroupHtml('week|overdue', '⏰ Overdue', g.overdue, { overdue:true, defOpen:true }) : '') +
+      g.days.map(function(day){
+        return weekGroupHtml('week|'+day.date, weekDayLabel(day), day.items, { dateLabel: day.offset<2 ? fmtDateShort(new Date(day.date+'T00:00:00').getTime()) : '', defOpen: day===firstBusy });
+      }).join('') +
+      (g.count===0 ? '<div class="helper" style="margin:4px 0 20px;">Nothing scheduled in the next 7 days.</div>' : '') +
     '</main>';
+  }
+  function weekGroupHtml(key, title, items, opt){
+    var open = state.contentOpen[key]===undefined ? !!opt.defOpen : state.contentOpen[key];
+    var counts = {}, order = [];
+    items.forEach(function(e){ if (!counts[e.icon]){ counts[e.icon] = 0; order.push(e.icon); } counts[e.icon]++; });
+    var summary = items.length ? order.map(function(ic){ return ic+' '+counts[ic]; }).join(' · ') : 'Nothing scheduled';
+    var meta = (opt.dateLabel ? opt.dateLabel+' · ' : '')+summary;
+    return '<div class="card cgroup'+(open?' open':'')+(opt.overdue?' overdue':'')+'">' +
+      '<button type="button" class="cghead" data-action="toggle-content-group" data-key="'+esc(key)+'" aria-expanded="'+(open?'true':'false')+'">' +
+        '<span style="min-width:0;"><span class="cgtitle">'+esc(title)+'</span><span class="histmeta" style="display:block;margin-top:2px;">'+esc(meta)+'</span></span>' +
+        '<span class="cgright"><span class="pill '+(items.length?(opt.overdue?'bad':'good'):'warn')+'" style="white-space:nowrap;">'+(items.length||'None')+'</span><span class="chev">▶</span></span>' +
+      '</button>' +
+      (open && items.length ? '<div class="cgbody">'+items.map(function(e){ return weekRowHtml(e, !!opt.overdue); }).join('')+'</div>' : '') +
+    '</div>';
   }
   function renderWeekPreview(){
     var g = weekGroups(7);
