@@ -63,13 +63,13 @@
   .shell{max-width:640px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column; background:var(--paper);}
   .authwrap{min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px 18px; background:var(--paper);}
   .authcard{width:100%; max-width:380px; background:var(--surface); border:1px solid var(--line); border-radius:var(--r-l); box-shadow:var(--shadow); padding:28px 24px;}
-  .authbrand{display:flex; align-items:center; gap:9px;}
-  .authbrand .mark{width:32px; height:32px; border-radius:50%; background:#000; color:#fff; display:flex; align-items:center; justify-content:center; font-family:var(--font-d); font-weight:800; font-style:italic; font-size:15px;}
+  .authbrand{display:flex; flex-direction:column; align-items:center; gap:10px; text-align:center;}
+  .authbrand .logo{width:76px; height:76px; border-radius:20px; display:block; box-shadow:0 6px 18px rgba(0,0,0,.18), 0 0 0 1px var(--line-strong);}
   .authbrand .name{font-family:var(--font-d); font-weight:800; font-size:16px;}
   .authloading{color:var(--ink-400); font-size:14px;}
   .topbar{position:sticky; top:0; z-index:10; background:var(--paper); border-bottom:1px solid var(--line); padding:12px 16px; display:flex; align-items:center; gap:10px;}
   .brand{display:flex; align-items:center; gap:9px; cursor:pointer; border:none; background:none; padding:0;}
-  .brand .mark, .sidebar-brand .mark{width:32px; height:32px; border-radius:50%; background:#000; color:#fff; display:flex; align-items:center; justify-content:center; font-family:var(--font-d); font-weight:800; font-style:italic; font-size:15px; letter-spacing:-0.03em; flex:none; overflow:hidden;}
+  .brand .logo, .sidebar-brand .logo{width:34px; height:34px; border-radius:9px; display:block; flex:none;}
   .brand .name, .sidebar-brand .name{font-family:var(--font-d); font-weight:800; font-size:18px; color:var(--ink);}
   .brand{min-width:0;}
   .brand .name{font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
@@ -772,12 +772,15 @@
     return (err && err.message) || 'Something went wrong. Please try again.';
   }
 
+  var LOGO_SRC = 'data:image/png;base64,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';
+  function logoImg(){ return '<img class="logo" src="'+LOGO_SRC+'" alt="Diagnosis Room logo">'; }
+
   function renderAuthGate(){
     var mode = state.authMode;
     return '<div class="authwrap"><div class="authcard">' +
-      '<div class="authbrand"><span class="mark">dr</span><span class="name">Diagnosis Room</span></div>' +
-      '<h1 style="font-size:22px;margin:18px 0 4px;">'+(mode==='signup'?'Create your account':'Welcome back')+'</h1>' +
-      '<div class="helper" style="margin-bottom:18px;">'+(mode==='signup'?'Sign up to sync your audits across devices.':'Sign in to access your data.')+'</div>' +
+      '<div class="authbrand">'+logoImg()+'<span class="name">Diagnosis Room</span></div>' +
+      '<h1 style="font-size:22px;margin:22px 0 4px;text-align:center;">'+(mode==='signup'?'Create your account':'Welcome back')+'</h1>' +
+      '<div class="helper" style="margin-bottom:18px;text-align:center;">'+(mode==='signup'?'Sign up to sync your audits across devices.':'Sign in to access your data.')+'</div>' +
       (state.authError ? '<div class="helper" style="color:var(--bad);margin-bottom:10px;">'+esc(state.authError)+'</div>' : '') +
       '<div class="formstack">' +
         '<div class="field"><label for="authEmail">Email</label><input id="authEmail" type="email" placeholder="you@example.com" autocomplete="email"></div>' +
@@ -838,13 +841,13 @@
     return '' +
       '<div class="topbar">' +
         '<button class="hamburger" data-action="toggle-sidebar" aria-label="Menu">☰</button>' +
-        '<button class="brand" data-action="go-dashboard"><span class="mark">dr</span><span class="name">Diagnosis Room</span></button>' +
+        '<button class="brand" data-action="go-dashboard">'+logoImg()+'<span class="name">Diagnosis Room</span></button>' +
         renderSyncPill() +
         '<button class="hamburger" data-action="go-search" '+lockAttr+' aria-label="Search">🔍</button>' +
       '</div>' +
       '<div class="sidebar-overlay '+(state.sidebarOpen?'show':'')+'" data-action="close-sidebar"></div>' +
       '<nav class="sidebar '+(state.sidebarOpen?'open':'')+'">' +
-        '<div class="sidebar-brand"><span class="mark">dr</span><span class="name">Diagnosis Room</span></div>' +
+        '<div class="sidebar-brand">'+logoImg()+'<span class="name">Diagnosis Room</span></div>' +
         item('dashboard','go-dashboard','Dashboard') +
         item('setup','go-setup','New Audit') +
         item('editor','go-editor','Checklist') +
