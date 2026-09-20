@@ -815,13 +815,23 @@
     return { checked:checked, total:total, pct: total===0?100:Math.round(checked/total*100) };
   }
 
-  // ---------- pricing ----------
-  function computePricing(type, sectionCount, menuItemCount){
-    var cfg = state.pricing[type] || { baseFee:0, perSection:0, perMenuItem:0 };
-    var sectionsCost = sectionCount * (cfg.perSection||0);
-    var menuCost = (menuItemCount||0) * (cfg.perMenuItem||0);
-    var total = (cfg.baseFee||0) + sectionsCost + menuCost;
-    return { base:cfg.baseFee||0, sectionsCost:sectionsCost, menuCost:menuCost, total:total, currency: state.pricing.currency||'' };
+  // ---------- client revenue (drives the monthly revenue target) ----------
+  function clientPriceOf(p){ return Number(p.finalPrice)||0; }
+  // One-time deals count in the month they were converted; monthly retainers count every month from conversion until the engagement is closed.
+  function clientRevenueForMonth(year, month){
+    var start = new Date(year, month, 1).getTime(), next = new Date(year, month+1, 1).getTime();
+    var oneTime = 0, retainer = 0;
+    state.prospects.forEach(function(p){
+      var price = clientPriceOf(p);
+      if (!p.converted || p.declined || !price) return;
+      var at = p.convertedAt || 0;
+      if (p.pricingType==='retainer'){ if (at<next && !p.engagementEnded) retainer += price; }
+      else if (at>=start && at<next){ oneTime += price; }
+    });
+    return { oneTime:oneTime, retainer:retainer, total:oneTime+retainer };
+  }
+  function clientsMissingPrice(){
+    return state.prospects.filter(function(p){ return p.converted && !p.declined && (!clientPriceOf(p) || !p.pricingType); });
   }
 
   // ---------- re-audit schedule ----------
@@ -1237,7 +1247,6 @@
     var op = overallProgress(d);
     var totalMs = d.overall.accumMs;
     var canComplete = (d.remark||'').trim().length > 0;
-    var price = computePricing(d.type, d.sections.length, d.menuItemCount||0);
     var prevRec = previousAuditForStore(d.storeName, d.id);
     return '<main>' +
       '<button class="backrow" data-action="resume-checklist">← Back to checklist</button>' +
@@ -1248,13 +1257,6 @@
       renderPriorIssuesPanel(d) +
       '<div class="statgrid">' +
         d.sections.map(function(s){ var p=sectionProgress(s); return '<div class="stattile"><div class="v">'+fmtTime(s.accumMs)+'</div><div class="k">'+esc(s.name)+'</div><div style="margin-top:5px;" class="histmeta">'+p.checked+'/'+p.total+' checked</div></div>'; }).join('') +
-      '</div>' +
-      sh('💰','Estimated pricing') +
-      '<div class="card" style="padding:4px 16px;margin-bottom:20px;">' +
-        '<div class="sumrow"><span class="k">Base fee ('+tmpl.label+')</span><span class="v">'+price.currency+price.base+'</span></div>' +
-        '<div class="sumrow"><span class="k">Areas audited ('+d.sections.length+')</span><span class="v">'+price.currency+price.sectionsCost+'</span></div>' +
-        '<div class="sumrow"><span class="k">Menu items ('+(d.menuItemCount||0)+')</span><span class="v">'+price.currency+price.menuCost+'</span></div>' +
-        '<div class="sumrow pricerow"><span class="k" style="font-weight:700;color:var(--ink);">Total</span><span class="pricetotal">'+price.currency+price.total+'</span></div>' +
       '</div>' +
       renderSectionIssues(d) +
       renderWitnessEditor(d) +
@@ -1307,7 +1309,6 @@
 
   function computeRecord(d){
     var op = overallProgress(d);
-    var pricing = computePricing(d.type, d.sections.length, d.menuItemCount||0);
     var prev = previousAuditForStore(d.storeName, d.id);
     var hasContact = !!(d.contactName||'').trim();
     var sameAsContact = hasContact && d.witnessSameAsContact!==false;
@@ -1319,7 +1320,6 @@
       auditDate:d.auditDate, auditTime:d.auditTime, menuItemCount:d.menuItemCount||0,
       startedAt:d.startedAt, finishedAt:d.finishedAt, remark:d.remark,
       totalMs:d.overall.accumMs, completionPct:op.pct, checked:op.checked, total:op.total,
-      pricing: pricing,
       prevScore: prev ? prev.completionPct : null, prevAuditDate: prev ? prev.auditDate : null,
       sections: d.sections.map(function(s){
         var p=sectionProgress(s);
@@ -1382,14 +1382,6 @@
           }).join('') +
         '</div>';
       }).join('') +
-      (rec.pricing ? (
-      sh('💰','Pricing') +
-      '<div class="card" style="padding:4px 16px;margin-bottom:20px;">' +
-        '<div class="sumrow"><span class="k">Base fee</span><span class="v">'+rec.pricing.currency+rec.pricing.base+'</span></div>' +
-        '<div class="sumrow"><span class="k">Areas audited ('+rec.sections.length+')</span><span class="v">'+rec.pricing.currency+rec.pricing.sectionsCost+'</span></div>' +
-        '<div class="sumrow"><span class="k">Menu items ('+(rec.menuItemCount||0)+')</span><span class="v">'+rec.pricing.currency+rec.pricing.menuCost+'</span></div>' +
-        '<div class="sumrow pricerow"><span class="k" style="font-weight:700;color:var(--ink);">Total</span><span class="pricetotal">'+rec.pricing.currency+rec.pricing.total+'</span></div>' +
-      '</div>') : '') +
       (function(){
         var acts = state.correctiveActions.filter(function(a){ return a.auditId===rec.id; });
         if (!acts.length) return '';
@@ -1411,26 +1403,25 @@
     return v;
   }
   function buildHistoryCSV(){
-    var cols = ['Store Name','Store Location','Contact Name','Contact Designation','Contact Mobile','Witness Name','Witness Designation','Witness Mobile','Type','Audit Date','Day','Audit Time','Total Time','Score %','Items Checked','Items Total','Areas Audited','Menu Items','Section Breakdown','Estimated Pricing','Final Remark'];
+    var cols = ['Store Name','Store Location','Contact Name','Contact Designation','Contact Mobile','Witness Name','Witness Designation','Witness Mobile','Type','Audit Date','Day','Audit Time','Total Time','Score %','Items Checked','Items Total','Areas Audited','Menu Items','Section Breakdown','Final Remark'];
     var rows = [cols.join(',')];
     state.history.slice().sort(function(a,b){ return b.finishedAt-a.finishedAt; }).forEach(function(h){
       var tmpl = state.templates[h.type] || { label: h.type };
       var sectionSummary = (h.sections||[]).map(function(s){ return s.name+': '+fmtTime(s.accumMs)+' ('+s.checked+'/'+s.total+')'; }).join(' | ');
-      var priceStr = h.pricing ? (h.pricing.currency+h.pricing.total) : '';
-      var row = [h.storeName||'', h.storeLocation||'', h.contactName||'', h.contactDesignation||'', h.contactMobile||'', h.witnessName||'', h.witnessDesignation||'', h.witnessMobile||'', tmpl.label||h.type, h.auditDate||'', dayName(h.auditDate), h.auditTime||'', fmtTime(h.totalMs), h.completionPct, h.checked, h.total, (h.sections||[]).length, h.menuItemCount||0, sectionSummary, priceStr, h.remark||''];
+      var row = [h.storeName||'', h.storeLocation||'', h.contactName||'', h.contactDesignation||'', h.contactMobile||'', h.witnessName||'', h.witnessDesignation||'', h.witnessMobile||'', tmpl.label||h.type, h.auditDate||'', dayName(h.auditDate), h.auditTime||'', fmtTime(h.totalMs), h.completionPct, h.checked, h.total, (h.sections||[]).length, h.menuItemCount||0, sectionSummary, h.remark||''];
       rows.push(row.map(csvEscape).join(','));
     });
     return rows.join('\r\n');
   }
 
   function buildProspectsCSV(){
-    var cols = ['Client Name','Location','Category','Status','Class of Service','Contact Name','Contact Mobile','Audited','Converted','Final Price','Follow-up Date'];
+    var cols = ['Client Name','Location','Category','Status','Class of Service','Contact Name','Contact Mobile','Audited','Converted','Pricing Type','Price','Follow-up Date'];
     var rows = [cols.join(',')];
     state.prospects.slice().sort(function(a,b){ return (b.createdAt||0)-(a.createdAt||0); }).forEach(function(p){
       var st = prospectStatus(p);
       var cls = p.servicesOffered ? findServiceClass(p.servicesOffered) : null;
       var svcStr = cls ? ('No. '+cls.number+' — '+cls.label) : 'N/A';
-      var row = [p.name||'', p.location||'', prospectCategoryLabel(p), st.label, svcStr, p.contactName||'', p.contactMobile||'', p.auditId?'Yes':'No', p.converted?'Yes':'No', p.finalPrice||'', p.followUpDate||''];
+      var row = [p.name||'', p.location||'', prospectCategoryLabel(p), st.label, svcStr, p.contactName||'', p.contactMobile||'', p.auditId?'Yes':'No', p.converted?'Yes':'No', p.pricingType==='retainer'?'Monthly retainer':(p.pricingType==='onetime'?'One-time':''), p.finalPrice||'', p.followUpDate||''];
       rows.push(row.map(csvEscape).join(','));
     });
     return rows.join('\r\n');
@@ -1589,17 +1580,6 @@
   }
 
   function renderPricingSettings(){
-    var p = state.pricing;
-    function typeBlock(type){
-      var cfg = p[type];
-      var label = state.templates[type].label;
-      return '<div class="card edsection">' +
-        '<div class="edhead"><div style="font-family:var(--font-d);font-weight:800;font-size:15px;">'+label+'</div></div>' +
-        '<div class="field"><label>Base fee</label><input type="number" min="0" data-pricing="'+type+'.baseFee" value="'+cfg.baseFee+'"></div>' +
-        '<div class="field"><label>Rate per area audited</label><input type="number" min="0" data-pricing="'+type+'.perSection" value="'+cfg.perSection+'"></div>' +
-        '<div class="field"><label>Rate per menu item</label><input type="number" min="0" data-pricing="'+type+'.perMenuItem" value="'+cfg.perMenuItem+'"></div>' +
-      '</div>';
-    }
     return '<main>' +
       '<div class="eyebrow">Settings</div>' +
       '<div class="card" style="padding:14px 16px;margin:14px 0 20px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">' +
@@ -1618,19 +1598,14 @@
       renderStorageMeter() +
 
       '<h1 style="font-size:20px;margin:0 0 4px;">Monthly Targets</h1>' +
-      '<div class="helper" style="margin-bottom:14px;margin-top:6px;">Set what you\'re aiming for this month. Progress is tracked automatically on the Dashboard against audits completed and clients converted this calendar month.</div>' +
-      '<div style="display:flex; gap:12px; margin-bottom:28px;">' +
+      '<div class="helper" style="margin-bottom:14px;margin-top:6px;">Set what you\'re aiming for this month. Revenue is worked out from your clients: the price you enter when you mark a client as converted counts in the month it was converted, and a monthly retainer counts every month while that client stays active.</div>' +
+      '<div style="display:flex; gap:12px; margin-bottom:6px;">' +
         '<div class="field" style="flex:1;"><label>Revenue target ('+esc(state.pricing.currency)+')</label><input type="number" min="0" data-target="revenue" value="'+(state.targets.revenue||0)+'"></div>' +
         '<div class="field" style="flex:1;"><label>Clients to onboard</label><input type="number" min="0" data-target="clients" value="'+(state.targets.clients||0)+'"></div>' +
       '</div>' +
+      '<div class="field" style="max-width:150px;margin-bottom:28px;"><label>Currency symbol</label><input type="text" maxlength="3" data-pricing="currency" value="'+esc(state.pricing.currency)+'"></div>' +
 
-      '<h1 style="font-size:20px;margin:0 0 4px;">Pricing Settings</h1>' +
-      '<div class="field" style="margin-bottom:16px;margin-top:14px;"><label>Currency symbol</label><input type="text" maxlength="3" data-pricing="currency" value="'+esc(p.currency)+'" style="max-width:90px;"></div>' +
-      typeBlock('dinein') + typeBlock('qsr') +
-      '<div class="helper" style="margin-bottom:24px;">Total price = base fee + (areas audited × area rate) + (menu items × item rate). Changes apply to audits completed from now on — past records keep the price they were given at the time.</div>' +
-      '<button class="btn btn-text btn-danger" data-action="reset-pricing">Reset pricing to defaults</button>' +
-
-      '<h1 style="font-size:20px;margin:28px 0 4px;">Service classes</h1>' +
+      '<h1 style="font-size:20px;margin:0 0 4px;">Service classes</h1>' +
       '<div class="helper" style="margin-bottom:12px;">The numbered service classes a converted client can be assigned to. Shown as a badge on client cards and in the Re-audit Due list.</div>' +
       '<div class="card" style="padding:4px 16px;margin-bottom:12px;">' +
         state.serviceClasses.slice().sort(function(a,b){return a.number-b.number;}).map(function(sc){
@@ -1870,24 +1845,20 @@
     var clientKeys = {};
     clientsList.forEach(function(p){ clientKeys[(p.name||'').trim().toLowerCase()] = true; });
     var clientsDueSoon = computeDueList().filter(function(x){ return clientKeys[x.key] && x.dueAt<=Date.now()+7*24*60*60*1000; }).length;
-    var clientsRevenue = clientsList.reduce(function(sum,p){
-      return sum + prospectAudits(p).reduce(function(n,h){ return n+(h.pricing?h.pricing.total:0); }, 0);
-    }, 0);
+    var nowForRev = new Date();
+    var clientsRevenue = clientRevenueForMonth(nowForRev.getFullYear(), nowForRev.getMonth()).total;
 
     var sortedHist = state.history.slice().sort(function(a,b){ return a.finishedAt-b.finishedAt; });
     var histSummaryHtml = '';
     if (state.history.length){
       var avgMs = Math.round(sortedHist.reduce(function(n,h){ return n+h.totalMs; },0)/sortedHist.length);
       var avgPct = Math.round(sortedHist.reduce(function(n,h){ return n+h.completionPct; },0)/sortedHist.length);
-      var totalRevenue = sortedHist.reduce(function(n,h){ return n+(h.pricing?h.pricing.total:0); },0);
-      var curr = state.pricing.currency||'';
       histSummaryHtml = sh('📈','Audit Activity') +
         '<div class="statgrid" style="margin-top:0;">' +
           '<div class="stattile t-accent"><div class="v">'+sortedHist.length+'</div><div class="k">Audits Logged</div></div>' +
           '<div class="stattile"><div class="v">'+fmtTime(avgMs)+'</div><div class="k">Avg. Duration</div></div>' +
           '<div class="stattile t-good"><div class="v">'+avgPct+'%</div><div class="k">Avg. Score</div></div>' +
         '</div>' +
-        '<div class="stattile" style="margin-bottom:16px;"><div class="v">'+curr+totalRevenue+'</div><div class="k">Total Estimated Pricing</div></div>' +
         renderTrend(sortedHist);
     }
 
@@ -1918,7 +1889,7 @@
         '<div class="statgrid" style="margin-top:0;">' +
           '<div class="stattile t-accent"><div class="v">'+clientsList.length+'</div><div class="k">Total Clients</div></div>' +
           '<div class="stattile'+(clientsDueSoon?' t-bad':'')+'"><div class="v">'+clientsDueSoon+'</div><div class="k">Due This Week</div></div>' +
-          '<div class="stattile t-good"><div class="v">'+esc(state.pricing.currency)+clientsRevenue+'</div><div class="k">Total Revenue</div></div>' +
+          '<div class="stattile t-good"><div class="v">'+esc(state.pricing.currency)+clientsRevenue+'</div><div class="k">Revenue This Month</div></div>' +
         '</div>' +
         (clientsList.length===0 ? '<div class="empty"><div class="big">🤝</div>No clients yet.<br>Convert a pipeline entry to see them here.</div>' :
           clientsList.map(function(p){
@@ -1993,7 +1964,7 @@
   function renderClientHealthCard(p, audits){
     var openIssues = openActionsForStore(p.name);
     var last = audits[0];
-    var totalRevenue = audits.reduce(function(n,h){ return n+(h.pricing?h.pricing.total:0); },0);
+    var dealValue = clientPriceOf(p);
     var na = '<span style="color:var(--ink-400);">—</span>';
     var next = computeClientNextAction(p, audits);
     var toneColor = { bad:'var(--bad)', warn:'var(--accent)', good:'var(--good)', accent:'var(--accent)' };
@@ -2002,7 +1973,7 @@
         '<div class="stattile"><div class="v">'+(last?fmtDateShort(last.finishedAt):na)+'</div><div class="k">Last Audit</div></div>' +
         '<div class="stattile t-accent"><div class="v">'+(last?last.completionPct+'%':na)+'</div><div class="k">Latest Score</div></div>' +
         '<div class="stattile'+(openIssues.length?' t-bad':'')+'"><div class="v">'+(audits.length?openIssues.length:na)+'</div><div class="k">Open Issues</div></div>' +
-        '<div class="stattile t-good"><div class="v">'+esc(state.pricing.currency)+totalRevenue+'</div><div class="k">Total Revenue</div></div>' +
+        '<div class="stattile t-good"><div class="v">'+(dealValue ? esc(state.pricing.currency)+dealValue : na)+'</div><div class="k">'+(p.pricingType==='retainer' ? 'Monthly Retainer' : 'Deal Value')+'</div></div>' +
       '</div>' +
     '</div>' +
     '<div style="display:flex; align-items:flex-start; gap:8px; padding:10px 12px; margin-bottom:16px; border-radius:var(--r-m); border-left:3px solid '+toneColor[next.tone]+'; background:var(--surface-2);">' +
@@ -2441,7 +2412,7 @@
         '<div class="card" style="padding:16px;margin-bottom:20px;border:1.5px solid var(--accent);background:var(--accent-soft);">' +
           '<div class="formstack" style="gap:14px;margin-bottom:0;">' +
             '<div class="field" style="margin-bottom:0;"><label for="pServices">Class of service</label><select id="pServices" data-bind-prospect="servicesOffered"><option value="">— Not selected (N/A) —</option>'+state.serviceClasses.map(function(sc){ return '<option value="'+sc.id+'" '+(p.servicesOffered===sc.id?'selected':'')+'>No. '+sc.number+' — '+esc(sc.label)+'</option>'; }).join('')+'</select></div>' +
-            '<div class="field" style="margin-bottom:0;"><label for="pPricingType">Pricing type</label><select id="pPricingType" data-action="set-pricing-type-select"><option value="">— Not set —</option><option value="onetime" '+(p.pricingType==='onetime'?'selected':'')+'>One-time</option><option value="retainer" '+(p.pricingType==='retainer'?'selected':'')+'>Retainer</option></select></div>' +
+            '<div class="field" style="margin-bottom:0;"><label for="pPricingType">Pricing type</label><select id="pPricingType" data-action="set-pricing-type-select"><option value="">— Not set —</option><option value="onetime" '+(p.pricingType==='onetime'?'selected':'')+'>One-time</option><option value="retainer" '+(p.pricingType==='retainer'?'selected':'')+'>Monthly retainer</option></select></div>' +
             '<div class="field" style="margin-bottom:0;"><label for="pProposalStatus">Solution proposed?</label><select id="pProposalStatus" data-action="set-proposal-status-select"><option value="">— Not set —</option><option value="proposed" '+(p.proposalStatus==='proposed'?'selected':'')+'>Proposed</option><option value="not_offered" '+(p.proposalStatus==='not_offered'?'selected':'')+'>Not offered right now</option><option value="meeting_scheduled" '+(p.proposalStatus==='meeting_scheduled'?'selected':'')+'>Meeting scheduled later</option></select></div>' +
             (p.proposalStatus==='meeting_scheduled' ? '<div class="field" style="margin-bottom:0;"><label for="pMeetingDate">Date of proposal / meeting</label><input id="pMeetingDate" type="date" data-bind-prospect="proposalMeetingDate" value="'+esc(p.proposalMeetingDate||'')+'"></div>' : '') +
           '</div>' +
@@ -2463,7 +2434,16 @@
             '<button type="button" class="naBtn '+(p.declined?'on':'')+'" data-action="toggle-prospect-declined" style="padding:8px 14px;">'+(p.declined?'✗ Not converted':'Mark as not converted')+'</button>' +
           '</div>' +
         '</div>' +
-        (p.converted ? '<div class="field" style="max-width:220px;"><label for="pFinalPrice">Final price</label><input id="pFinalPrice" type="number" min="0" inputmode="numeric" data-bind-prospect="finalPrice" value="'+esc(p.finalPrice)+'" placeholder="e.g. 6500"></div>' : '') +
+        (p.converted ? (
+          '<div class="card" style="padding:14px 16px;margin:14px 0 16px;border:1.5px solid var(--accent);background:var(--accent-soft);">' +
+            '<div style="font-weight:800;margin-bottom:12px;">💰 Deal value</div>' +
+            '<div class="field" style="margin-bottom:14px;"><label>How is this priced?</label><div style="display:flex; gap:8px;">' +
+              [['onetime','One-time'],['retainer','Monthly retainer']].map(function(k){ return '<button type="button" class="naBtn '+(p.pricingType===k[0]?'on':'')+'" data-action="set-pricing-type" data-val="'+k[0]+'">'+k[1]+'</button>'; }).join('') +
+            '</div></div>' +
+            '<div class="field" style="max-width:240px;margin-bottom:0;"><label for="pFinalPrice">'+(p.pricingType==='retainer'?'Monthly retainer':'Final price')+' ('+esc(state.pricing.currency)+')</label><input id="pFinalPrice" type="number" min="0" inputmode="numeric" data-bind-prospect="finalPrice" value="'+esc(p.finalPrice)+'" placeholder="e.g. 6500"></div>' +
+            '<div class="helper" style="margin:10px 0 0;">'+(p.pricingType==='retainer' ? 'Counts toward your revenue target every month while this client is active.' : (p.pricingType==='onetime' ? 'Counts toward your revenue target in the month it was converted.' : 'Pick one so this counts toward your monthly revenue target.'))+'</div>' +
+          '</div>'
+        ) : '') +
         (p.declined ? (
           '<div class="field"><label for="pFollowUp">Reschedule — follow up on</label><input id="pFollowUp" type="date" data-bind-prospect="followUpDate" value="'+esc(p.followUpDate||'')+'"></div>' +
           '<button type="button" class="btn btn-ghost btn-sm" style="margin-bottom:16px;" data-action="reactivate-prospect">↺ Reactivate — back to pipeline</button>'
@@ -2819,6 +2799,10 @@
         alerts.push({ tone:'good', icon:'🎬', text: (c.topic||'Untitled idea')+' — shoot scheduled today', action:'goto-content', id:c.id });
       }
     });
+    var noPrice = clientsMissingPrice();
+    if (noPrice.length){
+      alerts.push({ tone:'warn', icon:'💰', text: noPrice.length===1 ? (noPrice[0].name||'A client')+' is converted but has no price or pricing type — add it so it counts toward your target' : noPrice.length+' converted clients have no price or pricing type — add them so they count toward your target', action: noPrice.length===1 ? 'goto-prospect' : 'go-prospects', id: noPrice.length===1 ? noPrice[0].id : '' });
+    }
     storageReport(false).rows.forEach(function(r){
       if (r.pct>=80) alerts.push({ tone: r.pct>=90?'bad':'warn', icon:'🗄️', text: r.label+' storage is '+Math.round(r.pct)+'% full — it needs to be moved to separate records soon', action:'go-pricing' });
     });
@@ -2856,7 +2840,8 @@
     '</div>';
   }
 
-  function renderTargetCard(monthName, revenueMonth, clientsMonth){
+  function renderTargetCard(monthName, rev, clientsMonth){
+    var revenueMonth = rev.total;
     var t = state.targets || {revenue:0, clients:0};
     var hasTarget = (t.revenue>0) || (t.clients>0);
     return '<div class="card" id="dashTargetCard" style="padding:16px; margin-bottom:20px; border:1.5px solid var(--accent); background:var(--accent-soft);">' +
@@ -2866,6 +2851,7 @@
       '</div>' +
       (hasTarget ? (
         targetProgressRow('Revenue', revenueMonth, t.revenue, esc(state.pricing.currency)) +
+        (rev.total ? '<div class="histmeta" style="margin:-4px 0 10px;">'+esc(state.pricing.currency)+rev.retainer+' from monthly retainers · '+esc(state.pricing.currency)+rev.oneTime+' one-time</div>' : '') +
         targetProgressRow('Clients onboarded', clientsMonth, t.clients, '')
       ) : '<div class="helper" style="margin:0;">No target set for this month yet — <span style="color:var(--accent-ink);font-weight:700;cursor:pointer;" data-action="go-pricing">set one in Settings →</span></div>') +
     '</div>';
@@ -2902,7 +2888,8 @@
 
     var auditsToday = state.history.filter(function(h){ return h.finishedAt>=todayStartMs; });
     var avgScoreToday = auditsToday.length ? Math.round(auditsToday.reduce(function(n,h){ return n+h.completionPct; },0)/auditsToday.length) : null;
-    var revenueToday = auditsToday.reduce(function(n,h){ return n+(h.pricing?h.pricing.total:0); },0);
+    var revenueToday = state.prospects.filter(function(p){ return p.converted && !p.declined && (p.convertedAt||0)>=todayStartMs; })
+      .reduce(function(n,p){ return n+clientPriceOf(p); },0);
     var prospectsAddedToday = state.prospects.filter(function(p){ return (p.createdAt||0)>=todayStartMs; }).length;
     var prospectsConvertedToday = state.prospects.filter(function(p){ return p.converted && (p.convertedAt||0)>=todayStartMs; }).length;
     var actionsResolvedToday = state.correctiveActions.filter(function(a){ return a.done && (a.resolvedAt||0)>=todayStartMs; }).length;
@@ -2911,13 +2898,11 @@
 
     var auditsWeek = state.history.filter(function(h){ return h.finishedAt>=weekAgo; });
     var avgScore = auditsWeek.length ? Math.round(auditsWeek.reduce(function(n,h){ return n+h.completionPct; },0)/auditsWeek.length) : null;
-    var revenueWeek = auditsWeek.reduce(function(n,h){ return n+(h.pricing?h.pricing.total:0); },0);
 
     var nowD = new Date(now);
     var monthStartMs = new Date(nowD.getFullYear(), nowD.getMonth(), 1).getTime();
     var monthName = nowD.toLocaleDateString(undefined,{month:'long', year:'numeric'});
-    var revenueMonth = state.history.filter(function(h){ return h.finishedAt>=monthStartMs; })
-      .reduce(function(n,h){ return n+(h.pricing?h.pricing.total:0); },0);
+    var revenueMonth = clientRevenueForMonth(nowD.getFullYear(), nowD.getMonth());
     var clientsMonth = state.prospects.filter(function(p){ return p.converted && (p.convertedAt||0)>=monthStartMs; }).length;
 
     var actionsOpenedWeek = state.correctiveActions.filter(function(a){ return (a.createdAt||0)>=weekAgo; }).length;
@@ -3684,11 +3669,9 @@
         persistTemplates(); render();
       }
     }
-    else if (action==='reset-pricing'){
-      if (window.confirm('Reset pricing settings to defaults?')){
-        state.pricing = JSON.parse(JSON.stringify(DEFAULT_PRICING));
-        persistPricing(); render();
-      }
+    else if (action==='set-pricing-type'){
+      var spP = findProspect(state.activeProspectId);
+      if (spP){ spP.pricingType = t.dataset.val; persistProspects(); render(); }
     }
     else if (action==='svc-add'){
       var nextNum = state.serviceClasses.reduce(function(m,sc){ return Math.max(m,sc.number); },0)+1;
