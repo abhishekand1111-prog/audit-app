@@ -1,5 +1,5 @@
-﻿const CACHE = 'diagnosis-room-v3';
-const SHELL = ['./', './index.html', './manifest.json', './icons/icon-192.png', './icons/icon-512.png'];
+const CACHE = 'diagnosis-room-v4';
+const SHELL = ['./', './index.html', './manifest.json', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png', './icons/favicon-32.png'];
 
 self.addEventListener('install', function(event){
   event.waitUntil(caches.open(CACHE).then(function(cache){ return cache.addAll(SHELL); }));
