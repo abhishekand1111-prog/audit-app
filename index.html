@@ -296,6 +296,21 @@
   .tab{flex:1 1 0; min-width:0; border:none; background:transparent; border-radius:10px; padding:9px 6px; font-size:13px; font-weight:700; color:var(--ink-600); text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; transition:background .15s, color .15s, box-shadow .15s;}
   .tab:hover:not(.on){background:var(--surface);}
   .tab.on{background:var(--accent); color:#fff; box-shadow:var(--shadow-sm);}
+  .weekrow{display:flex; gap:12px; align-items:flex-start; padding:12px 14px; margin-bottom:8px; cursor:pointer;}
+  .wtime{width:62px; flex:none; font-size:12px; font-weight:700; color:var(--ink-600); line-height:1.4;}
+  .wbody{flex:1; min-width:0;}
+  .wtitle{font-weight:700; font-size:14px; line-height:1.35; word-break:break-word;}
+  .wdayhead{display:flex; justify-content:space-between; align-items:center; margin:18px 0 8px; font-weight:800; font-size:14px;}
+  .revchart{display:flex; gap:8px; align-items:flex-end;}
+  .revcol{flex:1; min-width:0; text-align:center;}
+  .revval{font-size:11px; font-weight:700; color:var(--ink-600); margin-bottom:4px; white-space:nowrap;}
+  .revbar{display:flex; align-items:flex-end; border-bottom:1px solid var(--line);}
+  .revstack{width:100%; display:flex; flex-direction:column; border-radius:6px 6px 0 0; overflow:hidden;}
+  .rev-ret{background:var(--accent);}
+  .rev-one{background:var(--good);}
+  .revlbl{font-size:11px; color:var(--ink-400); margin-top:6px; font-weight:600;}
+  .revcol.cur .revlbl{color:var(--ink); font-weight:800;}
+  .revdot{display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:5px;}
   .cgroup{padding:0; margin-bottom:10px; overflow:hidden;}
   .cgroup.head{border:1.5px solid var(--accent);}
   .cghead{width:100%; display:flex; align-items:center; justify-content:space-between; gap:10px; text-align:left; border:none; background:none; color:var(--ink); padding:14px 16px;}
@@ -825,7 +840,10 @@
       var price = clientPriceOf(p);
       if (!p.converted || p.declined || !price) return;
       var at = p.convertedAt || 0;
-      if (p.pricingType==='retainer'){ if (at<next && !p.engagementEnded) retainer += price; }
+      if (p.pricingType==='retainer'){
+        var endAt = p.engagementEnded ? (p.engagementEndedAt || p.updatedAt || 0) : Infinity;
+        if (at<next && endAt>=start) retainer += price;
+      }
       else if (at>=start && at<next){ oneTime += price; }
     });
     return { oneTime:oneTime, retainer:retainer, total:oneTime+retainer };
@@ -944,6 +962,7 @@
     else if (v==='content') html = renderContent();
     else if (v==='search') html = renderSearch();
     else if (v==='dashboard') html = renderDashboard();
+    else if (v==='week') html = renderWeekView();
     app.innerHTML = topbar() + html;
     var lookupTAs = app.querySelectorAll('.lookuptext');
     for (var lti=0; lti<lookupTAs.length; lti++){
@@ -982,6 +1001,7 @@
       '<nav class="sidebar '+(state.sidebarOpen?'open':'')+'">' +
         '<div class="sidebar-brand">'+logoImg()+'<span class="name">Diagnosis Room</span></div>' +
         item('dashboard','go-dashboard','Dashboard') +
+        item('week','go-week','Week Ahead', (function(){ var n=weekGroups(7).count; return n?String(n):''; })()) +
         item('setup','go-setup','New Audit') +
         item('editor','go-editor','Checklist') +
         item('prospects','go-prospects','Clients') +
@@ -2879,6 +2899,173 @@
     return events;
   }
 
+  // ---------- revenue history ----------
+  function fmtCompact(n){
+    n = Math.round(n);
+    if (n>=100000) return (Math.round(n/10000)/10)+'L';
+    if (n>=1000) return (Math.round(n/100)/10)+'k';
+    return String(n);
+  }
+  function monthRevenueHistory(count){
+    var out = [], now = new Date();
+    for (var i=count-1; i>=0; i--){
+      var d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+      var r = clientRevenueForMonth(d.getFullYear(), d.getMonth());
+      r.label = d.toLocaleDateString(undefined,{month:'short'});
+      r.current = (i===0);
+      out.push(r);
+    }
+    return out;
+  }
+  function renderRevenueHistory(){
+    var cur = esc(state.pricing.currency);
+    var hist = monthRevenueHistory(6);
+    var max = hist.reduce(function(m, r){ return Math.max(m, r.total); }, 0);
+    var retainers = state.prospects.filter(function(p){
+      return p.converted && !p.declined && !p.engagementEnded && p.pricingType==='retainer' && clientPriceOf(p);
+    }).sort(function(a, b){ return clientPriceOf(b)-clientPriceOf(a); });
+    if (!max && !retainers.length){
+      return sh('💰','Revenue history') +
+        '<div class="helper" style="margin-bottom:20px;">Add a price when you mark a client as converted — it will show up here month by month.</div>';
+    }
+    var mrr = retainers.reduce(function(n, p){ return n+clientPriceOf(p); }, 0);
+    var sixTotal = hist.reduce(function(n, r){ return n+r.total; }, 0);
+    var BAR_H = 96;
+    var bars = hist.map(function(r){
+      var hTot = r.total ? Math.max(4, Math.round(r.total/max*BAR_H)) : 0;
+      var hRet = r.total ? Math.round(hTot*r.retainer/r.total) : 0;
+      return '<div class="revcol'+(r.current?' cur':'')+'">' +
+        '<div class="revval">'+(r.total ? fmtCompact(r.total) : '–')+'</div>' +
+        '<div class="revbar" style="height:'+BAR_H+'px;"><div class="revstack" style="height:'+hTot+'px;">' +
+          '<div class="rev-one" style="height:'+(hTot-hRet)+'px;"></div><div class="rev-ret" style="height:'+hRet+'px;"></div>' +
+        '</div></div>' +
+        '<div class="revlbl">'+esc(r.label)+'</div>' +
+      '</div>';
+    }).join('');
+    return sh('💰','Revenue history') +
+      '<div class="card" style="padding:14px 14px 12px;margin-bottom:12px;">' +
+        '<div class="revchart">'+bars+'</div>' +
+        '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:var(--ink-600);">' +
+          '<span><span class="revdot" style="background:var(--accent);"></span>Monthly retainers</span>' +
+          '<span><span class="revdot" style="background:var(--good);"></span>One-time</span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="statgrid" style="margin-top:0;">' +
+        '<div class="stattile t-accent"><div class="v">'+cur+mrr+'</div><div class="k">Monthly recurring · '+retainers.length+' retainer'+(retainers.length===1?'':'s')+'</div></div>' +
+        '<div class="stattile t-good"><div class="v">'+cur+sixTotal+'</div><div class="k">Last 6 months</div></div>' +
+      '</div>' +
+      (retainers.length ? (
+        '<div class="card" style="padding:4px 16px;margin-bottom:20px;">' +
+          retainers.slice(0, 6).map(function(p){
+            return '<div class="sumrow" data-action="goto-prospect" data-id="'+p.id+'" style="cursor:pointer;">' +
+              '<span class="k" style="min-width:0;"><span style="font-weight:700;color:var(--ink);">'+esc(p.name||'Unnamed client')+'</span>' +
+              '<div class="histmeta">Since '+esc(fmtDateShort(p.convertedAt||Date.now()))+'</div></span>' +
+              '<span class="v">'+cur+clientPriceOf(p)+' /mo</span>' +
+            '</div>';
+          }).join('') +
+          (retainers.length>6 ? '<div class="helper" style="padding:8px 0;">+'+(retainers.length-6)+' more retainer clients</div>' : '') +
+        '</div>'
+      ) : '<div style="margin-bottom:20px;"></div>');
+  }
+
+  // ---------- week ahead ----------
+  function isoFromDate(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  function weekEventsAll(){
+    var ev = [];
+    function add(date, time, icon, tone, title, sub, action, id, tab){
+      if (!date) return;
+      ev.push({ date:date, time:time||'', icon:icon, tone:tone, title:title, sub:sub, action:action, id:id||'', tab:tab||'' });
+    }
+    state.prospects.forEach(function(p){
+      var nm = p.name || 'Unnamed client';
+      openFollowUps(p).forEach(function(f){ add(f.date, f.time, '📞', 'accent', f.note||'Follow-up', nm+' · Follow-up', 'goto-prospect', p.id); });
+      if (p.plannedAuditDate && !p.auditId && !p.declined) add(p.plannedAuditDate, p.plannedAuditTime, '⭐', 'warn', 'Scheduled audit', nm, 'goto-prospect', p.id);
+      if (p.proposalStatus==='meeting_scheduled' && p.proposalMeetingDate && !p.converted && !p.declined) add(p.proposalMeetingDate, '', '🤝', 'warn', 'Proposal meeting', nm, 'goto-prospect', p.id);
+    });
+    computeDueList().forEach(function(x){
+      add(isoFromDate(new Date(x.dueAt)), x.overrideTime, '🗓️', 'accent', 'Re-audit due', (x.storeName||'Unnamed store')+(x.storeLocation?' · '+x.storeLocation:''), 'go-actions', '', 'schedule');
+    });
+    state.contentIdeas.forEach(function(c){
+      if (c.shootDate && !c.posted && !c.notScheduled){
+        add(c.shootDate, '', '🎬', 'good', 'Shoot: '+(c.topic||'Untitled idea'), (c.segment ? SEGMENT_LABELS[c.segment] : 'Content')+(c.area ? ' · '+contentAreaLabel(c) : ''), 'goto-content', c.id);
+      }
+    });
+    state.correctiveActions.forEach(function(a){
+      if (!a.done && a.dueDate) add(a.dueDate, '', '🛠️', 'bad', 'Fix due: '+(a.description||'(unspecified)'), a.storeName||'', 'go-actions', '', 'corrective');
+    });
+    ev.sort(function(a, b){
+      if (a.date!==b.date) return a.date<b.date ? -1 : 1;
+      if (!!a.time !== !!b.time) return a.time ? -1 : 1;
+      return a.time<b.time ? -1 : (a.time>b.time ? 1 : 0);
+    });
+    return ev;
+  }
+  function weekGroups(days){
+    var todayStr = todayISO(), endStr = isoDaysFromNow(days-1);
+    var all = weekEventsAll();
+    var groups = [];
+    for (var i=0; i<days; i++){
+      var ds = isoDaysFromNow(i);
+      var items = all.filter(function(e){ return e.date===ds; });
+      if (items.length) groups.push({ date:ds, offset:i, items:items });
+    }
+    return {
+      overdue: all.filter(function(e){ return e.date<todayStr; }),
+      days: groups,
+      count: all.filter(function(e){ return e.date>=todayStr && e.date<=endStr; }).length
+    };
+  }
+  function weekRowHtml(e, showDate){
+    var toneColor = { bad:'var(--bad)', warn:'var(--accent)', good:'var(--good)', accent:'var(--accent)' };
+    var when = showDate
+      ? esc(fmtDateShort(new Date(e.date+'T00:00:00').getTime()))+(e.time ? '<br>'+esc(fmtTime12(e.time)) : '')
+      : (e.time ? esc(fmtTime12(e.time)) : 'All day');
+    return '<div class="card weekrow" data-action="'+e.action+'"'+(e.id?' data-id="'+esc(e.id)+'"':'')+(e.tab?' data-tab="'+e.tab+'"':'')+' style="border-left:3px solid '+toneColor[e.tone]+';">' +
+      '<div class="wtime">'+when+'</div>' +
+      '<div class="wbody"><div class="wtitle">'+e.icon+' '+esc(e.title)+'</div>'+(e.sub ? '<div class="histmeta">'+esc(e.sub)+'</div>' : '')+'</div>' +
+    '</div>';
+  }
+  function weekDayLabel(g){
+    if (g.offset===0) return 'Today';
+    if (g.offset===1) return 'Tomorrow';
+    return new Date(g.date+'T00:00:00').toLocaleDateString(undefined,{weekday:'long', day:'numeric', month:'short'});
+  }
+  function renderWeekView(){
+    var g = weekGroups(7);
+    var todayCount = g.days.length && g.days[0].offset===0 ? g.days[0].items.length : 0;
+    return '<main>' +
+      '<div class="eyebrow">Planner</div>' +
+      '<h1 style="font-size:26px;margin-top:6px;">Week Ahead</h1>' +
+      '<div class="helper" style="margin:8px 0 14px;">Everything scheduled for the next 7 days — follow-ups, audits, re-audits, meetings and shoots — in time order.</div>' +
+      '<div class="statgrid" style="margin-top:0;">' +
+        '<div class="stattile t-accent"><div class="v">'+todayCount+'</div><div class="k">Today</div></div>' +
+        '<div class="stattile"><div class="v">'+g.count+'</div><div class="k">Next 7 days</div></div>' +
+        '<div class="stattile'+(g.overdue.length?' t-bad':'')+'"><div class="v">'+g.overdue.length+'</div><div class="k">Overdue</div></div>' +
+      '</div>' +
+      (g.overdue.length ? (
+        '<div class="wdayhead" style="color:var(--bad);"><span>⏰ Overdue</span><span class="pill bad">'+g.overdue.length+'</span></div>' +
+        g.overdue.slice(0, 5).map(function(e){ return weekRowHtml(e, true); }).join('') +
+        (g.overdue.length>5 ? '<div class="helper" style="margin-bottom:8px;">+'+(g.overdue.length-5)+' more overdue — see Actions and Clients.</div>' : '')
+      ) : '') +
+      (g.days.length===0 ? '<div class="empty"><div class="big">📅</div>Nothing scheduled in the next 7 days.</div>' :
+        g.days.map(function(day){
+          return '<div class="wdayhead"><span>'+esc(weekDayLabel(day))+'</span><span class="pill '+(day.offset===0?'good':'warn')+'">'+day.items.length+'</span></div>' +
+            day.items.map(function(e){ return weekRowHtml(e, false); }).join('');
+        }).join('')
+      ) +
+    '</main>';
+  }
+  function renderWeekPreview(){
+    var g = weekGroups(7);
+    var flat = [];
+    g.days.forEach(function(d){ d.items.forEach(function(e){ flat.push(e); }); });
+    return sh('📅','Week ahead') +
+      (flat.length===0 ? '<div class="helper" style="margin-bottom:20px;">Nothing scheduled in the next 7 days.</div>' : (
+        flat.slice(0, 4).map(function(e){ return weekRowHtml(e, true); }).join('') +
+        '<button class="btn btn-ghost btn-sm" style="width:100%;margin:2px 0 22px;" data-action="go-week">See the full week ('+flat.length+') →</button>'
+      ));
+  }
+
   function renderDashboard(){
     var now = Date.now();
     var weekAgo = now - 7*24*60*60*1000;
@@ -3058,6 +3245,7 @@
 
       renderAlertsBanner() +
       renderFollowUpBoard() +
+      renderWeekPreview() +
       '<button class="btn btn-primary" style="width:100%;padding:14px;margin-bottom:22px;" data-action="go-setup">+ Start New Audit</button>' +
 
       '<div class="sechead2"><span class="ic">🕘</span><h2>Today\'s Activity</h2></div>' +
@@ -3076,6 +3264,7 @@
 
       sparkHtml +
 
+      renderRevenueHistory() +
       renderLoopBoard() +
 
       '<div class="sechead2"><span class="ic">🎬</span><h2>Shoot Days This Week</h2></div>' +
@@ -3199,6 +3388,7 @@
     else if (action==='toggle-sidebar'){ state.sidebarOpen = !state.sidebarOpen; render(); }
     else if (action==='close-sidebar'){ state.sidebarOpen = false; render(); }
     else if (action==='go-dashboard'){ if(!state.draft){ state.view='dashboard'; render(); } }
+    else if (action==='go-week'){ if(!state.draft){ state.view='week'; window.scrollTo(0,0); render(); } }
     else if (action==='go-setup'){ if(!state.draft) { state.view='setup'; render(); } }
     else if (action==='go-editor'){ if(!state.draft){ state.view='editor'; render(); } }
     else if (action==='go-pricing'){ if(!state.draft){ state.view='pricing'; render(); } }
@@ -3494,13 +3684,13 @@
     else if (action==='end-engagement'){
       var eeP = findProspect(state.activeProspectId);
       if (eeP && window.confirm('End the engagement with "'+(eeP.name||'this client')+'"? The loop stops, and you can resume it later.')){
-        eeP.engagementEnded = true; eeP.updatedAt = Date.now();
+        eeP.engagementEnded = true; eeP.engagementEndedAt = Date.now(); eeP.updatedAt = Date.now();
         persistProspects(); render();
       }
     }
     else if (action==='resume-engagement'){
       var reP = findProspect(state.activeProspectId);
-      if (reP){ reP.engagementEnded = false; reP.updatedAt = Date.now(); persistProspects(); render(); }
+      if (reP){ reP.engagementEnded = false; reP.engagementEndedAt = null; reP.updatedAt = Date.now(); persistProspects(); render(); }
     }
     else if (action==='use-similar-storename'){
       state.setup.storeName = t.dataset.name; render();
