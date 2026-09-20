@@ -1325,7 +1325,7 @@
     var reqs = state.lookups.filter(function(l){ return l.clientId===p.id && l.source==='request'; });
     return sh('💬','Client requests') +
       '<div class="card" style="padding:14px 16px;margin-bottom:20px;">' +
-        '<div class="helper" style="margin:0 0 10px;">When the client asks for something, add it here. It also shows up in your Lookup list.</div>' +
+        '<div class="helper" style="margin:0 0 10px;">When the client asks for something, add it here. It is also added to your Tasks list.</div>' +
         '<div class="addrow" style="margin-top:0;"><textarea rows="1" class="edtext edadd" id="clientReqInput" placeholder="e.g. Share the vendor price comparison"></textarea><button type="button" class="btn btn-ghost btn-sm" data-action="add-client-request">Add</button></div>' +
         (reqs.length ? '<div style="margin-top:10px;">' + reqs.map(function(l){
           return '<div class="lookuprow '+(l.done?'done':'')+'">' +
@@ -3075,7 +3075,7 @@
 
   var LOOKUP_CATEGORIES = { task:'Task', lookup:'Lookup' };
 
-  function lookupGroup(l){ return l.category==='task' ? 'task' : 'lookup'; }
+  function lookupGroup(l){ return (l.category==='task' || l.source==='request') ? 'task' : 'lookup'; }
 
   function renderLookupSection(title, icon, items, catValue){
     var openN = items.filter(function(l){ return !l.done; }).length;
@@ -4252,7 +4252,7 @@
       var crP = findProspect(state.activeProspectId), crIn = app.querySelector('#clientReqInput');
       var crText = crIn ? (crIn.value||'').replace(/[\r\n]+/g,' ').trim() : '';
       if (!crP || !crText) return;
-      state.lookups.unshift({ id: uid(), text: (crP.name||'Client')+': '+crText, category:'lookup', done:false, createdAt: Date.now(), clientId: crP.id, source:'request' });
+      state.lookups.unshift({ id: uid(), text: (crP.name||'Client')+': '+crText, category:'task', done:false, createdAt: Date.now(), clientId: crP.id, source:'request' });
       persistLookups(); render();
     }
   });
