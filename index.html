@@ -529,6 +529,7 @@
     contentCoverageTab: 'dinein',
     contentOpen: {},
     weekTab: null,
+    dashLookupTab: null,
     syncError: '',
     fuDraft: null,
     searchQuery: '',
@@ -3132,10 +3133,6 @@
     var todayStr = todayISO();
     var overdueActions = state.correctiveActions.filter(function(a){ return !a.done && a.dueDate && a.dueDate<todayStr; }).length;
 
-    var prospectsAddedWeek = state.prospects.filter(function(p){ return (p.createdAt||0)>=weekAgo; }).length;
-    var prospectsConvertedWeek = state.prospects.filter(function(p){ return p.converted && (p.convertedAt||0)>=weekAgo; }).length;
-    var openPipeline = state.prospects.filter(function(p){ return !p.converted; }).length;
-
     var due = computeDueList();
     var dueSoon = due.filter(function(x){ return x.dueAt<=weekAhead; });
     var overdueDue = due.filter(function(x){ return x.dueAt<now; }).length;
@@ -3148,29 +3145,9 @@
       return (b.createdAt||0)-(a.createdAt||0);
     }).slice(0,5);
 
-    var totalProspects = state.prospects.length;
-    var totalConverted = state.prospects.filter(function(p){ return p.converted; }).length;
-
     var totalActionsAll = state.correctiveActions.length;
     var resolvedTotal = state.correctiveActions.filter(function(a){ return a.done; }).length;
     var resolutionPct = totalActionsAll ? Math.round(resolvedTotal/totalActionsAll*100) : 0;
-
-    var notAuditedCount = state.prospects.filter(function(p){ return !p.auditId; }).length;
-    var auditedOnlyCount = state.prospects.filter(function(p){ return p.auditId && !p.converted && !(p.proposed||'').trim(); }).length;
-    var proposedOnlyCount = state.prospects.filter(function(p){ return p.auditId && !p.converted && (p.proposed||'').trim(); }).length;
-    var stackSegs = [
-      { count: notAuditedCount, color: 'var(--ink-400)', label: 'Not audited' },
-      { count: auditedOnlyCount, color: 'var(--accent)', label: 'Audited' },
-      { count: proposedOnlyCount, color: 'var(--accent-ink)', label: 'Proposed' },
-      { count: totalConverted, color: 'var(--good)', label: 'Converted' }
-    ];
-    var stackTotal = totalProspects || 1;
-    var stackbarHtml = '<div class="stackbar">' + stackSegs.map(function(s){
-      return s.count ? '<div style="width:'+(s.count/stackTotal*100)+'%; background:'+s.color+';"></div>' : '';
-    }).join('') + '</div>' +
-      '<div class="stacklegend">' + stackSegs.map(function(s){
-        return '<span><span class="dot" style="background:'+s.color+';"></span>'+s.label+'<b>'+s.count+'</b></span>';
-      }).join('') + '</div>';
 
     var overdueDuePct = due.length ? Math.round(overdueDue/due.length*100) : 0;
 
@@ -3194,60 +3171,12 @@
       '</div>';
     }
 
-    var openLookups = state.lookups.filter(function(l){ return !l.done; }).sort(function(a,b){ return (b.createdAt||0)-(a.createdAt||0); });
-    var doneLookups = state.lookups.length - openLookups.length;
-
-    var weekDays = [];
-    for (var wi=0; wi<7; wi++){
-      var wd = new Date(); wd.setHours(0,0,0,0); wd.setDate(wd.getDate()+wi);
-      var wIso = wd.getFullYear()+'-'+String(wd.getMonth()+1).padStart(2,'0')+'-'+String(wd.getDate()).padStart(2,'0');
-      var shoots = state.contentIdeas.filter(function(c){ return c.shootDate===wIso; });
-      weekDays.push({ iso: wIso, dow: wd.toLocaleDateString(undefined,{weekday:'short'}).slice(0,2), dayNum: wd.getDate(), isToday: wi===0, shoots: shoots });
-    }
-    var weekCalHtml = '<div class="weekcal">' + weekDays.map(function(d){
-      var has = d.shoots.length>0;
-      var first = has ? d.shoots[0] : null;
-      return '<div class="calcell '+(has?'has':'')+' '+(d.isToday?'today':'')+'" '+(has?'data-action="goto-content" data-id="'+first.id+'"':'')+'>' +
-        '<div class="cal-dow">'+d.dow+'</div>' +
-        '<div class="cal-daynum">'+d.dayNum+'</div>' +
-        (has ? '<div class="cal-count">'+d.shoots.length+'</div>' : '') +
-      '</div>';
-    }).join('') + '</div>';
-
-    var reTodayDate = new Date(); reTodayDate.setHours(0,0,0,0);
-    var reTodayTime = reTodayDate.getTime();
-    function reIsoOf(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
-    var reTodayIso = reIsoOf(reTodayDate);
-    var dueByDay = {};
-    due.forEach(function(x){
-      var bucketDate = x.dueAt < now ? new Date(reTodayTime) : new Date(x.dueAt);
-      bucketDate.setHours(0,0,0,0);
-      var iso = reIsoOf(bucketDate);
-      if (!dueByDay[iso]) dueByDay[iso] = [];
-      dueByDay[iso].push(x);
-    });
-    var chosenIso = Object.keys(dueByDay).sort().slice(0,7);
-    var reFillCursor = new Date(reTodayDate);
-    while (chosenIso.length<7){
-      var fIso = reIsoOf(reFillCursor);
-      if (chosenIso.indexOf(fIso)===-1) chosenIso.push(fIso);
-      reFillCursor.setDate(reFillCursor.getDate()+1);
-    }
-    chosenIso.sort();
-    var reWeekDays = chosenIso.map(function(iso){
-      var parts = iso.split('-').map(Number);
-      var dObj = new Date(parts[0], parts[1]-1, parts[2]);
-      var dowLabel = dObj.getMonth()!==reTodayDate.getMonth() ? dObj.toLocaleDateString(undefined,{month:'short'}).toUpperCase() : dObj.toLocaleDateString(undefined,{weekday:'short'}).slice(0,2);
-      return { dow: dowLabel, dayNum: dObj.getDate(), isToday: iso===reTodayIso, items: dueByDay[iso]||[] };
-    });
-    var reCalHtml = '<div class="weekcal">' + reWeekDays.map(function(d){
-      var has = d.items.length>0;
-      return '<div class="calcell '+(has?'has':'')+' '+(d.isToday?'today':'')+'" '+(has?'data-action="go-actions"':'')+'>' +
-        '<div class="cal-dow">'+d.dow+'</div>' +
-        '<div class="cal-daynum">'+d.dayNum+'</div>' +
-        (has ? '<div class="cal-count">'+d.items.length+'</div>' : '') +
-      '</div>';
-    }).join('') + '</div>';
+    var lkSort = function(a,b){ return (b.createdAt||0)-(a.createdAt||0); };
+    var openTasks = state.lookups.filter(function(l){ return lookupGroup(l)==='task' && !l.done; }).sort(lkSort);
+    var openLooks = state.lookups.filter(function(l){ return lookupGroup(l)==='lookup' && !l.done; }).sort(lkSort);
+    var lkTab = state.dashLookupTab || (openTasks.length>=openLooks.length ? 'task' : 'lookup');
+    var lkAll = state.lookups.filter(function(l){ return lookupGroup(l)===lkTab; });
+    var lkOpen = lkTab==='task' ? openTasks : openLooks;
 
     var greeting = 'Welcome back';
     if (overdueDue>0) greeting = overdueDue+' re-audit'+(overdueDue>1?'s':'')+' overdue';
@@ -3262,28 +3191,15 @@
 
     return '<main>' +
       renderTargetCard(monthName, revenueMonth, clientsMonth) +
+      renderRevenueHistory() +
+
       '<div class="dashhero">' +
         '<span class="datepill">📅 '+esc(todayLabel)+'</span>' +
         '<h1 style="font-size:25px;">'+esc(greeting)+'</h1>' +
       '</div>' +
 
-      '<div class="sechead2"><span class="ic">📊</span><h2>Today\'s Summary</h2></div>' +
-      '<div class="statgrid" style="margin-top:0;margin-bottom:20px;">' +
-        '<div class="stattile t-accent"><div class="v">'+auditsToday.length+'</div><div class="k">Audits Done</div></div>' +
-        '<div class="stattile"><div class="v">'+(avgScoreToday===null?'—':avgScoreToday+'%')+'</div><div class="k">Avg. Score</div></div>' +
-        '<div class="stattile t-accent"><div class="v">'+prospectsAddedToday+'</div><div class="k">Clients Added</div></div>' +
-        '<div class="stattile t-good"><div class="v">'+prospectsConvertedToday+'</div><div class="k">Converted</div></div>' +
-        '<div class="stattile t-good"><div class="v">'+actionsResolvedToday+'</div><div class="k">Issues Resolved</div></div>' +
-        '<div class="stattile t-good"><div class="v">'+esc(state.pricing.currency)+revenueToday+'</div><div class="k">Revenue Today</div></div>' +
-      '</div>' +
-
-      renderAlertsBanner() +
-      renderFollowUpBoard() +
-      renderWeekPreview() +
-      '<button class="btn btn-primary" style="width:100%;padding:14px;margin-bottom:22px;" data-action="go-setup">+ Start New Audit</button>' +
-
       '<div class="sechead2"><span class="ic">🕘</span><h2>Today\'s Activity</h2></div>' +
-      (todayActivity.length===0 ? '<div class="helper" style="margin-bottom:20px;">Nothing logged yet today — get started above.</div>' :
+      (todayActivity.length===0 ? '<div class="helper" style="margin-bottom:20px;">Nothing logged yet today — get started below.</div>' :
         '<div class="card" style="padding:4px 16px;margin-bottom:'+(todayActivity.length>8?'8px':'20px')+';">' +
           todayActivityShown.map(function(ev){
             return '<div class="actrow" data-action="'+ev.action+'"'+(ev.id?' data-id="'+ev.id+'"':'')+'>' +
@@ -3296,13 +3212,12 @@
         (todayActivity.length>8 ? '<div class="helper" style="margin-bottom:20px;">+'+(todayActivity.length-8)+' more today</div>' : '')
       ) +
 
-      sparkHtml +
+      renderAlertsBanner() +
+      renderFollowUpBoard() +
+      renderWeekPreview() +
+      '<button class="btn btn-primary" style="width:100%;padding:14px;margin-bottom:22px;" data-action="go-setup">+ Start New Audit</button>' +
 
-      renderRevenueHistory() +
       renderLoopBoard() +
-
-      '<div class="sechead2"><span class="ic">🎬</span><h2>Shoot Days This Week</h2></div>' +
-      weekCalHtml +
 
       '<div class="sechead2"><span class="ic" style="background:var(--bad-soft);">🛠️</span><h2>Corrective Actions — Last 7 Days</h2></div>' +
       '<div class="statgrid" style="margin-top:0;margin-bottom:12px;">' +
@@ -3325,37 +3240,26 @@
         (openActionsNow>topOpenActions.length ? '<button class="btn btn-ghost btn-sm" style="margin-bottom:20px;" data-action="go-actions">View all '+openActionsNow+' open actions →</button>' : '')
       ) +
 
-      '<div class="sechead2"><span class="ic">🧭</span><h2>Clients — Last 7 Days</h2></div>' +
-      '<div class="card dashcard" style="margin-bottom:20px;">' +
-        (totalProspects===0 ? '<div class="helper" style="margin:0;">No clients yet.</div>' : stackbarHtml) +
-      '</div>' +
-      '<div class="statgrid" style="margin-bottom:20px;">' +
-        '<div class="stattile t-accent"><div class="v">'+prospectsAddedWeek+'</div><div class="k">Added (7d)</div></div>' +
-        '<div class="stattile t-good"><div class="v">'+prospectsConvertedWeek+'</div><div class="k">Converted (7d)</div></div>' +
-        '<div class="stattile"><div class="v">'+openPipeline+'</div><div class="k">Open Pipeline</div></div>' +
-      '</div>' +
-
       '<div class="sechead2"><span class="ic">🔎</span><h2>Lookups &amp; Tasks</h2></div>' +
-      (state.lookups.length===0 ? '<div class="helper" style="margin-bottom:20px;">No lookups or tasks logged yet.</div>' : (
-        '<div class="statgrid" style="margin-top:0;margin-bottom:12px;">' +
-          '<div class="stattile"><div class="v">'+openLookups.length+'</div><div class="k">Open</div></div>' +
-          '<div class="stattile t-good"><div class="v">'+doneLookups+'</div><div class="k">Completed</div></div>' +
-        '</div>' +
-        (openLookups.length===0 ? '<div class="helper" style="margin-bottom:20px;">Everything\'s cleared — nice work.</div>' : (
+      '<div class="tabs">' +
+        [['task','Tasks',openTasks.length],['lookup','Lookups',openLooks.length]].map(function(t){
+          return '<button class="tab '+(lkTab===t[0]?'on':'')+'" data-action="dash-lookup-tab" data-tab="'+t[0]+'">'+t[1]+'<span class="tabcount">'+t[2]+'</span></button>';
+        }).join('') +
+      '</div>' +
+      (lkOpen.length===0
+        ? '<div class="helper" style="margin-bottom:20px;">'+(lkAll.length===0 ? 'No '+(lkTab==='task'?'tasks':'lookups')+' logged yet.' : 'Everything\'s cleared — nice work.')+'</div>'
+        : (
           '<div class="card" style="padding:4px 16px;margin-bottom:8px;">' +
-            openLookups.slice(0,3).map(function(l){
-              return '<div class="sumrow"><span class="k">'+(l.category==='task'?'☐':'🔍')+' '+esc(l.text||'(untitled)')+'</span></div>';
+            lkOpen.slice(0,5).map(function(l){
+              return '<div class="sumrow" data-action="go-lookup" style="cursor:pointer;"><span class="k">'+(lkTab==='task'?'☐':'🔍')+' '+esc(l.text||'(untitled)')+'</span></div>';
             }).join('') +
           '</div>' +
-          '<button class="btn btn-ghost btn-sm" style="margin-bottom:20px;" data-action="go-lookup">View all '+openLookups.length+' open →</button>'
-        ))
-      )) +
-
-      '<div class="sechead2"><span class="ic">🔁</span><h2>Re-audits Due — Next 7</h2></div>' +
-      reCalHtml +
-      (due.length===0 ? '<div class="helper" style="margin-top:8px;">Complete an audit to start tracking re-audit schedules.</div>' :
-        '<button class="btn btn-ghost btn-sm" style="margin-top:8px;" data-action="go-actions">View schedule →</button>'
+          '<div class="helper" style="margin:0 0 8px;">'+(lkAll.length-lkOpen.length)+' completed</div>' +
+          '<button class="btn btn-ghost btn-sm" style="margin-bottom:20px;" data-action="go-lookup">View all '+lkOpen.length+' open →</button>'
+        )
       ) +
+
+      sparkHtml +
     '</main>';
   }
 
@@ -3424,6 +3328,7 @@
     else if (action==='go-dashboard'){ if(!state.draft){ state.view='dashboard'; render(); } }
     else if (action==='go-week'){ if(!state.draft){ state.weekTab = null; state.view='week'; window.scrollTo(0,0); render(); } }
     else if (action==='week-tab'){ state.weekTab = t.dataset.tab; render(); }
+    else if (action==='dash-lookup-tab'){ state.dashLookupTab = t.dataset.tab; render(); }
     else if (action==='go-setup'){ if(!state.draft) { state.view='setup'; render(); } }
     else if (action==='go-editor'){ if(!state.draft){ state.view='editor'; render(); } }
     else if (action==='go-pricing'){ if(!state.draft){ state.view='pricing'; render(); } }
