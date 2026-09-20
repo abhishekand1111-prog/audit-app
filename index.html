@@ -362,8 +362,12 @@
   .addrow input{flex:1; border:1px solid var(--line-strong); border-radius:var(--r-s); padding:8px 10px; font-size:16px; background:var(--surface); color:var(--ink);}
   .itemrow{border:1px solid var(--line); border-radius:var(--r-s); padding:8px 10px; margin:8px 0; background:var(--surface); transition:border-color .15s, background .15s;}
   .itemrow.hasanswer{border-color:var(--accent); background:var(--accent-soft);}
-  .itemrow-top{display:flex; align-items:center; gap:8px;}
-  .itemrow-top input{flex:1; border:none; border-bottom:1px dashed var(--line-strong); background:none; color:var(--ink); font-size:16px; padding:5px 2px; font-weight:600;}
+  .itemrow-top{display:flex; align-items:flex-start; gap:8px;}
+  .itemrow-top .iconbtn{margin-top:3px;}
+  .edtext{display:block; flex:1; min-width:0; width:100%; border:none; border-bottom:1px dashed var(--line-strong); background:none; color:var(--ink); font-size:16px; font-family:inherit; font-weight:600; padding:5px 2px; line-height:1.4; resize:none; overflow:hidden; white-space:pre-wrap; word-wrap:break-word;}
+  .edhead{align-items:flex-start;}
+  .edhead .edtext{font-family:var(--font-d); font-weight:700; border-bottom:none; padding:2px 0;}
+  .addrow .edtext.edadd{border:1px solid var(--line-strong); border-radius:var(--r-s); padding:8px 10px; font-weight:400; background:var(--surface);}
   .itemrow-sub{display:flex; align-items:center; gap:8px; padding-top:8px; flex-wrap:wrap;}
   .iteminfolabel{flex:1; min-width:140px; border:1px solid var(--line-strong); border-radius:var(--r-s); padding:6px 8px; font-size:16px; background:var(--surface); color:var(--ink);}
 
@@ -973,7 +977,7 @@
     else if (v==='dashboard') html = renderDashboard();
     else if (v==='week') html = renderWeekView();
     app.innerHTML = topbar() + html;
-    var lookupTAs = app.querySelectorAll('.lookuptext');
+    var lookupTAs = app.querySelectorAll('.lookuptext, .edtext');
     for (var lti=0; lti<lookupTAs.length; lti++){
       lookupTAs[lti].style.height = 'auto';
       lookupTAs[lti].style.height = lookupTAs[lti].scrollHeight+'px';
@@ -1533,14 +1537,14 @@
       tmpl.sections.map(function(sec){
         return '<div class="card edsection">' +
           '<div class="edhead">' +
-            '<input value="'+esc(sec.name)+'" data-action="rename-section" data-sec="'+sec.id+'">' +
+            '<textarea rows="1" class="edtext" data-action="rename-section" data-sec="'+sec.id+'">'+esc(sec.name)+'</textarea>' +
             '<button class="copybtn" data-action="copy-section-to-other" data-sec="'+sec.id+'" title="Copy this section to '+esc(otherLabel)+'">⇄ '+esc(otherLabel)+'</button>' +
             '<button class="iconbtn" data-action="delete-section" data-sec="'+sec.id+'" title="Delete section">✕</button>' +
           '</div>' +
           sec.items.map(function(it){
             return '<div class="itemrow '+(it.requiresInfo?'hasanswer':'')+'">' +
               '<div class="itemrow-top">' +
-                '<input value="'+esc(it.text)+'" data-action="rename-item" data-sec="'+sec.id+'" data-item="'+it.id+'">' +
+                '<textarea rows="1" class="edtext" data-action="rename-item" data-sec="'+sec.id+'" data-item="'+it.id+'">'+esc(it.text)+'</textarea>' +
                 '<button class="iconbtn" data-action="delete-item" data-sec="'+sec.id+'" data-item="'+it.id+'" title="Delete item">✕</button>' +
               '</div>' +
               '<div class="itemrow-sub">' +
@@ -1549,7 +1553,7 @@
               '</div>' +
             '</div>';
           }).join('') +
-          '<div class="addrow"><input placeholder="Add a checklist item…" data-newitem-for="'+sec.id+'"><button class="btn btn-ghost btn-sm" data-action="add-item" data-sec="'+sec.id+'">Add</button></div>' +
+          '<div class="addrow"><textarea rows="1" class="edtext edadd" placeholder="Add a checklist item…" data-newitem-for="'+sec.id+'"></textarea><button class="btn btn-ghost btn-sm" data-action="add-item" data-sec="'+sec.id+'">Add</button></div>' +
         '</div>';
       }).join('') +
       '<div class="addrow" style="margin:14px 0 24px;"><input placeholder="New section name…" data-newsection><button class="btn btn-ghost btn-sm" data-action="add-section">Add Section</button></div>' +
@@ -3777,7 +3781,7 @@
     }
     else if (action==='add-item'){
       var input = app.querySelector('[data-newitem-for="'+t.dataset.sec+'"]');
-      var text = (input.value||'').trim();
+      var text = (input.value||'').replace(/[\r\n]+/g,' ').trim();
       if (!text) return;
       var tmpl3 = state.templates[state.editorTab];
       var sec5 = tmpl3.sections.filter(function(s){return s.id===t.dataset.sec;})[0];
@@ -3817,6 +3821,20 @@
         state.serviceClasses = JSON.parse(JSON.stringify(DEFAULT_SERVICE_CLASSES));
         persistServiceClasses(); render();
       }
+    }
+  });
+
+  // checklist editor fields wrap onto several lines but stay one logical line: Enter finishes the edit (or adds the new item)
+  app.addEventListener('keydown', function(e){
+    if (e.key!=='Enter' || e.shiftKey) return;
+    var el = e.target;
+    if (!el || !el.classList || !el.classList.contains('edtext')) return;
+    e.preventDefault();
+    if (el.dataset.newitemFor){
+      var addBtn = app.querySelector('[data-action="add-item"][data-sec="'+el.dataset.newitemFor+'"]');
+      if (addBtn) addBtn.click();
+    } else {
+      el.blur();
     }
   });
 
@@ -3862,13 +3880,18 @@
     else if (el.dataset.action === 'rename-section'){
       var tmpl = state.templates[state.editorTab];
       var sec = tmpl.sections.filter(function(s){return s.id===el.dataset.sec;})[0];
-      if (sec){ sec.name = el.value; persistTemplates(); }
+      if (sec){ sec.name = el.value.replace(/[\r\n]+/g,' '); persistTemplates(); }
+      el.style.height = 'auto'; el.style.height = el.scrollHeight+'px';
     }
     else if (el.dataset.action === 'rename-item'){
       var tmpl2 = state.templates[state.editorTab];
       var sec2 = tmpl2.sections.filter(function(s){return s.id===el.dataset.sec;})[0];
       var it = sec2 && sec2.items.filter(function(i){return i.id===el.dataset.item;})[0];
-      if (it){ it.text = el.value; persistTemplates(); }
+      if (it){ it.text = el.value.replace(/[\r\n]+/g,' '); persistTemplates(); }
+      el.style.height = 'auto'; el.style.height = el.scrollHeight+'px';
+    }
+    else if (el.dataset.newitemFor){
+      el.style.height = 'auto'; el.style.height = el.scrollHeight+'px';
     }
     else if (el.dataset.action === 'edit-info-label'){
       var tmplIL = state.templates[state.editorTab];
