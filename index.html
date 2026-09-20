@@ -311,6 +311,11 @@
   .revlbl{font-size:11px; color:var(--ink-400); margin-top:6px; font-weight:600;}
   .revcol.cur .revlbl{color:var(--ink); font-weight:800;}
   .revdot{display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:5px;}
+  .inqcard{padding:12px 14px; margin-bottom:10px;}
+  .inqhead{display:flex; gap:8px; align-items:center; margin-bottom:10px;}
+  .inqarea{flex:1; min-width:0; border:1px solid var(--line-strong); border-radius:var(--r-s); padding:8px 10px; font-size:14px; font-weight:700; background:var(--surface); color:var(--ink);}
+  .inqtext{display:block; width:100%; border:1px solid var(--line-strong); border-radius:var(--r-s); padding:8px 10px; font-size:16px; font-family:inherit; line-height:1.4; background:var(--surface); color:var(--ink); resize:none; overflow:hidden; white-space:pre-wrap; word-wrap:break-word;}
+  .inqnote{margin:0 0 10px; padding:10px 12px; border-radius:var(--r-s); background:var(--accent-soft); border-left:3px solid var(--accent); font-size:13.5px; line-height:1.4;}
   .cgroup{padding:0; margin-bottom:10px; overflow:hidden;}
   .cgroup.head{border:1.5px solid var(--accent);}
   .cgroup.overdue{border:1.5px solid var(--bad);}
@@ -407,6 +412,7 @@
   var LS_RO = 'diagnosisroom_reaudit_overrides_v1';
   var LS_CI = 'diagnosisroom_content_v1';
   var LS_SVC = 'diagnosisroom_serviceclasses_v1';
+  var LS_DL = 'diagnosisroom_deliverables_v1';
   var LS_TG = 'diagnosisroom_targets_v1';
   var LS_LB = 'diagnosisroom_lastbackup_v1';
 
@@ -421,6 +427,13 @@
     qsr: { intervalDays: 14 }
   };
 
+  var DEFAULT_DELIVERABLES = [
+    { id:'system', label:'System building' },
+    { id:'sop', label:'SOP building' },
+    { id:'dashboard', label:'Dashboard' },
+    { id:'training', label:'Training' },
+    { id:'other', label:'Other' }
+  ];
   var DEFAULT_SERVICE_CLASSES = [
     { id:'s1', number:1, label:'Audit Only' },
     { id:'s2', number:2, label:'Audit + Training' },
@@ -520,6 +533,7 @@
     correctiveActions: loadJSON(LS_A, []),
     schedule: loadJSON(LS_SCHED, null) || JSON.parse(JSON.stringify(DEFAULT_SCHEDULE)),
     serviceClasses: loadJSON(LS_SVC, null) || JSON.parse(JSON.stringify(DEFAULT_SERVICE_CLASSES)),
+    deliverables: loadJSON(LS_DL, null) || JSON.parse(JSON.stringify(DEFAULT_DELIVERABLES)),
     targets: loadJSON(LS_TG, null) || { revenue:0, clients:0 },
     prospects: loadJSON(LS_PR, []),
     activeProspectId: null,
@@ -537,7 +551,7 @@
     syncError: '',
     fuDraft: null,
     searchQuery: '',
-    setup: { type:null, storeName:'', storeLocation:'', contactName:'', contactDesignation:'', contactMobile:'', auditDate: todayISO(), auditTime: nowHHMM(), selectedSections:[], menuItemCount:'' },
+    setup: { type:null, storeName:'', storeLocation:'', contactName:'', contactDesignation:'', contactMobile:'', auditDate: todayISO(), auditTime: nowHHMM(), selectedSections:[], menuItemCount:'', inquiry:[] },
     editorTab: 'dinein',
     historyTab: 'all',
     actionsTab: 'corrective',
@@ -694,6 +708,7 @@
           if (data.pricing) state.pricing = data.pricing;
           if (data.schedule) state.schedule = data.schedule;
           if (data.serviceClasses) state.serviceClasses = data.serviceClasses;
+          if (data.deliverables) state.deliverables = data.deliverables;
           if (data.targets) state.targets = data.targets;
           if (data.reauditOverrides) state.reauditOverrides = data.reauditOverrides;
         } else {
@@ -701,7 +716,7 @@
         }
       } else {
         if (isConfig){
-          ref.set({ templates: state.templates, pricing: state.pricing, schedule: state.schedule, serviceClasses: state.serviceClasses, targets: state.targets, reauditOverrides: state.reauditOverrides }).catch(function(){});
+          ref.set({ templates: state.templates, pricing: state.pricing, schedule: state.schedule, serviceClasses: state.serviceClasses, deliverables: state.deliverables, targets: state.targets, reauditOverrides: state.reauditOverrides }).catch(function(){});
         } else {
           ref.set({ list: state[name] || [] }).catch(function(){});
         }
@@ -736,6 +751,7 @@
   function persistActions(){ saveJSON(LS_A, state.correctiveActions); fsSyncRecords(RS.correctiveActions); }
   function persistSchedule(){ saveJSON(LS_SCHED, state.schedule); fsSyncConfig('schedule', state.schedule); }
   function persistServiceClasses(){ saveJSON(LS_SVC, state.serviceClasses); fsSyncConfig('serviceClasses', state.serviceClasses); }
+  function persistDeliverables(){ saveJSON(LS_DL, state.deliverables); fsSyncConfig('deliverables', state.deliverables); }
   function persistProspects(){ saveJSON(LS_PR, state.prospects); fsSyncRecords(RS.prospects); }
   function persistLookups(){ saveJSON(LS_LK, state.lookups); fsSyncRecords(RS.lookups); }
   function persistContentIdeas(){ saveJSON(LS_CI, state.contentIdeas); fsSyncRecords(RS.contentIdeas); }
@@ -985,7 +1001,7 @@
     else if (v==='dashboard') html = renderDashboard();
     else if (v==='week') html = renderWeekView();
     app.innerHTML = topbar() + html;
-    var lookupTAs = app.querySelectorAll('.lookuptext, .edtext');
+    var lookupTAs = app.querySelectorAll('.lookuptext, .edtext, .inqtext');
     for (var lti=0; lti<lookupTAs.length; lti++){
       lookupTAs[lti].style.height = 'auto';
       lookupTAs[lti].style.height = lookupTAs[lti].scrollHeight+'px';
@@ -1095,6 +1111,118 @@
     if (mob) mob.textContent = mobileErrorText(state.setup.contactMobile);
   }
 
+  // ---------- client trail: inquiry, solution tasks and client requests ----------
+  function inquiryAreaOptions(type){
+    var names = [], seen = {};
+    var kinds = (type==='dinein' || type==='qsr') ? [type] : ['dinein','qsr'];
+    kinds.forEach(function(k){
+      ((state.templates[k]||{}).sections||[]).forEach(function(s){
+        var n = (s.name||'').trim();
+        if (n && !seen[n.toLowerCase()]){ seen[n.toLowerCase()] = true; names.push(n); }
+      });
+    });
+    return names;
+  }
+  function cleanInquiry(list){
+    return (list||[]).filter(function(e){ return (e.problem||'').trim() || (e.action||'').trim(); })
+      .map(function(e){ return { id:e.id, area:e.area||'', problem:(e.problem||'').trim(), action:(e.action||'').trim(), createdAt:e.createdAt||Date.now() }; });
+  }
+  function mergeInquiryInto(p, entries, auditId){
+    if (!entries || !entries.length) return;
+    p.inquiry = p.inquiry || [];
+    entries.forEach(function(e){
+      var ex = p.inquiry.filter(function(x){ return x.id===e.id; })[0];
+      if (ex){ ex.area = e.area; ex.problem = e.problem; ex.action = e.action; }
+      else { p.inquiry.push({ id:e.id, area:e.area, problem:e.problem, action:e.action, createdAt:e.createdAt||Date.now(), auditId:auditId }); }
+    });
+  }
+  function inquiryForSection(d, sec){
+    var n = (sec.name||'').trim().toLowerCase();
+    return (d.inquiry||[]).filter(function(e){ return (e.area||'').trim().toLowerCase()===n; });
+  }
+  function renderInquiryEditor(scope, entries, areas){
+    function areaOptions(cur){
+      var list = areas.slice();
+      if (cur && list.map(function(a){ return a.toLowerCase(); }).indexOf(cur.toLowerCase())===-1) list.push(cur);
+      return '<option value="">General (whole business)</option>' + list.map(function(a){
+        return '<option value="'+esc(a)+'" '+((cur||'').toLowerCase()===a.toLowerCase()?'selected':'')+'>'+esc(a)+'</option>';
+      }).join('');
+    }
+    function row(e){
+      var attrs = 'data-inq-scope="'+scope+'" data-inq-id="'+esc(e.id)+'"';
+      return '<div class="card inqcard">' +
+        '<div class="inqhead">' +
+          '<select class="inqarea" data-inq-field="area" '+attrs+'>'+areaOptions(e.area)+'</select>' +
+          '<button type="button" class="iconbtn" data-action="inq-remove" data-inq-scope="'+scope+'" data-id="'+esc(e.id)+'" title="Remove this problem">✕</button>' +
+        '</div>' +
+        '<div class="field" style="margin-bottom:10px;"><label>Problem faced</label><textarea rows="1" class="inqtext" data-inq-field="problem" '+attrs+' placeholder="What is the client struggling with?">'+esc(e.problem||'')+'</textarea></div>' +
+        '<div class="field" style="margin-bottom:0;"><label>Actions taken so far</label><textarea rows="1" class="inqtext" data-inq-field="action" '+attrs+' placeholder="What have they already tried?">'+esc(e.action||'')+'</textarea></div>' +
+      '</div>';
+    }
+    return sh('🗣️','Inquiry — problems faced') +
+      '<div class="helper" style="margin:-4px 0 10px;">What is the client struggling with, and what have they already tried? Pick the area so it shows up in that part of the checklist during the audit.</div>' +
+      (entries.length ? entries.map(row).join('') : '') +
+      '<button type="button" class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:22px;" data-action="inq-add" data-inq-scope="'+scope+'">+ Add a problem</button>';
+  }
+  function inquiryLineHtml(e){
+    return '<div style="padding:8px 0;border-top:1px solid var(--line);">' +
+      '<div class="histmeta" style="font-weight:700;">'+esc(e.area||'General')+'</div>' +
+      (e.problem ? '<div style="font-size:13.5px;line-height:1.4;">'+esc(e.problem)+'</div>' : '') +
+      (e.action ? '<div class="histmeta" style="margin-top:2px;">Action taken: '+esc(e.action)+'</div>' : '') +
+    '</div>';
+  }
+  function renderInquiryPanel(d){
+    var list = d.inquiry||[];
+    if (!list.length) return '';
+    return '<div class="card" style="padding:4px 16px 8px;margin:0 0 12px;border:1.5px solid var(--accent);background:var(--accent-soft);">' +
+      '<div style="font-weight:800;padding:10px 0 4px;">🗣️ What the client told you</div>' +
+      list.map(inquiryLineHtml).join('') +
+    '</div>';
+  }
+  function renderSectionInquiry(list){
+    if (!list.length) return '';
+    return '<div class="inqnote"><b>🗣️ Client reported:</b>' + list.map(function(e){
+      return '<div style="margin-top:6px;">'+esc(e.problem||'')+(e.action ? '<div class="histmeta">Action taken: '+esc(e.action)+'</div>' : '')+'</div>';
+    }).join('') + '</div>';
+  }
+  function deliverableTask(p, key){
+    return state.lookups.filter(function(l){ return l.clientId===p.id && l.source==='solution' && l.deliverable===key; })[0];
+  }
+  function renderSolutionCard(p){
+    var tasks = state.lookups.filter(function(l){ return l.clientId===p.id && l.source==='solution'; });
+    return sh('🛠️','Solution to build') +
+      '<div class="card" style="padding:14px 16px;margin-bottom:20px;">' +
+        '<div class="helper" style="margin:0 0 10px;">Tick what you will build for this client. Each one is added to your Tasks list automatically.</div>' +
+        '<div class="areagrid">' +
+          state.deliverables.map(function(dl){
+            var task = deliverableTask(p, dl.id);
+            return '<button type="button" class="areachip '+(task?'on':'')+'" data-action="toggle-deliverable" data-key="'+esc(dl.id)+'">'+(task ? (task.done?'✅ ':'✓ ') : '')+esc(dl.label)+'</button>';
+          }).join('') +
+        '</div>' +
+        (tasks.length ? '<div style="margin-top:10px;">' + tasks.map(function(l){
+          return '<div class="lookuprow '+(l.done?'done':'')+'">' +
+            '<button class="chk '+(l.done?'checked':'')+'" data-action="toggle-lookup-done" data-id="'+l.id+'" aria-label="Toggle done">'+(l.done?'✓':'')+'</button>' +
+            '<span style="flex:1;font-size:14px;line-height:1.4;'+(l.done?'text-decoration:line-through;color:var(--ink-400);':'')+'">'+esc(l.text)+'</span>' +
+          '</div>';
+        }).join('') + '</div>' : '') +
+      '</div>';
+  }
+  function renderRequestsCard(p){
+    var reqs = state.lookups.filter(function(l){ return l.clientId===p.id && l.source==='request'; });
+    return sh('💬','Client requests') +
+      '<div class="card" style="padding:14px 16px;margin-bottom:20px;">' +
+        '<div class="helper" style="margin:0 0 10px;">When the client asks for something, add it here. It also shows up in your Lookup list.</div>' +
+        '<div class="addrow" style="margin-top:0;"><textarea rows="1" class="edtext edadd" id="clientReqInput" placeholder="e.g. Share the vendor price comparison"></textarea><button type="button" class="btn btn-ghost btn-sm" data-action="add-client-request">Add</button></div>' +
+        (reqs.length ? '<div style="margin-top:10px;">' + reqs.map(function(l){
+          return '<div class="lookuprow '+(l.done?'done':'')+'">' +
+            '<button class="chk '+(l.done?'checked':'')+'" data-action="toggle-lookup-done" data-id="'+l.id+'" aria-label="Toggle done">'+(l.done?'✓':'')+'</button>' +
+            '<span style="flex:1;font-size:14px;line-height:1.4;'+(l.done?'text-decoration:line-through;color:var(--ink-400);':'')+'">'+esc(l.text)+'</span>' +
+            '<button class="iconbtn" data-action="delete-lookup" data-id="'+l.id+'" title="Remove">✕</button>' +
+          '</div>';
+        }).join('') + '</div>' : '') +
+      '</div>';
+  }
+
   function renderSetup(){
     var s = state.setup;
     var problems = setupProblems(s);
@@ -1138,6 +1266,7 @@
         '<div class="helper" data-dayname style="margin-top:-6px;">'+esc(dayName(s.auditDate))+'</div>' +
         '<div class="field"><label for="menuItemCount">Number of menu items'+req+'</label><input id="menuItemCount" type="number" min="1" inputmode="numeric" data-bind="menuItemCount" placeholder="e.g. 42" value="'+esc(s.menuItemCount)+'"></div>' +
       '</div>' +
+      renderInquiryEditor('setup', s.inquiry||[], inquiryAreaOptions(s.type)) +
       '<button class="btn btn-primary" style="width:100%;padding:14px;" data-action="start-audit" '+(problems.length ? 'disabled' : '')+'>Start Audit &amp; Timer</button>' +
       '<div class="helper" data-setup-hint style="text-align:center;margin-top:10px;">'+esc(setupHintText(problems))+'</div>' +
     '</main>';
@@ -1235,6 +1364,7 @@
       var running = !!sec.runningSince;
       var p = sectionProgress(sec);
       var secPriorCount = sec.items.filter(function(it){ return !!priorSet[it.id]; }).length;
+      var secInq = inquiryForSection(d, sec);
       var itemsHtml = sec.items.map(function(it){
         var checked = it.state==='checked', na = it.state==='na';
         var flagged = !!priorSet[it.id];
@@ -1253,11 +1383,11 @@
       return '<div class="section '+(active?'active':'')+'">' +
         '<button class="sechead" data-action="toggle-section" data-sec="'+sec.id+'">' +
           '<div class="secnum mono">'+String(idx+1).padStart(2,'0')+'</div>' +
-          '<div class="sectitle"><div class="sname">'+esc(sec.name)+(secPriorCount?'<span class="secwarn">⚠ '+secPriorCount+' to re-check</span>':'')+'</div><div class="smeta">'+p.checked+'/'+p.total+' checked'+(p.na?' · '+p.na+' N/A':'')+'</div></div>' +
+          '<div class="sectitle"><div class="sname">'+esc(sec.name)+(secPriorCount?'<span class="secwarn">⚠ '+secPriorCount+' to re-check</span>':'')+(secInq.length?'<span class="secwarn" style="color:var(--accent-ink);">🗣️ '+secInq.length+' reported</span>':'')+'</div><div class="smeta">'+p.checked+'/'+p.total+' checked'+(p.na?' · '+p.na+' N/A':'')+'</div></div>' +
           '<div class="sectimer '+(running?'running':'')+'"><span class="dot '+(running?'running':'')+'"></span><span data-timer="sec-'+sec.id+'">'+fmtTime(sectionElapsed(sec))+'</span></div>' +
           '<div class="chev">▼</div>' +
         '</button>' +
-        '<div class="secbody" '+(active||secPriorCount?'':'hidden')+'>'+itemsHtml+'</div>' +
+        '<div class="secbody" '+(active||secPriorCount?'':'hidden')+'>'+renderSectionInquiry(secInq)+itemsHtml+'</div>' +
       '</div>';
     }).join('');
 
@@ -1279,7 +1409,7 @@
           '<button class="btn btn-text btn-sm btn-danger" data-action="discard-audit">Discard</button>' +
         '</div>' +
       '</div></div>' +
-      '<main style="padding-top:2px;">' + renderPriorIssuesPanel(d) + secHtml + '</main>' +
+      '<main style="padding-top:2px;">' + renderPriorIssuesPanel(d) + renderInquiryPanel(d) + secHtml + '</main>' +
       '<div class="footerbar"><div class="inner"><button class="btn btn-primary" data-action="finish-audit">Finish Audit</button></div></div>';
   }
 
@@ -1478,6 +1608,7 @@
       correctiveActions: state.correctiveActions,
       schedule: state.schedule,
       serviceClasses: state.serviceClasses,
+      deliverables: state.deliverables,
       prospects: state.prospects,
       lookups: state.lookups,
       contentIdeas: state.contentIdeas,
@@ -1488,7 +1619,7 @@
 
   function applyBackupData(data){
     if (!data || typeof data!=='object') return false;
-    var known = ['templates','history','pricing','correctiveActions','schedule','serviceClasses','prospects','lookups','contentIdeas','reauditOverrides','targets'];
+    var known = ['templates','history','pricing','correctiveActions','schedule','serviceClasses','deliverables','prospects','lookups','contentIdeas','reauditOverrides','targets'];
     var found = known.some(function(k){ return data[k]!==undefined; });
     if (!found) return false;
     if (data.templates) state.templates = data.templates;
@@ -1497,13 +1628,14 @@
     if (data.correctiveActions) state.correctiveActions = data.correctiveActions;
     if (data.schedule) state.schedule = data.schedule;
     if (data.serviceClasses) state.serviceClasses = data.serviceClasses;
+    if (data.deliverables) state.deliverables = data.deliverables;
     if (data.prospects) state.prospects = data.prospects;
     if (data.lookups) state.lookups = data.lookups;
     if (data.contentIdeas) state.contentIdeas = data.contentIdeas;
     if (data.reauditOverrides) state.reauditOverrides = data.reauditOverrides;
     if (data.targets) state.targets = data.targets;
     persistTemplates(); persistHistory(); persistPricing(); persistActions(); persistSchedule();
-    persistServiceClasses(); persistProspects(); persistLookups(); persistContentIdeas(); persistReauditOverrides(); persistTargets();
+    persistServiceClasses(); persistDeliverables(); persistProspects(); persistLookups(); persistContentIdeas(); persistReauditOverrides(); persistTargets();
     return true;
   }
 
@@ -1576,7 +1708,7 @@
   function fmtKB(b){ return b>=1048576 ? (b/1048576).toFixed(2)+' MB' : Math.max(1, Math.round(b/1024))+' KB'; }
   function storageTone(pct){ return pct>=90 ? 'bad' : (pct>=70 ? 'warn' : 'good'); }
   function storageReport(withRecords){
-    var cfgBytes = jsonBytes({ templates:state.templates, pricing:state.pricing, schedule:state.schedule, serviceClasses:state.serviceClasses, targets:state.targets, reauditOverrides:state.reauditOverrides });
+    var cfgBytes = jsonBytes({ templates:state.templates, pricing:state.pricing, schedule:state.schedule, serviceClasses:state.serviceClasses, deliverables:state.deliverables, targets:state.targets, reauditOverrides:state.reauditOverrides });
     var rep = { rows:[ { label:'Settings & checklists', bytes:cfgBytes, n:0, unit:'', pct:cfgBytes/DOC_LIMIT_BYTES*100 } ] };
     if (withRecords){
       rep.sets = [
@@ -1657,6 +1789,21 @@
       '<div style="display:flex;gap:8px;margin-bottom:24px;">' +
         '<button class="btn btn-ghost btn-sm" data-action="svc-add">+ Add service class</button>' +
         '<button class="btn btn-text btn-danger" data-action="reset-svc">Reset to defaults</button>' +
+      '</div>' +
+
+      '<h1 style="font-size:20px;margin:0 0 4px;">Solution deliverables</h1>' +
+      '<div class="helper" style="margin-bottom:12px;">What you can offer a client to build. Ticking one on a client page adds a task to your Tasks list automatically.</div>' +
+      '<div class="card" style="padding:4px 16px;margin-bottom:12px;">' +
+        state.deliverables.map(function(dl){
+          return '<div class="gradebandrow">' +
+            '<input type="text" data-dl-field="label" data-dl="'+esc(dl.id)+'" value="'+esc(dl.label)+'" placeholder="Deliverable name">' +
+            '<button class="iconbtn" data-action="dl-remove" data-dl="'+esc(dl.id)+'" title="Remove">✕</button>' +
+          '</div>';
+        }).join('') +
+      '</div>' +
+      '<div style="display:flex;gap:8px;margin-bottom:24px;">' +
+        '<button class="btn btn-ghost btn-sm" data-action="dl-add">+ Add deliverable</button>' +
+        '<button class="btn btn-text btn-danger" data-action="reset-dl">Reset to defaults</button>' +
       '</div>' +
 
       '<h1 style="font-size:20px;margin:0 0 4px;">Re-audit schedule</h1>' +
@@ -2029,6 +2176,12 @@
     });
     (p.actionLog||[]).forEach(function(s, i){ events.push({ t:s.doneAt, type:'loop-step', data:s, n:i+1 }); });
     (p.followUps||[]).filter(function(f){ return f.done && f.doneAt; }).forEach(function(f){ events.push({ t:f.doneAt, type:'followup', data:f }); });
+    (p.inquiry||[]).forEach(function(e){ if (e.createdAt) events.push({ t:e.createdAt, type:'inquiry', data:e }); });
+    state.lookups.filter(function(l){ return l.clientId===p.id; }).forEach(function(l){
+      var kind = l.source==='solution' ? 'task' : 'request';
+      if (l.createdAt) events.push({ t:l.createdAt, type:kind+'-created', data:l });
+      if (l.done && l.doneAt) events.push({ t:l.doneAt, type:kind+'-done', data:l });
+    });
     if (p.convertedAt) events.push({ t:p.convertedAt, type:'converted', data:p });
     if (p.declinedAt) events.push({ t:p.declinedAt, type:'declined', data:p });
     if (p.createdAt) events.push({ t:p.createdAt, type:'added', data:p });
@@ -2061,6 +2214,15 @@
         }
         if (e.type==='action-resolved'){
           return '<div class="card histcard static"><div class="histtop"><span>✓ Issue fixed</span></div><div class="histmeta" style="margin-top:8px;">'+esc(d.description||'(unspecified)')+' · '+fmtDateShort(e.t)+'</div></div>';
+        }
+        if (e.type==='inquiry'){
+          return '<div class="card histcard static"><div class="histtop"><span>🗣️ Problem reported'+(d.area?' — '+esc(d.area):'')+'</span><span class="histmeta">'+fmtDateShort(e.t)+'</span></div>' +
+            (d.problem ? '<div style="margin-top:6px;font-size:13.5px;line-height:1.4;">'+esc(d.problem)+'</div>' : '') +
+            (d.action ? '<div class="histmeta" style="margin-top:4px;">Action taken: '+esc(d.action)+'</div>' : '') + '</div>';
+        }
+        if (e.type==='task-created' || e.type==='task-done' || e.type==='request-created' || e.type==='request-done'){
+          var tlLabel = { 'task-created':'🛠️ To build', 'task-done':'✅ Built', 'request-created':'💬 Client asked', 'request-done':'✅ Request done' }[e.type];
+          return '<div class="card histcard static"><div class="histtop"><span>'+tlLabel+'</span><span class="histmeta">'+fmtDateShort(e.t)+'</span></div><div class="histmeta" style="margin-top:6px;">'+esc(d.text||'')+'</div></div>';
         }
         if (e.type==='converted'){
           return '<div class="card histcard static" style="border:1.5px solid var(--good);background:var(--good-soft);"><div class="histtop"><span>🎉 Converted to client</span></div><div class="histmeta" style="margin-top:8px;">'+fmtDateShort(e.t)+'</div></div>';
@@ -2437,6 +2599,7 @@
         '</div>' +
         '<div class="helper" data-pmobile-err style="margin-top:-6px;color:var(--bad);">'+esc(mobileErrorText(p.contactMobile))+'</div>' +
       '</div>' +
+      renderInquiryEditor('client', p.inquiry||[], inquiryAreaOptions(p.category)) +
       renderFollowUps(p) +
       (audits.length ? (
         '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:6px;">' +
@@ -2455,6 +2618,8 @@
             (p.proposalStatus==='meeting_scheduled' ? '<div class="field" style="margin-bottom:0;"><label for="pMeetingDate">Date of proposal / meeting</label><input id="pMeetingDate" type="date" data-bind-prospect="proposalMeetingDate" value="'+esc(p.proposalMeetingDate||'')+'"></div>' : '') +
           '</div>' +
         '</div>' +
+        renderSolutionCard(p) +
+        renderRequestsCard(p) +
         sh('🤝','Proposal &amp; conversion') +
         '<div class="formstack">' +
           '<div class="field"><label for="pProposed">What was proposed</label><textarea id="pProposed" data-bind-prospect="proposed" placeholder="e.g. Monthly floor-audit retainer">'+esc(p.proposed)+'</textarea></div>' +
@@ -2782,6 +2947,7 @@
               '<select data-action="lookup-category" data-id="'+l.id+'">' +
                 Object.keys(LOOKUP_CATEGORIES).map(function(k){ return '<option value="'+k+'" '+(lookupGroup(l)===k?'selected':'')+'>'+LOOKUP_CATEGORIES[k]+'</option>'; }).join('') +
               '</select>' +
+              (l.clientId ? '<button class="iconbtn" data-action="goto-prospect" data-id="'+esc(l.clientId)+'" title="Open client">👤</button>' : '') +
               '<button class="iconbtn" data-action="delete-lookup" data-id="'+l.id+'" title="Remove">✕</button>' +
             '</div>';
           }).join('') +
@@ -3474,6 +3640,7 @@
       state.setup.contactName = sp.contactName||''; state.setup.contactDesignation = sp.contactDesignation||''; state.setup.contactMobile = sp.contactMobile||'';
       state.setup.selectedSections = [];
       state.setup.menuItemCount = '';
+      state.setup.inquiry = (sp.inquiry && !prospectAudits(sp).length) ? sp.inquiry.map(function(e){ return { id:e.id, area:e.area||'', problem:e.problem||'', action:e.action||'', createdAt:e.createdAt }; }) : [];
       state.pendingProspectId = sp.id;
       state.view = 'setup'; render();
     }
@@ -3489,6 +3656,7 @@
       state.setup.contactMobile = raMatch ? (raMatch.contactMobile||'') : '';
       state.setup.selectedSections = state.templates[raType] ? state.templates[raType].sections.map(function(s){ return s.id; }) : [];
       state.setup.menuItemCount = '';
+      state.setup.inquiry = [];
       state.pendingProspectId = raMatch ? raMatch.id : null;
       state.view = 'setup'; render();
     }
@@ -3544,6 +3712,8 @@
     else if (action==='start-audit'){
       if (setupProblems(state.setup).length) return;
       state.draft = newDraft(state.setup.type, state.setup.storeName, state.setup.storeLocation, state.setup.contactName, state.setup.contactDesignation, state.setup.contactMobile, state.setup.auditDate, state.setup.auditTime, state.setup.selectedSections, state.setup.menuItemCount);
+      state.draft.inquiry = cleanInquiry(state.setup.inquiry);
+      state.setup.inquiry = [];
       persistDraft();
       state.view='audit'; render();
     }
@@ -3697,6 +3867,7 @@
       }
       state.pendingProspectId = null;
       if (linkedP){
+        mergeInquiryInto(linkedP, d.inquiry, rec.id);
         persistProspects();
         state.activeProspectId = linkedP.id;
         state.view = 'prospects'; render();
@@ -3827,6 +3998,61 @@
         persistServiceClasses(); render();
       }
     }
+    else if (action==='dl-add'){
+      state.deliverables.push({ id: uid(), label: 'New deliverable' });
+      persistDeliverables(); render();
+    }
+    else if (action==='dl-remove'){
+      state.deliverables = state.deliverables.filter(function(x){ return x.id!==t.dataset.dl; });
+      persistDeliverables(); render();
+    }
+    else if (action==='reset-dl'){
+      if (window.confirm('Reset solution deliverables to defaults?')){
+        state.deliverables = JSON.parse(JSON.stringify(DEFAULT_DELIVERABLES));
+        persistDeliverables(); render();
+      }
+    }
+    else if (action==='inq-add'){
+      var iaE = { id: uid(), area:'', problem:'', action:'', createdAt: Date.now() };
+      if (t.dataset.inqScope==='setup'){ state.setup.inquiry = state.setup.inquiry||[]; state.setup.inquiry.push(iaE); }
+      else {
+        var iaP = findProspect(state.activeProspectId);
+        if (!iaP) return;
+        iaP.inquiry = iaP.inquiry||[]; iaP.inquiry.push(iaE); persistProspects();
+      }
+      render();
+      var iaEl = app.querySelector('textarea[data-inq-id="'+iaE.id+'"][data-inq-field="problem"]');
+      if (iaEl) iaEl.focus();
+    }
+    else if (action==='inq-remove'){
+      if (t.dataset.inqScope==='setup'){ state.setup.inquiry = (state.setup.inquiry||[]).filter(function(x){ return x.id!==t.dataset.id; }); }
+      else {
+        var irP = findProspect(state.activeProspectId);
+        if (!irP) return;
+        irP.inquiry = (irP.inquiry||[]).filter(function(x){ return x.id!==t.dataset.id; }); persistProspects();
+      }
+      render();
+    }
+    else if (action==='toggle-deliverable'){
+      var tdP = findProspect(state.activeProspectId);
+      if (!tdP) return;
+      var tdKey = t.dataset.key, tdTask = deliverableTask(tdP, tdKey);
+      if (tdTask){
+        if (tdTask.done && !window.confirm('This task is already done. Remove it from the trail?')) return;
+        state.lookups = state.lookups.filter(function(l){ return l.id!==tdTask.id; });
+      } else {
+        var tdDef = state.deliverables.filter(function(x){ return x.id===tdKey; })[0];
+        state.lookups.unshift({ id: uid(), text: (tdDef?tdDef.label:'Deliverable')+' — '+(tdP.name||'Client'), category:'task', done:false, createdAt: Date.now(), clientId: tdP.id, source:'solution', deliverable: tdKey });
+      }
+      persistLookups(); render();
+    }
+    else if (action==='add-client-request'){
+      var crP = findProspect(state.activeProspectId), crIn = app.querySelector('#clientReqInput');
+      var crText = crIn ? (crIn.value||'').replace(/[\r\n]+/g,' ').trim() : '';
+      if (!crP || !crText) return;
+      state.lookups.unshift({ id: uid(), text: (crP.name||'Client')+': '+crText, category:'lookup', done:false, createdAt: Date.now(), clientId: crP.id, source:'request' });
+      persistLookups(); render();
+    }
   });
 
   // checklist editor fields wrap onto several lines but stay one logical line: Enter finishes the edit (or adds the new item)
@@ -3838,6 +4064,9 @@
     if (el.dataset.newitemFor){
       var addBtn = app.querySelector('[data-action="add-item"][data-sec="'+el.dataset.newitemFor+'"]');
       if (addBtn) addBtn.click();
+    } else if (el.id==='clientReqInput'){
+      var reqBtn = app.querySelector('[data-action="add-client-request"]');
+      if (reqBtn) reqBtn.click();
     } else {
       el.blur();
     }
@@ -3939,6 +4168,19 @@
     else if (el.dataset.bindIssue && state.draft){
       var issSec = state.draft.sections.filter(function(s){ return s.id===el.dataset.bindIssue; })[0];
       if (issSec){ issSec.issue = el.value; persistDraft(); }
+    }
+    else if (el.dataset.inqField){
+      var iqList = el.dataset.inqScope==='setup' ? (state.setup.inquiry||[]) : ((findProspect(state.activeProspectId)||{}).inquiry||[]);
+      var iqE = iqList.filter(function(x){ return x.id===el.dataset.inqId; })[0];
+      if (iqE){
+        iqE[el.dataset.inqField] = el.value;
+        if (el.dataset.inqScope!=='setup') persistProspects();
+      }
+      if (el.tagName==='TEXTAREA'){ el.style.height = 'auto'; el.style.height = el.scrollHeight+'px'; }
+    }
+    else if (el.dataset.dlField){
+      var dl2 = state.deliverables.filter(function(x){ return x.id===el.dataset.dl; })[0];
+      if (dl2){ dl2.label = el.value; persistDeliverables(); }
     }
     else if (el.dataset.svcField){
       var sc2 = state.serviceClasses.filter(function(s){ return s.id===el.dataset.svc; })[0];
