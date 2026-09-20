@@ -382,6 +382,7 @@
   var LS_CI = 'diagnosisroom_content_v1';
   var LS_SVC = 'diagnosisroom_serviceclasses_v1';
   var LS_TG = 'diagnosisroom_targets_v1';
+  var LS_LB = 'diagnosisroom_lastbackup_v1';
 
   var DEFAULT_PRICING = {
     currency: '₹',
@@ -505,6 +506,7 @@
     activeContentId: null,
     contentCoverageTab: 'dinein',
     contentOpen: {},
+    syncError: '',
     fuDraft: null,
     searchQuery: '',
     setup: { type:null, storeName:'', storeLocation:'', contactName:'', contactDesignation:'', contactMobile:'', auditDate: todayISO(), auditTime: nowHHMM(), selectedSections:[], menuItemCount:'' },
@@ -520,20 +522,122 @@
   var fsDb = null;
   var fsUnsubs = [];
 
+  function fsUserDataColl(){
+    return fsDb.collection('users').doc(state.authUser.uid).collection('data');
+  }
   function fsUserDataDoc(name){
-    return fsDb.collection('users').doc(state.authUser.uid).collection('data').doc(name);
+    return fsUserDataColl().doc(name);
+  }
+  function syncOk(){
+    if (state.syncError){ state.syncError = ''; if (!isTypingInApp()) render(); }
+  }
+  function syncFail(err){
+    state.syncPending = false;
+    state.syncError = (err && err.code) ? String(err.code) : 'error';
+    if (!isTypingInApp()) render();
   }
   function fsSyncConfig(fieldName, value){
     if (!fsDb || !state.authUser) return;
     var obj = {};
     obj[fieldName] = value;
     state.syncPending = true;
-    fsUserDataDoc('config').set(obj, {merge:true}).catch(function(){});
+    fsUserDataDoc('config').set(obj, {merge:true}).then(syncOk, syncFail);
   }
   function fsSyncList(collName, list){
     if (!fsDb || !state.authUser) return;
     state.syncPending = true;
-    fsUserDataDoc(collName).set({list:list}).catch(function(){});
+    fsUserDataDoc(collName).set({list:list}).then(syncOk, syncFail);
+  }
+
+  // Audits are stored one document each (data/audit_<id>) so the history has no shared 1 MB ceiling.
+  var AUDIT_PREFIX = 'audit_';
+  var auditSynced = {};
+  var auditsReady = false;
+  var auditsBusy = false;
+  var auditsRetry = null;
+  function fsAuditDoc(id){ return fsUserDataDoc(AUDIT_PREFIX+id); }
+  function fsAuditQuery(){
+    var fid = firebase.firestore.FieldPath.documentId();
+    return fsUserDataColl().where(fid, '>=', AUDIT_PREFIX).where(fid, '<', 'audit`');
+  }
+  function fsSyncAudits(){
+    if (!fsDb || !state.authUser || !auditsReady) return;
+    var ops = [], seen = {};
+    state.history.forEach(function(a){
+      if (!a || !a.id) return;
+      seen[a.id] = true;
+      var j = JSON.stringify(a);
+      if (auditSynced[a.id]!==j) ops.push({ id:a.id, json:j });
+    });
+    Object.keys(auditSynced).forEach(function(id){ if (!seen[id]) ops.push({ id:id, json:null }); });
+    if (!ops.length) return;
+    state.syncPending = true;
+    for (var i=0; i<ops.length; i+=400){
+      var batch = fsDb.batch();
+      ops.slice(i, i+400).forEach(function(op){
+        if (op.json!==null){ batch.set(fsAuditDoc(op.id), JSON.parse(op.json)); auditSynced[op.id] = op.json; }
+        else { batch.delete(fsAuditDoc(op.id)); delete auditSynced[op.id]; }
+      });
+      batch.commit().then(syncOk, syncFail);
+    }
+  }
+  function fsWatchAudits(){
+    var unsub = fsAuditQuery().onSnapshot(function(snap){
+      if (snap.empty && snap.metadata.fromCache && state.history.length) return;
+      var list = [], map = {};
+      snap.forEach(function(d){
+        var a = d.data();
+        if (a && a.id){ list.push(a); map[a.id] = JSON.stringify(a); }
+      });
+      list.sort(function(x, y){ return (x.finishedAt||0)-(y.finishedAt||0); });
+      state.history = list;
+      auditSynced = map;
+      saveJSON(LS_H, state.history);
+      if (snap.metadata.hasPendingWrites || isTypingInApp()) return;
+      render();
+    }, syncFail);
+    fsUnsubs.push(unsub);
+  }
+  // One-time move of the old single "history" document into per-audit documents. The old document is left untouched as a safety copy.
+  function fsMigrateAuditsThenWatch(){
+    if (!fsDb || !state.authUser || auditsReady || auditsBusy) return;
+    auditsBusy = true;
+    var metaRef = fsUserDataDoc('meta');
+    metaRef.get().then(function(metaSnap){
+      if (metaSnap.exists && metaSnap.data().auditsMigrated) return;
+      return fsUserDataDoc('history').get().then(function(legacySnap){
+        var legacy = (legacySnap.exists && legacySnap.data().list) || [];
+        return fsAuditQuery().get().then(function(existing){
+          var have = {};
+          existing.forEach(function(d){ var a = d.data(); if (a && a.id) have[a.id] = true; });
+          var pool = state.history.concat(legacy), todo = [], queued = {};
+          pool.forEach(function(a){
+            if (a && a.id && !have[a.id] && !queued[a.id]){ queued[a.id] = true; todo.push(a); }
+          });
+          var writes = [];
+          for (var i=0; i<todo.length; i+=400){
+            var batch = fsDb.batch();
+            todo.slice(i, i+400).forEach(function(a){ batch.set(fsAuditDoc(a.id), JSON.parse(JSON.stringify(a))); });
+            writes.push(batch.commit());
+          }
+          return Promise.all(writes).then(function(){
+            return metaRef.set({ auditsMigrated:true, auditsMigratedAt:Date.now(), auditsMigratedCount:todo.length }, {merge:true});
+          });
+        });
+      });
+    }).then(function(){
+      auditsBusy = false;
+      if (!fsDb) return;
+      auditsReady = true;
+      syncOk();
+      fsWatchAudits();
+    }).catch(function(err){
+      auditsBusy = false;
+      if (!fsDb) return;
+      syncFail(err);
+      clearTimeout(auditsRetry);
+      auditsRetry = setTimeout(fsMigrateAuditsThenWatch, 20000);
+    });
   }
   function isTypingInApp(){
     var ae = document.activeElement;
@@ -568,7 +672,7 @@
   }
   function attachFirestoreSync(){
     fsDb = firebase.firestore();
-    fsWatchDoc('history', false);
+    fsMigrateAuditsThenWatch();
     fsWatchDoc('prospects', false);
     fsWatchDoc('correctiveActions', false);
     fsWatchDoc('contentIdeas', false);
@@ -585,10 +689,12 @@
     fsUnsubs.forEach(function(u){ try{ u(); }catch(e){} });
     fsUnsubs = [];
     fsDb = null;
+    clearTimeout(auditsRetry);
+    auditsReady = false; auditsBusy = false; auditSynced = {};
   }
 
   function persistTemplates(){ saveJSON(LS_T, state.templates); fsSyncConfig('templates', state.templates); }
-  function persistHistory(){ saveJSON(LS_H, state.history); fsSyncList('history', state.history); }
+  function persistHistory(){ saveJSON(LS_H, state.history); fsSyncAudits(); }
   function persistPricing(){ saveJSON(LS_P, state.pricing); fsSyncConfig('pricing', state.pricing); }
   function persistTargets(){ saveJSON(LS_TG, state.targets); fsSyncConfig('targets', state.targets); }
   function persistActions(){ saveJSON(LS_A, state.correctiveActions); fsSyncList('correctiveActions', state.correctiveActions); }
@@ -840,8 +946,12 @@
     if (!state.authUser) return '';
     var tone = 'good', label = '✓ Synced';
     if (!state.online){ tone = 'bad'; label = '⚠ Offline'; }
+    else if (state.syncError){ tone = 'bad'; label = '⚠ Not saved'; }
     else if (state.syncPending){ tone = 'accent'; label = '↻ Syncing'; }
-    return '<span class="syncpill sp-'+tone+'" style="margin-left:auto;" title="'+(state.online?(state.syncPending?'Saving changes to the cloud…':'All changes saved to the cloud'):'No connection — changes are saved on this device and will sync once you\'re back online')+'">'+label+'</span>';
+    var tip = !state.online ? 'No connection — changes are saved on this device and will sync once you\'re back online'
+      : (state.syncError ? 'Some changes could not be saved to the cloud ('+state.syncError+'). They are still on this device — download a backup from Settings.'
+      : (state.syncPending ? 'Saving changes to the cloud…' : 'All changes saved to the cloud'));
+    return '<span class="syncpill sp-'+tone+'" style="margin-left:auto;" title="'+esc(tip)+'">'+label+'</span>';
   }
 
   function topbar(){
@@ -1427,6 +1537,57 @@
     '</main>';
   }
 
+  var DOC_LIMIT_BYTES = 1048576;
+  function jsonBytes(v){
+    try{ var s = JSON.stringify(v); return window.TextEncoder ? new TextEncoder().encode(s).length : s.length; }catch(e){ return 0; }
+  }
+  function fmtKB(b){ return b>=1048576 ? (b/1048576).toFixed(2)+' MB' : Math.max(1, Math.round(b/1024))+' KB'; }
+  function storageTone(pct){ return pct>=90 ? 'bad' : (pct>=70 ? 'warn' : 'good'); }
+  function storageReport(withAudits){
+    var rows = [
+      { label:'Clients', bytes:jsonBytes(state.prospects), n:state.prospects.length, unit:'client' },
+      { label:'Corrective actions', bytes:jsonBytes(state.correctiveActions), n:state.correctiveActions.length, unit:'action' },
+      { label:'Content ideas', bytes:jsonBytes(state.contentIdeas), n:state.contentIdeas.length, unit:'idea' },
+      { label:'Lookups & tasks', bytes:jsonBytes(state.lookups), n:state.lookups.length, unit:'item' },
+      { label:'Settings & checklists', bytes:jsonBytes({ templates:state.templates, pricing:state.pricing, schedule:state.schedule, serviceClasses:state.serviceClasses, targets:state.targets, reauditOverrides:state.reauditOverrides }), n:0, unit:'' }
+    ];
+    rows.forEach(function(r){ r.pct = r.bytes/DOC_LIMIT_BYTES*100; });
+    var rep = { rows:rows };
+    if (withAudits){
+      var total = 0, biggest = 0;
+      state.history.forEach(function(h){ var b = jsonBytes(h); total += b; if (b>biggest) biggest = b; });
+      rep.audits = { n:state.history.length, bytes:total, biggest:biggest };
+    }
+    return rep;
+  }
+  function lastBackupAt(){ return Number(loadJSON(LS_LB, 0)) || 0; }
+  function renderStorageMeter(){
+    var rep = storageReport(true);
+    var barColor = { good:'var(--good)', warn:'var(--accent)', bad:'var(--bad)' };
+    function row(r){
+      var tone = storageTone(r.pct);
+      return '<div style="padding:10px 0;border-top:1px solid var(--line);">' +
+        '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">' +
+          '<span style="font-weight:700;min-width:0;">'+esc(r.label)+'</span>' +
+          '<span class="pill '+tone+'" style="white-space:nowrap;flex:none;">'+(r.pct<1?'<1':Math.round(r.pct))+'% full</span>' +
+        '</div>' +
+        '<div class="histmeta" style="margin-top:2px;">'+(r.n ? r.n+' '+r.unit+(r.n===1?'':'s')+' · ' : '')+fmtKB(r.bytes)+' of 1 MB</div>' +
+        '<div class="progtrack" style="margin-top:6px;"><div class="progfill" style="width:'+Math.min(100, Math.max(r.bytes?2:0, Math.round(r.pct)))+'%;background:'+barColor[tone]+';"></div></div>' +
+      '</div>';
+    }
+    var a = rep.audits;
+    return '<h1 style="font-size:20px;margin:0 0 4px;">Data &amp; storage</h1>' +
+      '<div class="helper" style="margin-bottom:12px;">Everything is saved to your cloud database and also kept on this device. Audits are stored one record each, so there is no limit on how many you can keep. The lists below each sit in one record that holds about 1 MB.</div>' +
+      '<div class="card" style="padding:4px 16px 8px;margin-bottom:8px;">' +
+        '<div style="padding:10px 0 12px;">' +
+          '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;"><span style="font-weight:700;">Audits</span><span class="pill good" style="white-space:nowrap;flex:none;">No limit</span></div>' +
+          '<div class="histmeta" style="margin-top:2px;">'+a.n+' audit'+(a.n===1?'':'s')+' · '+fmtKB(a.bytes)+' in total'+(a.n ? ' · largest '+fmtKB(a.biggest) : '')+'</div>' +
+        '</div>' +
+        rep.rows.map(row).join('') +
+      '</div>' +
+      '<div class="helper" style="margin-bottom:28px;">Sizes are approximate. A list turns amber above 70% and red above 90% — that is the time to have it split into separate records.</div>';
+  }
+
   function renderPricingSettings(){
     var p = state.pricing;
     function typeBlock(type){
@@ -1446,12 +1607,15 @@
         '<button class="btn btn-ghost btn-sm" data-action="auth-signout">Sign out</button>' +
       '</div>' +
       '<h1 style="font-size:26px;margin-top:6px;margin-bottom:6px;">Backup &amp; Restore</h1>' +
-      '<div class="helper" style="margin-bottom:12px;">Everything is stored only on this device. Download a backup regularly, and use Restore if you switch devices, reinstall, or clear browser data.</div>' +
+      '<div class="helper" style="margin-bottom:6px;">Your data is saved to the cloud automatically. A backup file is a separate copy that you keep yourself — useful if something is deleted by mistake or you ever lose access to the account. Restore replaces everything (here and in the cloud) with the file\'s contents.</div>' +
+      '<div class="histmeta" style="margin-bottom:12px;font-weight:600;">'+(lastBackupAt() ? 'Last backup: '+fmtRelativeTime(lastBackupAt()) : 'Last backup: never')+'</div>' +
       '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:28px;">' +
         '<button class="btn btn-primary btn-sm" data-action="download-backup">⬇ Download backup</button>' +
         '<button class="btn btn-ghost btn-sm" data-action="trigger-restore-backup">⬆ Restore from backup</button>' +
         '<input type="file" accept="application/json" id="restoreBackupInput" data-action="restore-backup-file" style="display:none;">' +
       '</div>' +
+
+      renderStorageMeter() +
 
       '<h1 style="font-size:20px;margin:0 0 4px;">Monthly Targets</h1>' +
       '<div class="helper" style="margin-bottom:14px;margin-top:6px;">Set what you\'re aiming for this month. Progress is tracked automatically on the Dashboard against audits completed and clients converted this calendar month.</div>' +
@@ -2655,6 +2819,13 @@
         alerts.push({ tone:'good', icon:'🎬', text: (c.topic||'Untitled idea')+' — shoot scheduled today', action:'goto-content', id:c.id });
       }
     });
+    storageReport(false).rows.forEach(function(r){
+      if (r.pct>=80) alerts.push({ tone: r.pct>=90?'bad':'warn', icon:'🗄️', text: r.label+' storage is '+Math.round(r.pct)+'% full — it needs to be moved to separate records soon', action:'go-pricing' });
+    });
+    var lb = lastBackupAt();
+    if ((state.history.length || state.prospects.length) && (!lb || Date.now()-lb > 30*86400000)){
+      alerts.push({ tone:'warn', icon:'💾', text: lb ? 'No backup in over 30 days — download one in Settings' : 'No backup downloaded yet — take your first one in Settings', action:'go-pricing' });
+    }
     return alerts;
   }
 
@@ -3441,6 +3612,7 @@
     else if (action==='download-backup'){
       var json = buildBackupJSON();
       downloadJSON(json, 'diagnosis-room-backup-'+todayISO()+'.json');
+      saveJSON(LS_LB, Date.now()); render();
     }
     else if (action==='trigger-restore-backup'){
       var rbInput = document.getElementById('restoreBackupInput');
@@ -3714,7 +3886,7 @@
     else if (el.dataset.action==='restore-backup-file'){
       var file = el.files && el.files[0];
       if (!file) return;
-      if (!window.confirm('This will REPLACE all current data (audits, clients, actions, settings) with the contents of this backup file. Continue?')){ el.value=''; return; }
+      if (!window.confirm('This will REPLACE all current data (audits, clients, actions, settings) — on this device and in the cloud — with the contents of this backup file. Continue?')){ el.value=''; return; }
       var reader = new FileReader();
       reader.onload = function(ev){
         try {
@@ -3728,7 +3900,7 @@
     }
   });
 
-  window.addEventListener('online', function(){ state.online = true; render(); });
+  window.addEventListener('online', function(){ state.online = true; fsMigrateAuditsThenWatch(); render(); });
   window.addEventListener('offline', function(){ state.online = false; render(); });
 
   var authKicked = false;
