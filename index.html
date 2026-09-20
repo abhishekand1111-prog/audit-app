@@ -557,7 +557,7 @@
     return fsUserDataColl().doc(name);
   }
   function syncOk(){
-    if (state.syncError){ state.syncError = ''; if (!isTypingInApp()) render(); }
+    if (state.syncError && RECORD_SETS.every(function(rs){ return rs.ready; })){ state.syncError = ''; if (!isTypingInApp()) render(); }
   }
   function syncFail(err){
     state.syncPending = false;
@@ -571,102 +571,115 @@
     state.syncPending = true;
     fsUserDataDoc('config').set(obj, {merge:true}).then(syncOk, syncFail);
   }
-  function fsSyncList(collName, list){
-    if (!fsDb || !state.authUser) return;
-    state.syncPending = true;
-    fsUserDataDoc(collName).set({list:list}).then(syncOk, syncFail);
-  }
 
-  // Audits are stored one document each (data/audit_<id>) so the history has no shared 1 MB ceiling.
-  var AUDIT_PREFIX = 'audit_';
-  var auditSynced = {};
-  var auditsReady = false;
-  var auditsBusy = false;
-  var auditsRetry = null;
-  function fsAuditDoc(id){ return fsUserDataDoc(AUDIT_PREFIX+id); }
-  function fsAuditQuery(){
-    var fid = firebase.firestore.FieldPath.documentId();
-    return fsUserDataColl().where(fid, '>=', AUDIT_PREFIX).where(fid, '<', 'audit`');
+  // Every list that grows is stored one document per record (data/<prefix><id>), so nothing shares a 1 MB ceiling.
+  function nextPrefix(p){ return p.slice(0, -1)+String.fromCharCode(p.charCodeAt(p.length-1)+1); }
+  function byTime(field, dir){
+    return function(a, b){
+      var d = (a[field]||0)-(b[field]||0);
+      if (d===0) d = String(a.id).localeCompare(String(b.id));
+      return dir*d;
+    };
   }
-  function fsSyncAudits(){
-    if (!fsDb || !state.authUser || !auditsReady) return;
+  var RECORD_SETS = [
+    { key:'history',           prefix:'audit_',  legacy:'history',           ls:LS_H,  flag:'auditsMigrated',  sort:byTime('finishedAt', 1) },
+    { key:'prospects',         prefix:'client_', legacy:'prospects',         ls:LS_PR, flag:'clientsMigrated', sort:byTime('createdAt', 1) },
+    { key:'correctiveActions', prefix:'action_', legacy:'correctiveActions', ls:LS_A,  flag:'actionsMigrated', sort:byTime('createdAt', 1) },
+    { key:'contentIdeas',      prefix:'idea_',   legacy:'contentIdeas',      ls:LS_CI, flag:'ideasMigrated',   sort:byTime('createdAt', -1) },
+    { key:'lookups',           prefix:'lookup_', legacy:'lookups',           ls:LS_LK, flag:'lookupsMigrated', sort:byTime('createdAt', -1) }
+  ];
+  var RS = {};
+  RECORD_SETS.forEach(function(rs){ rs.synced = {}; rs.ready = false; rs.busy = false; rs.retry = null; RS[rs.key] = rs; });
+
+  function fsRecDoc(rs, id){ return fsUserDataDoc(rs.prefix+id); }
+  function fsRecQuery(rs){
+    var fid = firebase.firestore.FieldPath.documentId();
+    return fsUserDataColl().where(fid, '>=', rs.prefix).where(fid, '<', nextPrefix(rs.prefix));
+  }
+  function fsSyncRecords(rs){
+    if (!fsDb || !state.authUser || !rs.ready) return;
     var ops = [], seen = {};
-    state.history.forEach(function(a){
-      if (!a || !a.id) return;
-      seen[a.id] = true;
-      var j = JSON.stringify(a);
-      if (auditSynced[a.id]!==j) ops.push({ id:a.id, json:j });
+    (state[rs.key]||[]).forEach(function(r){
+      if (!r || !r.id) return;
+      seen[r.id] = true;
+      var j = JSON.stringify(r);
+      if (rs.synced[r.id]!==j) ops.push({ id:r.id, json:j });
     });
-    Object.keys(auditSynced).forEach(function(id){ if (!seen[id]) ops.push({ id:id, json:null }); });
+    Object.keys(rs.synced).forEach(function(id){ if (!seen[id]) ops.push({ id:id, json:null }); });
     if (!ops.length) return;
     state.syncPending = true;
     for (var i=0; i<ops.length; i+=400){
       var batch = fsDb.batch();
       ops.slice(i, i+400).forEach(function(op){
-        if (op.json!==null){ batch.set(fsAuditDoc(op.id), JSON.parse(op.json)); auditSynced[op.id] = op.json; }
-        else { batch.delete(fsAuditDoc(op.id)); delete auditSynced[op.id]; }
+        if (op.json!==null){ batch.set(fsRecDoc(rs, op.id), JSON.parse(op.json)); rs.synced[op.id] = op.json; }
+        else { batch.delete(fsRecDoc(rs, op.id)); delete rs.synced[op.id]; }
       });
       batch.commit().then(syncOk, syncFail);
     }
   }
-  function fsWatchAudits(){
-    var unsub = fsAuditQuery().onSnapshot(function(snap){
-      if (snap.empty && snap.metadata.fromCache && state.history.length) return;
+  function fsWatchRecords(rs){
+    var unsub = fsRecQuery(rs).onSnapshot(function(snap){
+      if (snap.empty && snap.metadata.fromCache && state[rs.key].length) return;
       var list = [], map = {};
       snap.forEach(function(d){
-        var a = d.data();
-        if (a && a.id){ list.push(a); map[a.id] = JSON.stringify(a); }
+        var r = d.data();
+        if (r && r.id){ list.push(r); map[r.id] = JSON.stringify(r); }
       });
-      list.sort(function(x, y){ return (x.finishedAt||0)-(y.finishedAt||0); });
-      state.history = list;
-      auditSynced = map;
-      saveJSON(LS_H, state.history);
+      list.sort(rs.sort);
+      state[rs.key] = list;
+      rs.synced = map;
+      saveJSON(rs.ls, list);
       if (snap.metadata.hasPendingWrites || isTypingInApp()) return;
       render();
     }, syncFail);
     fsUnsubs.push(unsub);
   }
-  // One-time move of the old single "history" document into per-audit documents. The old document is left untouched as a safety copy.
-  function fsMigrateAuditsThenWatch(){
-    if (!fsDb || !state.authUser || auditsReady || auditsBusy) return;
-    auditsBusy = true;
+  // One-time move of the old single-document list into per-record documents. The old document is left untouched as a safety copy.
+  function fsMigrateRecords(rs){
+    if (!fsDb || !state.authUser || rs.ready || rs.busy) return;
+    rs.busy = true;
     var metaRef = fsUserDataDoc('meta');
     metaRef.get().then(function(metaSnap){
-      if (metaSnap.exists && metaSnap.data().auditsMigrated) return;
-      return fsUserDataDoc('history').get().then(function(legacySnap){
+      if (metaSnap.exists && metaSnap.data()[rs.flag]) return;
+      return fsUserDataDoc(rs.legacy).get().then(function(legacySnap){
         var legacy = (legacySnap.exists && legacySnap.data().list) || [];
-        return fsAuditQuery().get().then(function(existing){
+        return fsRecQuery(rs).get().then(function(existing){
           var have = {};
-          existing.forEach(function(d){ var a = d.data(); if (a && a.id) have[a.id] = true; });
-          var pool = state.history.concat(legacy), todo = [], queued = {};
-          pool.forEach(function(a){
-            if (a && a.id && !have[a.id] && !queued[a.id]){ queued[a.id] = true; todo.push(a); }
+          existing.forEach(function(d){ var r = d.data(); if (r && r.id) have[r.id] = true; });
+          var pool = (state[rs.key]||[]).concat(legacy), todo = [], queued = {};
+          pool.forEach(function(r){
+            if (!r) return;
+            if (!r.id) r.id = uid();
+            if (!have[r.id] && !queued[r.id]){ queued[r.id] = true; todo.push(r); }
           });
           var writes = [];
           for (var i=0; i<todo.length; i+=400){
             var batch = fsDb.batch();
-            todo.slice(i, i+400).forEach(function(a){ batch.set(fsAuditDoc(a.id), JSON.parse(JSON.stringify(a))); });
+            todo.slice(i, i+400).forEach(function(r){ batch.set(fsRecDoc(rs, r.id), JSON.parse(JSON.stringify(r))); });
             writes.push(batch.commit());
           }
           return Promise.all(writes).then(function(){
-            return metaRef.set({ auditsMigrated:true, auditsMigratedAt:Date.now(), auditsMigratedCount:todo.length }, {merge:true});
+            var flagDoc = {}; flagDoc[rs.flag] = true; flagDoc[rs.flag+'At'] = Date.now(); flagDoc[rs.flag+'Count'] = todo.length;
+            return metaRef.set(flagDoc, {merge:true});
           });
         });
       });
     }).then(function(){
-      auditsBusy = false;
+      rs.busy = false;
       if (!fsDb) return;
-      auditsReady = true;
+      rs.ready = true;
       syncOk();
-      fsWatchAudits();
+      fsWatchRecords(rs);
     }).catch(function(err){
-      auditsBusy = false;
+      rs.busy = false;
       if (!fsDb) return;
       syncFail(err);
-      clearTimeout(auditsRetry);
-      auditsRetry = setTimeout(fsMigrateAuditsThenWatch, 20000);
+      clearTimeout(rs.retry);
+      rs.retry = setTimeout(function(){ fsMigrateRecords(rs); }, 20000);
     });
   }
+  function fsStartRecordSync(){ RECORD_SETS.forEach(fsMigrateRecords); }
+
   function isTypingInApp(){
     var ae = document.activeElement;
     return !!(ae && app && app.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName));
@@ -700,11 +713,7 @@
   }
   function attachFirestoreSync(){
     fsDb = firebase.firestore();
-    fsMigrateAuditsThenWatch();
-    fsWatchDoc('prospects', false);
-    fsWatchDoc('correctiveActions', false);
-    fsWatchDoc('contentIdeas', false);
-    fsWatchDoc('lookups', false);
+    fsStartRecordSync();
     fsWatchDoc('config', true);
     var unsubSync = fsDb.onSnapshotsInSync(function(){
       state.syncPending = false;
@@ -717,20 +726,19 @@
     fsUnsubs.forEach(function(u){ try{ u(); }catch(e){} });
     fsUnsubs = [];
     fsDb = null;
-    clearTimeout(auditsRetry);
-    auditsReady = false; auditsBusy = false; auditSynced = {};
+    RECORD_SETS.forEach(function(rs){ clearTimeout(rs.retry); rs.ready = false; rs.busy = false; rs.synced = {}; });
   }
 
   function persistTemplates(){ saveJSON(LS_T, state.templates); fsSyncConfig('templates', state.templates); }
-  function persistHistory(){ saveJSON(LS_H, state.history); fsSyncAudits(); }
+  function persistHistory(){ saveJSON(LS_H, state.history); fsSyncRecords(RS.history); }
   function persistPricing(){ saveJSON(LS_P, state.pricing); fsSyncConfig('pricing', state.pricing); }
   function persistTargets(){ saveJSON(LS_TG, state.targets); fsSyncConfig('targets', state.targets); }
-  function persistActions(){ saveJSON(LS_A, state.correctiveActions); fsSyncList('correctiveActions', state.correctiveActions); }
+  function persistActions(){ saveJSON(LS_A, state.correctiveActions); fsSyncRecords(RS.correctiveActions); }
   function persistSchedule(){ saveJSON(LS_SCHED, state.schedule); fsSyncConfig('schedule', state.schedule); }
   function persistServiceClasses(){ saveJSON(LS_SVC, state.serviceClasses); fsSyncConfig('serviceClasses', state.serviceClasses); }
-  function persistProspects(){ saveJSON(LS_PR, state.prospects); fsSyncList('prospects', state.prospects); }
-  function persistLookups(){ saveJSON(LS_LK, state.lookups); fsSyncList('lookups', state.lookups); }
-  function persistContentIdeas(){ saveJSON(LS_CI, state.contentIdeas); fsSyncList('contentIdeas', state.contentIdeas); }
+  function persistProspects(){ saveJSON(LS_PR, state.prospects); fsSyncRecords(RS.prospects); }
+  function persistLookups(){ saveJSON(LS_LK, state.lookups); fsSyncRecords(RS.lookups); }
+  function persistContentIdeas(){ saveJSON(LS_CI, state.contentIdeas); fsSyncRecords(RS.contentIdeas); }
   function persistReauditOverrides(){ saveJSON(LS_RO, state.reauditOverrides); fsSyncConfig('reauditOverrides', state.reauditOverrides); }
   function persistDraft(){ saveJSON(LS_D, state.draft); }
   function clearDraft(){ state.draft = null; try{ localStorage.removeItem(LS_D); }catch(e){} }
@@ -1567,20 +1575,21 @@
   }
   function fmtKB(b){ return b>=1048576 ? (b/1048576).toFixed(2)+' MB' : Math.max(1, Math.round(b/1024))+' KB'; }
   function storageTone(pct){ return pct>=90 ? 'bad' : (pct>=70 ? 'warn' : 'good'); }
-  function storageReport(withAudits){
-    var rows = [
-      { label:'Clients', bytes:jsonBytes(state.prospects), n:state.prospects.length, unit:'client' },
-      { label:'Corrective actions', bytes:jsonBytes(state.correctiveActions), n:state.correctiveActions.length, unit:'action' },
-      { label:'Content ideas', bytes:jsonBytes(state.contentIdeas), n:state.contentIdeas.length, unit:'idea' },
-      { label:'Lookups & tasks', bytes:jsonBytes(state.lookups), n:state.lookups.length, unit:'item' },
-      { label:'Settings & checklists', bytes:jsonBytes({ templates:state.templates, pricing:state.pricing, schedule:state.schedule, serviceClasses:state.serviceClasses, targets:state.targets, reauditOverrides:state.reauditOverrides }), n:0, unit:'' }
-    ];
-    rows.forEach(function(r){ r.pct = r.bytes/DOC_LIMIT_BYTES*100; });
-    var rep = { rows:rows };
-    if (withAudits){
-      var total = 0, biggest = 0;
-      state.history.forEach(function(h){ var b = jsonBytes(h); total += b; if (b>biggest) biggest = b; });
-      rep.audits = { n:state.history.length, bytes:total, biggest:biggest };
+  function storageReport(withRecords){
+    var cfgBytes = jsonBytes({ templates:state.templates, pricing:state.pricing, schedule:state.schedule, serviceClasses:state.serviceClasses, targets:state.targets, reauditOverrides:state.reauditOverrides });
+    var rep = { rows:[ { label:'Settings & checklists', bytes:cfgBytes, n:0, unit:'', pct:cfgBytes/DOC_LIMIT_BYTES*100 } ] };
+    if (withRecords){
+      rep.sets = [
+        { label:'Audits', list:state.history, unit:'audit' },
+        { label:'Clients', list:state.prospects, unit:'client' },
+        { label:'Corrective actions', list:state.correctiveActions, unit:'action' },
+        { label:'Content ideas', list:state.contentIdeas, unit:'idea' },
+        { label:'Lookups & tasks', list:state.lookups, unit:'item' }
+      ].map(function(s){
+        var total = 0, biggest = 0;
+        s.list.forEach(function(r){ var b = jsonBytes(r); total += b; if (b>biggest) biggest = b; });
+        return { label:s.label, n:s.list.length, unit:s.unit, bytes:total, biggest:biggest };
+      });
     }
     return rep;
   }
@@ -1588,28 +1597,24 @@
   function renderStorageMeter(){
     var rep = storageReport(true);
     var barColor = { good:'var(--good)', warn:'var(--accent)', bad:'var(--bad)' };
-    function row(r){
-      var tone = storageTone(r.pct);
-      return '<div style="padding:10px 0;border-top:1px solid var(--line);">' +
-        '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">' +
-          '<span style="font-weight:700;min-width:0;">'+esc(r.label)+'</span>' +
-          '<span class="pill '+tone+'" style="white-space:nowrap;flex:none;">'+(r.pct<1?'<1':Math.round(r.pct))+'% full</span>' +
-        '</div>' +
-        '<div class="histmeta" style="margin-top:2px;">'+(r.n ? r.n+' '+r.unit+(r.n===1?'':'s')+' · ' : '')+fmtKB(r.bytes)+' of 1 MB</div>' +
-        '<div class="progtrack" style="margin-top:6px;"><div class="progfill" style="width:'+Math.min(100, Math.max(r.bytes?2:0, Math.round(r.pct)))+'%;background:'+barColor[tone]+';"></div></div>' +
+    function setRow(s, first){
+      return '<div style="padding:10px 0;'+(first?'':'border-top:1px solid var(--line);')+'">' +
+        '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;"><span style="font-weight:700;">'+esc(s.label)+'</span><span class="pill good" style="white-space:nowrap;flex:none;">No limit</span></div>' +
+        '<div class="histmeta" style="margin-top:2px;">'+s.n+' '+s.unit+(s.n===1?'':'s')+' · '+fmtKB(s.bytes)+' in total'+(s.n ? ' · largest '+fmtKB(s.biggest) : '')+'</div>' +
       '</div>';
     }
-    var a = rep.audits;
+    var cfg = rep.rows[0], tone = storageTone(cfg.pct);
     return '<h1 style="font-size:20px;margin:0 0 4px;">Data &amp; storage</h1>' +
-      '<div class="helper" style="margin-bottom:12px;">Everything is saved to your cloud database and also kept on this device. Audits are stored one record each, so there is no limit on how many you can keep. The lists below each sit in one record that holds about 1 MB.</div>' +
+      '<div class="helper" style="margin-bottom:12px;">Everything is saved to your cloud database and also kept on this device. Audits, clients, actions, content ideas and tasks are each stored one record at a time, so there is no limit on how many you can keep. Only your settings and checklists share one record, which holds about 1 MB.</div>' +
       '<div class="card" style="padding:4px 16px 8px;margin-bottom:8px;">' +
-        '<div style="padding:10px 0 12px;">' +
-          '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;"><span style="font-weight:700;">Audits</span><span class="pill good" style="white-space:nowrap;flex:none;">No limit</span></div>' +
-          '<div class="histmeta" style="margin-top:2px;">'+a.n+' audit'+(a.n===1?'':'s')+' · '+fmtKB(a.bytes)+' in total'+(a.n ? ' · largest '+fmtKB(a.biggest) : '')+'</div>' +
+        rep.sets.map(function(s, i){ return setRow(s, i===0); }).join('') +
+        '<div style="padding:10px 0;border-top:1px solid var(--line);">' +
+          '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;"><span style="font-weight:700;">'+esc(cfg.label)+'</span><span class="pill '+tone+'" style="white-space:nowrap;flex:none;">'+(cfg.pct<1?'<1':Math.round(cfg.pct))+'% full</span></div>' +
+          '<div class="histmeta" style="margin-top:2px;">'+fmtKB(cfg.bytes)+' of 1 MB</div>' +
+          '<div class="progtrack" style="margin-top:6px;"><div class="progfill" style="width:'+Math.min(100, Math.max(2, Math.round(cfg.pct)))+'%;background:'+barColor[tone]+';"></div></div>' +
         '</div>' +
-        rep.rows.map(row).join('') +
       '</div>' +
-      '<div class="helper" style="margin-bottom:28px;">Sizes are approximate. A list turns amber above 70% and red above 90% — that is the time to have it split into separate records.</div>';
+      '<div class="helper" style="margin-bottom:28px;">Sizes are approximate. The settings record turns amber above 70% and red above 90%.</div>';
   }
 
   function renderPricingSettings(){
@@ -4036,7 +4041,7 @@
     }
   });
 
-  window.addEventListener('online', function(){ state.online = true; fsMigrateAuditsThenWatch(); render(); });
+  window.addEventListener('online', function(){ state.online = true; fsStartRecordSync(); render(); });
   window.addEventListener('offline', function(){ state.online = false; render(); });
 
   var authKicked = false;
