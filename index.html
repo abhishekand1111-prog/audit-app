@@ -311,6 +311,17 @@
   .revlbl{font-size:11px; color:var(--ink-400); margin-top:6px; font-weight:600;}
   .revcol.cur .revlbl{color:var(--ink); font-weight:800;}
   .revdot{display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:5px;}
+  .paramcard{padding:14px 16px; margin-bottom:12px;}
+  .paramhead{display:flex; justify-content:space-between; align-items:flex-start; gap:8px;}
+  .paramname{font-weight:800; font-size:15px;}
+  .paramnums{display:flex; gap:8px; margin:10px 0;}
+  .paramnums > div{flex:1; min-width:0; background:var(--surface-2); border-radius:var(--r-s); padding:8px 10px;}
+  .pv{font-family:var(--font-m); font-weight:700; font-size:17px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .pk{font-size:11px; color:var(--ink-400); text-transform:uppercase; font-weight:700; margin-top:2px;}
+  .paramedit{background:var(--surface-2); border-radius:var(--r-s); padding:12px; margin:10px 0;}
+  .paramedit input, .paramadd input, .pl-row input, .pl-row select{border:1px solid var(--line-strong); border-radius:var(--r-s); padding:8px 10px; font-size:16px; background:var(--surface); color:var(--ink); min-width:0; width:100%; font-family:inherit;}
+  .paramadd{display:flex; gap:8px; margin-top:10px;}
+  .paramadd input{flex:1;}
   .inqcard{padding:12px 14px; margin-bottom:10px;}
   .inqhead{display:flex; gap:8px; align-items:center; margin-bottom:10px;}
   .inqarea{flex:1; min-width:0; border:1px solid var(--line-strong); border-radius:var(--r-s); padding:8px 10px; font-size:14px; font-weight:700; background:var(--surface); color:var(--ink);}
@@ -413,6 +424,8 @@
   var LS_CI = 'diagnosisroom_content_v1';
   var LS_SVC = 'diagnosisroom_serviceclasses_v1';
   var LS_DL = 'diagnosisroom_deliverables_v1';
+  var LS_RD = 'diagnosisroom_readings_v1';
+  var LS_PL = 'diagnosisroom_paramlib_v1';
   var LS_TG = 'diagnosisroom_targets_v1';
   var LS_LB = 'diagnosisroom_lastbackup_v1';
 
@@ -433,6 +446,12 @@
     { id:'dashboard', label:'Dashboard' },
     { id:'training', label:'Training' },
     { id:'other', label:'Other' }
+  ];
+  var DEFAULT_PARAM_LIBRARY = [
+    { id:'inventory', name:'Inventory cost', unit:'%', better:'lower' },
+    { id:'wastage', name:'Wastage', unit:'%', better:'lower' },
+    { id:'zomato', name:'Zomato / Swiggy rating', unit:'★', better:'higher' },
+    { id:'fulfilment', name:'Fulfilment cycle time', unit:'min', better:'lower' }
   ];
   var DEFAULT_SERVICE_CLASSES = [
     { id:'s1', number:1, label:'Audit Only' },
@@ -534,6 +553,8 @@
     schedule: loadJSON(LS_SCHED, null) || JSON.parse(JSON.stringify(DEFAULT_SCHEDULE)),
     serviceClasses: loadJSON(LS_SVC, null) || JSON.parse(JSON.stringify(DEFAULT_SERVICE_CLASSES)),
     deliverables: loadJSON(LS_DL, null) || JSON.parse(JSON.stringify(DEFAULT_DELIVERABLES)),
+    paramLibrary: loadJSON(LS_PL, null) || JSON.parse(JSON.stringify(DEFAULT_PARAM_LIBRARY)),
+    readings: loadJSON(LS_RD, []),
     targets: loadJSON(LS_TG, null) || { revenue:0, clients:0 },
     prospects: loadJSON(LS_PR, []),
     activeProspectId: null,
@@ -548,6 +569,7 @@
     contentOpen: {},
     weekTab: null,
     dashLookupTab: null,
+    paramEditId: null,
     syncError: '',
     fuDraft: null,
     searchQuery: '',
@@ -600,7 +622,8 @@
     { key:'prospects',         prefix:'client_', legacy:'prospects',         ls:LS_PR, flag:'clientsMigrated', sort:byTime('createdAt', 1) },
     { key:'correctiveActions', prefix:'action_', legacy:'correctiveActions', ls:LS_A,  flag:'actionsMigrated', sort:byTime('createdAt', 1) },
     { key:'contentIdeas',      prefix:'idea_',   legacy:'contentIdeas',      ls:LS_CI, flag:'ideasMigrated',   sort:byTime('createdAt', -1) },
-    { key:'lookups',           prefix:'lookup_', legacy:'lookups',           ls:LS_LK, flag:'lookupsMigrated', sort:byTime('createdAt', -1) }
+    { key:'lookups',           prefix:'lookup_', legacy:'lookups',           ls:LS_LK, flag:'lookupsMigrated', sort:byTime('createdAt', -1) },
+    { key:'readings',          prefix:'reading_', legacy:'readings',         ls:LS_RD, flag:'readingsMigrated', sort:byTime('createdAt', 1) }
   ];
   var RS = {};
   RECORD_SETS.forEach(function(rs){ rs.synced = {}; rs.ready = false; rs.busy = false; rs.retry = null; RS[rs.key] = rs; });
@@ -709,6 +732,7 @@
           if (data.schedule) state.schedule = data.schedule;
           if (data.serviceClasses) state.serviceClasses = data.serviceClasses;
           if (data.deliverables) state.deliverables = data.deliverables;
+          if (data.paramLibrary) state.paramLibrary = data.paramLibrary;
           if (data.targets) state.targets = data.targets;
           if (data.reauditOverrides) state.reauditOverrides = data.reauditOverrides;
         } else {
@@ -716,7 +740,7 @@
         }
       } else {
         if (isConfig){
-          ref.set({ templates: state.templates, pricing: state.pricing, schedule: state.schedule, serviceClasses: state.serviceClasses, deliverables: state.deliverables, targets: state.targets, reauditOverrides: state.reauditOverrides }).catch(function(){});
+          ref.set({ templates: state.templates, pricing: state.pricing, schedule: state.schedule, serviceClasses: state.serviceClasses, deliverables: state.deliverables, paramLibrary: state.paramLibrary, targets: state.targets, reauditOverrides: state.reauditOverrides }).catch(function(){});
         } else {
           ref.set({ list: state[name] || [] }).catch(function(){});
         }
@@ -752,6 +776,8 @@
   function persistSchedule(){ saveJSON(LS_SCHED, state.schedule); fsSyncConfig('schedule', state.schedule); }
   function persistServiceClasses(){ saveJSON(LS_SVC, state.serviceClasses); fsSyncConfig('serviceClasses', state.serviceClasses); }
   function persistDeliverables(){ saveJSON(LS_DL, state.deliverables); fsSyncConfig('deliverables', state.deliverables); }
+  function persistParamLibrary(){ saveJSON(LS_PL, state.paramLibrary); fsSyncConfig('paramLibrary', state.paramLibrary); }
+  function persistReadings(){ saveJSON(LS_RD, state.readings); fsSyncRecords(RS.readings); }
   function persistProspects(){ saveJSON(LS_PR, state.prospects); fsSyncRecords(RS.prospects); }
   function persistLookups(){ saveJSON(LS_LK, state.lookups); fsSyncRecords(RS.lookups); }
   function persistContentIdeas(){ saveJSON(LS_CI, state.contentIdeas); fsSyncRecords(RS.contentIdeas); }
@@ -1109,6 +1135,94 @@
     if (hint) hint.textContent = setupHintText(problems);
     var mob = app.querySelector('[data-mobile-err]');
     if (mob) mob.textContent = mobileErrorText(state.setup.contactMobile);
+  }
+
+  // ---------- client parameters: the guiding numbers for the whole engagement ----------
+  function fmtNum(n){ return String(Math.round(Number(n)*100)/100); }
+  function paramReadings(p, pid){
+    return state.readings.filter(function(r){ return r.clientId===p.id && r.paramId===pid; }).sort(function(a, b){
+      if (a.date!==b.date) return a.date<b.date ? -1 : 1;
+      return (a.createdAt||0)-(b.createdAt||0);
+    });
+  }
+  function paramStats(p, prm){
+    var rs = paramReadings(p, prm.id);
+    var st = { readings:rs, start: rs.length ? rs[0].value : null, now: rs.length ? rs[rs.length-1].value : null };
+    st.delta = st.start!==null ? st.now-st.start : null;
+    st.improving = (st.delta===null || st.delta===0) ? null : (prm.better==='higher' ? st.delta>0 : st.delta<0);
+    var tv = (prm.target===''||prm.target===null||prm.target===undefined) ? NaN : Number(prm.target);
+    st.target = isNaN(tv) ? null : tv;
+    st.pct = (st.target!==null && st.start!==null && st.target!==st.start) ? Math.max(0, Math.min(100, Math.round((st.now-st.start)/(st.target-st.start)*100))) : null;
+    return st;
+  }
+  function paramSpark(values){
+    if (values.length<2) return '';
+    var w = 220, h = 36, pad = 4, min = Math.min.apply(null, values), max = Math.max.apply(null, values);
+    if (max===min){ max += 1; min -= 1; }
+    var pts = values.map(function(v, i){ return [pad+i/(values.length-1)*(w-2*pad), h-pad-(v-min)/(max-min)*(h-2*pad)]; });
+    var last = pts[pts.length-1];
+    return '<svg viewBox="0 0 '+w+' '+h+'" width="100%" height="'+h+'" preserveAspectRatio="none" style="margin-top:8px;">' +
+      '<path d="'+pts.map(function(p, i){ return (i?'L':'M')+p[0].toFixed(1)+','+p[1].toFixed(1); }).join(' ')+'" fill="none" stroke="var(--accent)" stroke-width="2"/>' +
+      '<circle cx="'+last[0].toFixed(1)+'" cy="'+last[1].toFixed(1)+'" r="3.5" fill="var(--accent)"/></svg>';
+  }
+  function renderParametersCard(p){
+    var params = p.parameters || [];
+    var have = params.map(function(x){ return (x.name||'').toLowerCase(); });
+    var lib = state.paramLibrary.filter(function(l){ return have.indexOf((l.name||'').toLowerCase())===-1; });
+    function card(prm){
+      var st = paramStats(p, prm), unit = esc(prm.unit||''), id = esc(prm.id);
+      var editing = state.paramEditId===prm.id, first = st.now===null;
+      var tone = st.improving===null ? 'var(--ink-600)' : (st.improving ? 'var(--good)' : 'var(--bad)');
+      var deltaLine = '';
+      if (!first){
+        deltaLine = st.delta===0 ? 'No change since the start' : ((st.delta>0?'▲ ':'▼ ')+fmtNum(Math.abs(st.delta))+unit+' since the start' + (st.improving ? ' — improving' : ' — moving the wrong way'));
+        if (st.pct!==null) deltaLine += ' · '+st.pct+'% of the way to target';
+      }
+      var recent = st.readings.slice().reverse().slice(0, 4);
+      return '<div class="card paramcard">' +
+        '<div class="paramhead">' +
+          '<div style="min-width:0;"><div class="paramname">'+esc(prm.name||'Parameter')+'</div>' +
+            '<div class="histmeta">'+(prm.better==='higher'?'Higher':'Lower')+' is better'+(st.target!==null ? ' · target '+fmtNum(st.target)+unit : '')+'</div></div>' +
+          '<button type="button" class="iconbtn" data-action="param-edit" data-pid="'+id+'" title="Edit this parameter">'+(editing?'✕':'⚙️')+'</button>' +
+        '</div>' +
+        (editing ? (
+          '<div class="paramedit">' +
+            '<div class="field" style="margin-bottom:10px;"><label>Name</label><input type="text" data-pfield="name" data-pid="'+id+'" value="'+esc(prm.name||'')+'" placeholder="e.g. Wastage"></div>' +
+            '<div style="display:flex;gap:10px;">' +
+              '<div class="field" style="flex:1;margin-bottom:10px;"><label>Unit</label><input type="text" data-pfield="unit" data-pid="'+id+'" value="'+esc(prm.unit||'')+'" placeholder="%, min, ₹"></div>' +
+              '<div class="field" style="flex:1;margin-bottom:10px;"><label>Target</label><input type="number" inputmode="decimal" step="any" data-pfield="target" data-pid="'+id+'" value="'+esc(prm.target===undefined?'':prm.target)+'" placeholder="e.g. 5"></div>' +
+            '</div>' +
+            '<div class="field" style="margin-bottom:10px;"><label>Better when the number is</label><div style="display:flex;gap:8px;">' +
+              [['lower','Lower'],['higher','Higher']].map(function(k){ return '<button type="button" class="naBtn '+((prm.better||'lower')===k[0]?'on':'')+'" data-action="param-better" data-pid="'+id+'" data-val="'+k[0]+'">'+k[1]+'</button>'; }).join('') +
+            '</div></div>' +
+            '<button type="button" class="btn btn-text btn-danger btn-sm" data-action="param-remove" data-pid="'+id+'">Remove this parameter</button>' +
+          '</div>'
+        ) : '') +
+        (first ? '<div class="helper" style="margin:8px 0;">No readings yet — add the starting value below.</div>' : (
+          '<div class="paramnums">' +
+            '<div><div class="pv">'+fmtNum(st.now)+unit+'</div><div class="pk">Now</div></div>' +
+            '<div><div class="pv">'+fmtNum(st.start)+unit+'</div><div class="pk">Start</div></div>' +
+            '<div><div class="pv">'+(st.target!==null ? fmtNum(st.target)+unit : '—')+'</div><div class="pk">Target</div></div>' +
+          '</div>' +
+          (st.pct!==null ? '<div class="progtrack"><div class="progfill" style="width:'+st.pct+'%;"></div></div>' : '') +
+          '<div class="histmeta" style="margin-top:6px;font-weight:700;color:'+tone+';">'+esc(deltaLine)+'</div>' +
+          paramSpark(st.readings.map(function(r){ return r.value; }))
+        )) +
+        '<div class="paramadd"><input type="number" inputmode="decimal" step="any" id="rdVal_'+id+'" placeholder="'+(first?'Starting value':'New reading')+'"><input type="date" id="rdDate_'+id+'" value="'+todayISO()+'"></div>' +
+        '<div class="paramadd" style="margin-top:8px;"><input type="text" id="rdNote_'+id+'" placeholder="Note (optional) — what changed?"><button type="button" class="btn btn-primary btn-sm" style="flex:none;" data-action="add-reading" data-pid="'+id+'">'+(first?'Save start':'+ Reading')+'</button></div>' +
+        (recent.length ? '<div style="margin-top:10px;">' + recent.map(function(r){
+          return '<div class="sumrow"><span class="k">'+esc(fmtDateShort(new Date(r.date+'T00:00:00').getTime()))+(r.note?' · '+esc(r.note):'')+(r.id===st.readings[0].id?' <span class="pill accent" style="margin-left:4px;">Start</span>':'')+'</span>' +
+            '<span class="v">'+fmtNum(r.value)+unit+' <button type="button" class="iconbtn" data-action="delete-reading" data-id="'+esc(r.id)+'" title="Delete this reading">✕</button></span></div>';
+        }).join('') + '</div>' : '') +
+      '</div>';
+    }
+    return sh('📈','Analysis parameters') +
+      '<div class="helper" style="margin:-4px 0 10px;">The numbers that guide the whole engagement. Record a starting value after the first audit, set a target, and add a reading each time you re-measure.</div>' +
+      params.map(card).join('') +
+      '<div class="areagrid" style="margin-bottom:22px;">' +
+        lib.map(function(l){ return '<button type="button" class="areachip" data-action="param-add" data-lib="'+esc(l.id)+'">+ '+esc(l.name)+'</button>'; }).join('') +
+        '<button type="button" class="areachip" data-action="param-add">+ Custom</button>' +
+      '</div>';
   }
 
   // ---------- client trail: inquiry, solution tasks and client requests ----------
@@ -1609,6 +1723,8 @@
       schedule: state.schedule,
       serviceClasses: state.serviceClasses,
       deliverables: state.deliverables,
+      paramLibrary: state.paramLibrary,
+      readings: state.readings,
       prospects: state.prospects,
       lookups: state.lookups,
       contentIdeas: state.contentIdeas,
@@ -1619,7 +1735,7 @@
 
   function applyBackupData(data){
     if (!data || typeof data!=='object') return false;
-    var known = ['templates','history','pricing','correctiveActions','schedule','serviceClasses','deliverables','prospects','lookups','contentIdeas','reauditOverrides','targets'];
+    var known = ['templates','history','pricing','correctiveActions','schedule','serviceClasses','deliverables','paramLibrary','readings','prospects','lookups','contentIdeas','reauditOverrides','targets'];
     var found = known.some(function(k){ return data[k]!==undefined; });
     if (!found) return false;
     if (data.templates) state.templates = data.templates;
@@ -1629,13 +1745,15 @@
     if (data.schedule) state.schedule = data.schedule;
     if (data.serviceClasses) state.serviceClasses = data.serviceClasses;
     if (data.deliverables) state.deliverables = data.deliverables;
+    if (data.paramLibrary) state.paramLibrary = data.paramLibrary;
+    if (data.readings) state.readings = data.readings;
     if (data.prospects) state.prospects = data.prospects;
     if (data.lookups) state.lookups = data.lookups;
     if (data.contentIdeas) state.contentIdeas = data.contentIdeas;
     if (data.reauditOverrides) state.reauditOverrides = data.reauditOverrides;
     if (data.targets) state.targets = data.targets;
     persistTemplates(); persistHistory(); persistPricing(); persistActions(); persistSchedule();
-    persistServiceClasses(); persistDeliverables(); persistProspects(); persistLookups(); persistContentIdeas(); persistReauditOverrides(); persistTargets();
+    persistServiceClasses(); persistDeliverables(); persistParamLibrary(); persistReadings(); persistProspects(); persistLookups(); persistContentIdeas(); persistReauditOverrides(); persistTargets();
     return true;
   }
 
@@ -1708,7 +1826,7 @@
   function fmtKB(b){ return b>=1048576 ? (b/1048576).toFixed(2)+' MB' : Math.max(1, Math.round(b/1024))+' KB'; }
   function storageTone(pct){ return pct>=90 ? 'bad' : (pct>=70 ? 'warn' : 'good'); }
   function storageReport(withRecords){
-    var cfgBytes = jsonBytes({ templates:state.templates, pricing:state.pricing, schedule:state.schedule, serviceClasses:state.serviceClasses, deliverables:state.deliverables, targets:state.targets, reauditOverrides:state.reauditOverrides });
+    var cfgBytes = jsonBytes({ templates:state.templates, pricing:state.pricing, schedule:state.schedule, serviceClasses:state.serviceClasses, deliverables:state.deliverables, paramLibrary:state.paramLibrary, targets:state.targets, reauditOverrides:state.reauditOverrides });
     var rep = { rows:[ { label:'Settings & checklists', bytes:cfgBytes, n:0, unit:'', pct:cfgBytes/DOC_LIMIT_BYTES*100 } ] };
     if (withRecords){
       rep.sets = [
@@ -1716,7 +1834,8 @@
         { label:'Clients', list:state.prospects, unit:'client' },
         { label:'Corrective actions', list:state.correctiveActions, unit:'action' },
         { label:'Content ideas', list:state.contentIdeas, unit:'idea' },
-        { label:'Lookups & tasks', list:state.lookups, unit:'item' }
+        { label:'Lookups & tasks', list:state.lookups, unit:'item' },
+        { label:'Parameter readings', list:state.readings, unit:'reading' }
       ].map(function(s){
         var total = 0, biggest = 0;
         s.list.forEach(function(r){ var b = jsonBytes(r); total += b; if (b>biggest) biggest = b; });
@@ -1804,6 +1923,25 @@
       '<div style="display:flex;gap:8px;margin-bottom:24px;">' +
         '<button class="btn btn-ghost btn-sm" data-action="dl-add">+ Add deliverable</button>' +
         '<button class="btn btn-text btn-danger" data-action="reset-dl">Reset to defaults</button>' +
+      '</div>' +
+
+      '<h1 style="font-size:20px;margin:0 0 4px;">Parameter library</h1>' +
+      '<div class="helper" style="margin-bottom:12px;">Quick-add suggestions for the Analysis parameters on a client page. Change them any time — clients keep the parameters they already have.</div>' +
+      '<div class="card" style="padding:4px 16px;margin-bottom:12px;">' +
+        state.paramLibrary.map(function(l, i){
+          return '<div class="pl-row" style="padding:10px 0;'+(i?'border-top:1px solid var(--line);':'')+'">' +
+            '<input type="text" data-libfield="name" data-lib="'+esc(l.id)+'" value="'+esc(l.name)+'" placeholder="Parameter name">' +
+            '<div style="display:flex;gap:8px;margin-top:8px;align-items:center;">' +
+              '<input type="text" data-libfield="unit" data-lib="'+esc(l.id)+'" value="'+esc(l.unit||'')+'" placeholder="Unit" style="width:76px;flex:none;">' +
+              '<select data-libfield="better" data-lib="'+esc(l.id)+'"><option value="lower" '+(l.better!=='higher'?'selected':'')+'>Lower is better</option><option value="higher" '+(l.better==='higher'?'selected':'')+'>Higher is better</option></select>' +
+              '<button class="iconbtn" data-action="lib-remove" data-lib="'+esc(l.id)+'" title="Remove">✕</button>' +
+            '</div>' +
+          '</div>';
+        }).join('') +
+      '</div>' +
+      '<div style="display:flex;gap:8px;margin-bottom:24px;">' +
+        '<button class="btn btn-ghost btn-sm" data-action="lib-add">+ Add parameter</button>' +
+        '<button class="btn btn-text btn-danger" data-action="reset-lib">Reset to defaults</button>' +
       '</div>' +
 
       '<h1 style="font-size:20px;margin:0 0 4px;">Re-audit schedule</h1>' +
@@ -2177,6 +2315,7 @@
     (p.actionLog||[]).forEach(function(s, i){ events.push({ t:s.doneAt, type:'loop-step', data:s, n:i+1 }); });
     (p.followUps||[]).filter(function(f){ return f.done && f.doneAt; }).forEach(function(f){ events.push({ t:f.doneAt, type:'followup', data:f }); });
     (p.inquiry||[]).forEach(function(e){ if (e.createdAt) events.push({ t:e.createdAt, type:'inquiry', data:e }); });
+    state.readings.filter(function(r){ return r.clientId===p.id && r.createdAt; }).forEach(function(r){ events.push({ t:r.createdAt, type:'reading', data:r }); });
     state.lookups.filter(function(l){ return l.clientId===p.id; }).forEach(function(l){
       var kind = l.source==='solution' ? 'task' : 'request';
       if (l.createdAt) events.push({ t:l.createdAt, type:kind+'-created', data:l });
@@ -2214,6 +2353,14 @@
         }
         if (e.type==='action-resolved'){
           return '<div class="card histcard static"><div class="histtop"><span>✓ Issue fixed</span></div><div class="histmeta" style="margin-top:8px;">'+esc(d.description||'(unspecified)')+' · '+fmtDateShort(e.t)+'</div></div>';
+        }
+        if (e.type==='reading'){
+          var rdPrm = (p.parameters||[]).filter(function(x){ return x.id===d.paramId; })[0];
+          if (!rdPrm) return '';
+          var rdList = paramReadings(p, rdPrm.id), rdIdx = rdList.map(function(r){ return r.id; }).indexOf(d.id);
+          var rdPrev = rdIdx>0 ? rdList[rdIdx-1] : null, rdU = esc(rdPrm.unit||'');
+          return '<div class="card histcard static"><div class="histtop"><span>📈 '+esc(rdPrm.name)+': '+fmtNum(d.value)+rdU+'</span><span class="histmeta">'+fmtDateShort(e.t)+'</span></div>' +
+            '<div class="histmeta" style="margin-top:6px;">'+(rdPrev ? 'Was '+fmtNum(rdPrev.value)+rdU : 'Starting value')+(d.note ? ' · '+esc(d.note) : '')+'</div></div>';
         }
         if (e.type==='inquiry'){
           return '<div class="card histcard static"><div class="histtop"><span>🗣️ Problem reported'+(d.area?' — '+esc(d.area):'')+'</span><span class="histmeta">'+fmtDateShort(e.t)+'</span></div>' +
@@ -2600,6 +2747,7 @@
         '<div class="helper" data-pmobile-err style="margin-top:-6px;color:var(--bad);">'+esc(mobileErrorText(p.contactMobile))+'</div>' +
       '</div>' +
       renderInquiryEditor('client', p.inquiry||[], inquiryAreaOptions(p.category)) +
+      renderParametersCard(p) +
       renderFollowUps(p) +
       (audits.length ? (
         '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:6px;">' +
@@ -3627,7 +3775,8 @@
     else if (action==='delete-prospect'){
       if (window.confirm('Delete this client? This cannot be undone.')){
         state.prospects = state.prospects.filter(function(p){ return p.id!==t.dataset.id; });
-        persistProspects();
+        state.readings = state.readings.filter(function(r){ return r.clientId!==t.dataset.id; });
+        persistProspects(); persistReadings();
         state.activeProspectId = null; render();
       }
     }
@@ -3998,6 +4147,59 @@
         persistServiceClasses(); render();
       }
     }
+    else if (action==='lib-add'){
+      state.paramLibrary.push({ id: uid(), name:'New parameter', unit:'', better:'lower' });
+      persistParamLibrary(); render();
+    }
+    else if (action==='lib-remove'){
+      state.paramLibrary = state.paramLibrary.filter(function(x){ return x.id!==t.dataset.lib; });
+      persistParamLibrary(); render();
+    }
+    else if (action==='reset-lib'){
+      if (window.confirm('Reset the parameter library to defaults?')){
+        state.paramLibrary = JSON.parse(JSON.stringify(DEFAULT_PARAM_LIBRARY));
+        persistParamLibrary(); render();
+      }
+    }
+    else if (action==='param-add'){
+      var paP = findProspect(state.activeProspectId);
+      if (!paP) return;
+      var paLib = state.paramLibrary.filter(function(l){ return l.id===t.dataset.lib; })[0];
+      var paNew = { id: uid(), name: paLib ? paLib.name : 'New parameter', unit: paLib ? (paLib.unit||'') : '', better: paLib ? (paLib.better||'lower') : 'lower', target:'', createdAt: Date.now() };
+      paP.parameters = paP.parameters || [];
+      paP.parameters.push(paNew);
+      state.paramEditId = paLib ? null : paNew.id;
+      persistProspects(); render();
+    }
+    else if (action==='param-edit'){
+      state.paramEditId = state.paramEditId===t.dataset.pid ? null : t.dataset.pid;
+      render();
+    }
+    else if (action==='param-better'){
+      var pbP = findProspect(state.activeProspectId);
+      var pbE = pbP && (pbP.parameters||[]).filter(function(x){ return x.id===t.dataset.pid; })[0];
+      if (pbE){ pbE.better = t.dataset.val; persistProspects(); render(); }
+    }
+    else if (action==='param-remove'){
+      var prP = findProspect(state.activeProspectId);
+      if (!prP || !window.confirm('Remove this parameter and all its readings?')) return;
+      prP.parameters = (prP.parameters||[]).filter(function(x){ return x.id!==t.dataset.pid; });
+      state.readings = state.readings.filter(function(r){ return !(r.clientId===prP.id && r.paramId===t.dataset.pid); });
+      state.paramEditId = null;
+      persistProspects(); persistReadings(); render();
+    }
+    else if (action==='add-reading'){
+      var arP = findProspect(state.activeProspectId), arId = t.dataset.pid;
+      var arV = app.querySelector('#rdVal_'+arId), arD = app.querySelector('#rdDate_'+arId), arN = app.querySelector('#rdNote_'+arId);
+      var arVal = arV ? parseFloat(arV.value) : NaN;
+      if (!arP || isNaN(arVal)){ if (arV) arV.focus(); return; }
+      state.readings.push({ id: uid(), clientId: arP.id, paramId: arId, value: arVal, date: (arD && arD.value) || todayISO(), note: (arN ? arN.value : '').trim(), createdAt: Date.now() });
+      persistReadings(); render();
+    }
+    else if (action==='delete-reading'){
+      state.readings = state.readings.filter(function(r){ return r.id!==t.dataset.id; });
+      persistReadings(); render();
+    }
     else if (action==='dl-add'){
       state.deliverables.push({ id: uid(), label: 'New deliverable' });
       persistDeliverables(); render();
@@ -4177,6 +4379,15 @@
         if (el.dataset.inqScope!=='setup') persistProspects();
       }
       if (el.tagName==='TEXTAREA'){ el.style.height = 'auto'; el.style.height = el.scrollHeight+'px'; }
+    }
+    else if (el.dataset.pfield){
+      var pfP = findProspect(state.activeProspectId);
+      var pfE = pfP && (pfP.parameters||[]).filter(function(x){ return x.id===el.dataset.pid; })[0];
+      if (pfE){ pfE[el.dataset.pfield] = el.value; persistProspects(); }
+    }
+    else if (el.dataset.libfield){
+      var lfE = state.paramLibrary.filter(function(x){ return x.id===el.dataset.lib; })[0];
+      if (lfE){ lfE[el.dataset.libfield] = el.value; persistParamLibrary(); }
     }
     else if (el.dataset.dlField){
       var dl2 = state.deliverables.filter(function(x){ return x.id===el.dataset.dl; })[0];
