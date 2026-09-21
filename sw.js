@@ -1,4 +1,4 @@
-const CACHE = 'diagnosis-room-v20';
+const CACHE = 'diagnosis-room-v21';
 const SHELL = ['./', './index.html', './manifest.json', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png', './icons/favicon-32.png'];
 
 self.addEventListener('install', function(event){

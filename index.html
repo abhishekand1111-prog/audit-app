@@ -218,6 +218,15 @@
   .lookuprow.done .lookuptext{text-decoration:line-through; color:var(--ink-400);}
   .lookuptext{flex:1 1 140px; min-width:0; border:none; background:none; color:var(--ink); font-size:16px; padding:4px 0; font-family:inherit; resize:none; overflow-y:auto; max-height:120px; white-space:pre-wrap; word-wrap:break-word; line-height:1.4;}
   .lookuptext:focus{outline:none;}
+  .lkcard{padding:12px 14px;}
+  .lkmain{display:flex; align-items:flex-start; gap:10px;}
+  .lkmain .lookuptext{padding:0; margin-top:1px;}
+  .lkmain .iconbtn{margin-top:-1px;}
+  .lkmeta{display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:8px; padding-left:32px;}
+  .lkchip{border:1px solid var(--line-strong); background:var(--surface-2); color:var(--ink-600); border-radius:20px; padding:3px 10px; font-size:12px; font-weight:700; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; transition:background .15s, color .15s;}
+  .lkchip:hover{background:var(--accent-soft); color:var(--accent-ink);}
+  .lkcard.done{opacity:.72;}
+  .lkcard.done .lookuptext{text-decoration:line-through; color:var(--ink-400);}
   .lookuprow select{border:1px solid var(--line-strong); border-radius:var(--r-s); background:var(--surface); color:var(--ink-600); font-size:11.5px; padding:5px 6px; flex:none; transition:border-color .15s;}
   .lookupglimpse-item{display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--line); font-size:13.5px;}
   .lookupglimpse-item:last-child{border-bottom:none;}
@@ -569,6 +578,8 @@
     contentOpen: {},
     weekTab: null,
     dashLookupTab: null,
+    lookupTab: 'task',
+    lookupShowDone: false,
     paramEditId: null,
     syncError: '',
     fuDraft: null,
@@ -3111,42 +3122,59 @@
 
   function lookupGroup(l){ return (l.category==='task' || l.source==='request') ? 'task' : 'lookup'; }
 
-  function renderLookupSection(title, icon, items, catValue){
-    var openN = items.filter(function(l){ return !l.done; }).length;
-    var doneN = items.length - openN;
-    return sh(icon, esc(title)) +
-      '<div class="statgrid" style="margin-top:0;">' +
-        '<div class="stattile t-accent"><div class="v">'+openN+'</div><div class="k">Open</div></div>' +
-        '<div class="stattile t-good"><div class="v">'+doneN+'</div><div class="k">Done</div></div>' +
+  function lookupCard(l){
+    var cl = l.clientId ? state.prospects.filter(function(p){ return p.id===l.clientId; })[0] : null;
+    var group = lookupGroup(l);
+    var meta = '';
+    if (cl) meta += '<button type="button" class="lkchip" data-action="goto-prospect" data-id="'+esc(cl.id)+'" title="Open client">👤 '+esc(cl.name||'Client')+'</button>';
+    if (l.source==='solution') meta += '<span class="pill">Solution</span>';
+    if (l.source==='request') meta += '<span class="pill warn">Client request</span>';
+    var when = l.done && l.doneAt ? 'Done '+fmtDateShort(l.doneAt) : (l.createdAt ? 'Added '+fmtDateShort(l.createdAt) : '');
+    if (when) meta += '<span class="histmeta" style="margin:0;">'+esc(when)+'</span>';
+    if (!l.source) meta += '<button type="button" class="btn btn-text btn-sm" style="margin-left:auto;" data-action="move-lookup" data-id="'+l.id+'">Move to '+(group==='task'?'Lookup':'Tasks')+'</button>';
+    return '<div class="card lkcard '+(l.done?'done':'')+'">' +
+      '<div class="lkmain">' +
+        '<button class="chk '+(l.done?'checked':'')+'" data-action="toggle-lookup-done" data-id="'+l.id+'" aria-label="Toggle done">'+(l.done?'✓':'')+'</button>' +
+        '<textarea rows="1" class="lookuptext" data-action="rename-lookup" data-id="'+l.id+'" placeholder="'+(group==='task'?'What needs to be done?':'What do you need to look up?')+'">'+esc(l.text)+'</textarea>' +
+        '<button class="iconbtn" data-action="delete-lookup" data-id="'+l.id+'" title="Remove">✕</button>' +
       '</div>' +
-      '<button class="btn btn-ghost btn-sm" style="margin-bottom:10px;" data-action="add-lookup" data-cat="'+catValue+'">+ Add '+esc(title.toLowerCase())+'</button>' +
-      (items.length===0 ? '<div class="empty" style="padding:22px 14px;"><div class="big">'+icon+'</div>Nothing here yet.</div>' :
-        '<div class="card" style="padding:4px 16px;">' +
-          items.map(function(l){
-            return '<div class="lookuprow '+(l.done?'done':'')+'">' +
-              '<button class="chk '+(l.done?'checked':'')+'" data-action="toggle-lookup-done" data-id="'+l.id+'" aria-label="Toggle done">'+(l.done?'✓':'')+'</button>' +
-              '<textarea rows="1" class="lookuptext" data-action="rename-lookup" data-id="'+l.id+'" placeholder="What needs attention?">'+esc(l.text)+'</textarea>' +
-              '<select data-action="lookup-category" data-id="'+l.id+'">' +
-                Object.keys(LOOKUP_CATEGORIES).map(function(k){ return '<option value="'+k+'" '+(lookupGroup(l)===k?'selected':'')+'>'+LOOKUP_CATEGORIES[k]+'</option>'; }).join('') +
-              '</select>' +
-              (l.clientId ? '<button class="iconbtn" data-action="goto-prospect" data-id="'+esc(l.clientId)+'" title="Open client">👤</button>' : '') +
-              '<button class="iconbtn" data-action="delete-lookup" data-id="'+l.id+'" title="Remove">✕</button>' +
-            '</div>';
-          }).join('') +
-        '</div>'
-      );
+      (meta ? '<div class="lkmeta">'+meta+'</div>' : '') +
+    '</div>';
   }
 
   function renderLookup(){
-    function sortFn(a,b){ if (!!a.done !== !!b.done) return a.done ? 1 : -1; return (b.createdAt||0)-(a.createdAt||0); }
-    var taskItems = state.lookups.filter(function(l){ return lookupGroup(l)==='task'; }).sort(sortFn);
-    var lookupItems = state.lookups.filter(function(l){ return lookupGroup(l)==='lookup'; }).sort(sortFn);
+    function sortFn(a,b){ return (b.createdAt||0)-(a.createdAt||0); }
+    var groups = {
+      task:   state.lookups.filter(function(l){ return lookupGroup(l)==='task'; }).sort(sortFn),
+      lookup: state.lookups.filter(function(l){ return lookupGroup(l)==='lookup'; }).sort(sortFn)
+    };
+    var openN = function(k){ return groups[k].filter(function(l){ return !l.done; }).length; };
+    var tab = state.lookupTab==='lookup' ? 'lookup' : 'task';
+    var items = groups[tab];
+    var open = items.filter(function(l){ return !l.done; });
+    var done = items.filter(function(l){ return l.done; });
+    var showDone = !!state.lookupShowDone;
+    var noun = tab==='task' ? 'task' : 'lookup';
     return '<main>' +
       '<div class="eyebrow">Lookup</div>' +
       '<h1 style="font-size:26px;margin-top:6px;margin-bottom:6px;">Tasks &amp; Lookup</h1>' +
-      '<div class="helper" style="margin-bottom:14px;">Anything to do or research — not tied to a specific audit.</div>' +
-      renderLookupSection('Task', '✅', taskItems, 'task') +
-      renderLookupSection('Lookup', '🔎', lookupItems, 'lookup') +
+      '<div class="helper" style="margin-bottom:14px;">Anything to do or research. Solution deliverables and client requests land in Tasks automatically.</div>' +
+      '<div class="tabs">' +
+        '<button class="tab '+(tab==='task'?'on':'')+'" data-action="lookup-tab" data-tab="task">✅ Tasks<span class="tabcount">'+openN('task')+'</span></button>' +
+        '<button class="tab '+(tab==='lookup'?'on':'')+'" data-action="lookup-tab" data-tab="lookup">🔎 Lookups<span class="tabcount">'+openN('lookup')+'</span></button>' +
+      '</div>' +
+      '<div class="statgrid" style="margin-top:0;">' +
+        '<div class="stattile t-accent"><div class="v">'+open.length+'</div><div class="k">Open</div></div>' +
+        '<div class="stattile t-good"><div class="v">'+done.length+'</div><div class="k">Done</div></div>' +
+      '</div>' +
+      '<button class="btn btn-primary" style="width:100%;margin-bottom:14px;" data-action="add-lookup" data-cat="'+tab+'">+ Add '+noun+'</button>' +
+      (open.length===0
+        ? '<div class="empty" style="padding:22px 14px;"><div class="big">'+(tab==='task'?'✅':'🔎')+'</div>'+(items.length===0 ? 'No '+noun+'s yet.' : 'Everything\'s cleared — nice work.')+'</div>'
+        : '<div class="cardstack">'+open.map(lookupCard).join('')+'</div>') +
+      (done.length ? (
+        '<button class="btn btn-text" style="margin-top:12px;" data-action="toggle-lookup-showdone">'+(showDone?'Hide':'Show')+' '+done.length+' done</button>' +
+        (showDone ? '<div class="cardstack" style="margin-top:8px;">'+done.map(lookupCard).join('')+'</div>' : '')
+      ) : '') +
     '</main>';
   }
 
@@ -3778,6 +3806,12 @@
       persistLookups(); render();
       var firstInput = app.querySelector('.lookuptext[data-id="'+newLk.id+'"]');
       if (firstInput) firstInput.focus();
+    }
+    else if (action==='lookup-tab'){ state.lookupTab = t.dataset.tab==='lookup' ? 'lookup' : 'task'; render(); }
+    else if (action==='toggle-lookup-showdone'){ state.lookupShowDone = !state.lookupShowDone; render(); }
+    else if (action==='move-lookup'){
+      var mlk = state.lookups.filter(function(l){ return l.id===t.dataset.id; })[0];
+      if (mlk){ mlk.category = lookupGroup(mlk)==='task' ? 'lookup' : 'task'; persistLookups(); render(); }
     }
     else if (action==='toggle-lookup-done'){
       var lk = state.lookups.filter(function(l){ return l.id===t.dataset.id; })[0];
