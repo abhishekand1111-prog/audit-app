@@ -106,6 +106,13 @@
   .btn-text:hover{color:var(--ink);}
   .btn-danger{color:var(--bad);}
   .btn-sm{padding:6px 11px; font-size:13px; border-radius:var(--r-s);}
+  a.btn{text-decoration:none;}
+  .contactrow{display:flex; flex-wrap:wrap; gap:8px;}
+  .contactrow:empty{display:none;}
+  .contactrow.blockrow{margin:2px 0 14px;}
+  .contactrow.blockrow .btn{flex:1 1 0; padding:10px 12px; font-size:14px;}
+  .pbrow{display:flex; gap:10px; align-items:flex-start; padding:9px 0; border-top:1px solid var(--line);}
+  .pbrow:first-of-type{border-top:none;}
   .field label{display:block; font-size:12.5px; font-weight:700; color:var(--ink-600); margin-bottom:6px;}
   .field input, .field textarea, .field select{width:100%; border:1px solid var(--line-strong); background:var(--surface); color:var(--ink); border-radius:var(--r-s); padding:10px 12px; font-size:16px; font-family:inherit;}
   .field select{appearance:none; -webkit-appearance:none; background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5'><polyline points='6 9 12 15 18 9'/></svg>"); background-repeat:no-repeat; background-position:right 12px center; padding-right:34px;}
@@ -1146,11 +1153,21 @@
   function prospectHintText(problems){
     return problems.length ? 'Still needed to complete this client: '+problems.join(', ')+'.' : '✓ All required details are filled in.';
   }
+  // One-tap call / WhatsApp links for a client's saved mobile number (Indian numbers, +91).
+  function contactButtons(p){
+    if (!p || !isValidMobile(p.contactMobile)) return '';
+    var n = normalizeMobile(p.contactMobile);
+    var first = String(p.contactName||'').trim().split(/\s+/)[0];
+    return '<a class="btn btn-ghost btn-sm" href="tel:+91'+n+'">📞 Call</a>' +
+      '<a class="btn btn-ghost btn-sm" href="https://wa.me/91'+n+(first ? '?text='+encodeURIComponent('Hi '+first+', ') : '')+'" target="_blank" rel="noopener">💬 WhatsApp</a>';
+  }
   function updateProspectGate(p){
     var hint = app.querySelector('[data-prospect-hint]');
     if (hint) hint.textContent = prospectHintText(prospectProblems(p));
     var mob = app.querySelector('[data-pmobile-err]');
     if (mob) mob.textContent = mobileErrorText(p.contactMobile);
+    var cb = app.querySelector('[data-contact-btns]');
+    if (cb) cb.innerHTML = contactButtons(p);
   }
   function setupProblems(s){
     var p = [];
@@ -2628,10 +2645,67 @@
             '</div>' +
             '<div class="histmeta">'+esc(clientStageLabel(x.p))+' · '+esc(fmtFollowUpWhen(x.f))+'</div>' +
             (x.f.note ? '<div style="font-size:13.5px;margin-top:2px;">'+esc(x.f.note)+'</div>' : '') +
-            '<button type="button" class="btn btn-ghost btn-sm" style="margin-top:6px;" data-action="done-followup" data-pid="'+x.p.id+'" data-fid="'+x.f.id+'">✓ Done</button>' +
+            '<div class="contactrow" style="margin-top:6px;">' +
+              '<button type="button" class="btn btn-ghost btn-sm" data-action="done-followup" data-pid="'+x.p.id+'" data-fid="'+x.f.id+'">✓ Done</button>' +
+              contactButtons(x.p) +
+            '</div>' +
           '</div>';
         }).join('') : '<div class="helper" style="margin:8px 0 0;">Nothing due in the next 7 days.</div>') +
         (list.length>shown.length ? '<div class="helper" style="margin:8px 0 0;">+'+(list.length-shown.length)+' more due soon</div>' : '') +
+      '</div>';
+  }
+
+  // Dashboard scorecard: how every client's guiding numbers are moving, surfacing the ones that need attention.
+  function paramStatus(p, prm){
+    var st = paramStats(p, prm), kind = 'none', age = null;
+    if (st.now!==null){
+      var last = st.readings[st.readings.length-1].date;
+      age = Math.floor((Date.now()-new Date(last+'T00:00:00').getTime())/86400000);
+      var reached = st.target!==null && (prm.better==='higher' ? st.now>=st.target : st.now<=st.target);
+      if (reached) kind = 'reached';
+      else if (st.improving===false) kind = 'wrong';
+      else if (age>30) kind = 'stale';
+      else kind = st.improving ? 'improving' : 'flat';
+    }
+    return { st:st, kind:kind, age:age };
+  }
+  function renderParamsBoard(){
+    var rows = [];
+    state.prospects.forEach(function(p){
+      if (p.declined || p.engagementEnded) return;
+      (p.parameters||[]).forEach(function(prm){ rows.push({ p:p, prm:prm, s:paramStatus(p, prm) }); });
+    });
+    if (!rows.length) return '';
+    function count(kinds){ return rows.filter(function(r){ return kinds.indexOf(r.s.kind)>=0; }).length; }
+    var wrongN = count(['wrong']), dueN = count(['stale','none']), goodN = count(['reached','improving','flat']);
+    var order = { wrong:0, stale:1, none:2 };
+    var attention = rows.filter(function(r){ return order[r.s.kind]!==undefined; })
+      .sort(function(a, b){ return order[a.s.kind]-order[b.s.kind]; });
+    var shown = attention.slice(0, 6);
+    return sh('📊','Client Parameters','var(--accent-soft)') +
+      '<div class="card" style="padding:14px 16px;margin-bottom:20px;">' +
+        '<div class="statgrid" style="margin:0 0 6px;">' +
+          '<div class="stattile t-good"><div class="v">'+goodN+'</div><div class="k">On track</div></div>' +
+          '<div class="stattile'+(wrongN?' t-bad':'')+'"><div class="v">'+wrongN+'</div><div class="k">Wrong way</div></div>' +
+          '<div class="stattile'+(dueN?' t-accent':'')+'"><div class="v">'+dueN+'</div><div class="k">Reading due</div></div>' +
+        '</div>' +
+        (shown.length ? shown.map(function(r){
+          var st = r.s.st, unit = r.prm.unit||'', k = r.s.kind;
+          var pill = k==='wrong' ? '<span class="pill bad">Wrong way</span>' : (k==='stale' ? '<span class="pill warn">Reading due</span>' : '<span class="pill warn">No reading</span>');
+          var meta;
+          if (k==='none') meta = 'Add the starting value';
+          else {
+            meta = fmtNum(st.now)+unit+' now' + (st.target!==null ? ' · target '+fmtNum(st.target)+unit : '');
+            meta += k==='wrong' ? ' · '+(st.delta>0?'▲ ':'▼ ')+fmtNum(Math.abs(st.delta))+unit+' since start' : ' · last reading '+r.s.age+' days ago';
+          }
+          return '<div class="pbrow">' +
+            '<div style="flex:1;min-width:0;">' +
+              '<button type="button" class="btn btn-text btn-sm" style="padding:0;font-weight:700;text-align:left;" data-action="goto-prospect" data-id="'+r.p.id+'">'+esc(r.p.name||'Unnamed client')+' · '+esc(r.prm.name||'Parameter')+'</button>' +
+              '<div class="histmeta">'+esc(meta)+'</div>' +
+            '</div>' + pill +
+          '</div>';
+        }).join('') : '<div class="helper" style="margin:8px 0 0;">All parameters are on track — nice work.</div>') +
+        (attention.length>shown.length ? '<div class="helper" style="margin:8px 0 0;">+'+(attention.length-shown.length)+' more need attention</div>' : '') +
       '</div>';
   }
 
@@ -2790,6 +2864,7 @@
           '<div class="field" style="flex:1;"><label for="pContactMobile">Mobile number'+req+'</label><input id="pContactMobile" type="tel" inputmode="tel" data-bind-prospect="contactMobile" value="'+esc(p.contactMobile||'')+'" placeholder="e.g. 98765 43210"></div>' +
         '</div>' +
         '<div class="helper" data-pmobile-err style="margin-top:-6px;color:var(--bad);">'+esc(mobileErrorText(p.contactMobile))+'</div>' +
+        '<div class="contactrow blockrow" data-contact-btns>'+contactButtons(p)+'</div>' +
       '</div>' +
       renderInquiryEditor('client', p.inquiry||[], inquiryAreaOptions(p.category)) +
       renderParametersCard(p) +
@@ -3603,6 +3678,7 @@
       '<button class="btn btn-primary" style="width:100%;padding:14px;margin-bottom:22px;" data-action="go-setup">+ Start New Audit</button>' +
 
       renderLoopBoard() +
+      renderParamsBoard() +
 
       '<div class="sechead2"><span class="ic" style="background:var(--bad-soft);">🛠️</span><h2>Corrective Actions — Last 7 Days</h2></div>' +
       '<div class="statgrid" style="margin-top:0;margin-bottom:12px;">' +
