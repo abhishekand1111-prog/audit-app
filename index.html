@@ -284,7 +284,48 @@
   .sumrow .k{color:var(--ink-600);}
   .sumrow .v{font-weight:600; font-family:var(--font-m);}
   .remarkbox{background:var(--surface-2); border-radius:var(--r-m); padding:14px; font-size:14px; line-height:1.5; margin-top:6px; white-space:pre-wrap;}
+  .sumactions{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px;}
 
+  /* shareable audit report (only visible when printing / saving as PDF) */
+  #printReport{display:none;}
+  @media print{
+    @page{size:A4; margin:14mm;}
+    body.printing{background:#fff !important;}
+    body.printing > *:not(#printReport){display:none !important;}
+    body.printing #printReport{display:block;}
+  }
+  #printReport{color:#111827; font-family:Inter,-apple-system,"Segoe UI",Roboto,Arial,sans-serif; font-size:12.5px; line-height:1.5; background:#fff; -webkit-print-color-adjust:exact; print-color-adjust:exact;}
+  #printReport *{box-sizing:border-box;}
+  #printReport .rp-top{display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #111827; padding-bottom:10px; margin-bottom:16px;}
+  #printReport .rp-brand{display:flex; align-items:center; gap:10px; font-weight:800; font-size:16px;}
+  #printReport .rp-brand img{width:38px; height:38px; border-radius:9px;}
+  #printReport .rp-kind{font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:#6b7280; font-weight:700;}
+  #printReport h1{font-size:24px; margin:0 0 2px; color:#111827;}
+  #printReport h2{font-size:13px; letter-spacing:.06em; text-transform:uppercase; color:#374151; margin:20px 0 8px; padding-bottom:4px; border-bottom:1px solid #e5e7eb;}
+  #printReport .rp-sub{color:#4b5563; margin-bottom:12px;}
+  #printReport .rp-meta{display:flex; flex-wrap:wrap; gap:6px 24px; margin-bottom:6px; color:#374151;}
+  #printReport .rp-meta b{color:#111827;}
+  #printReport .rp-score{display:flex; gap:14px; align-items:stretch; margin:14px 0 4px;}
+  #printReport .rp-big{flex:1.2; border-radius:10px; padding:14px 16px; color:#fff;}
+  #printReport .rp-big .n{font-size:40px; font-weight:800; line-height:1;}
+  #printReport .rp-big .l{font-size:13px; font-weight:700; margin-top:4px; opacity:.95;}
+  #printReport .rp-tile{flex:1; border:1px solid #e5e7eb; border-radius:10px; padding:12px 14px; background:#f9fafb;}
+  #printReport .rp-tile .n{font-size:20px; font-weight:800;}
+  #printReport .rp-tile .l{font-size:11px; color:#6b7280; margin-top:2px;}
+  #printReport .rp-row{display:flex; align-items:center; gap:10px; padding:5px 0; break-inside:avoid;}
+  #printReport .rp-row .nm{flex:0 0 34%; font-weight:600;}
+  #printReport .rp-row .bar{flex:1; height:9px; background:#e5e7eb; border-radius:5px; overflow:hidden;}
+  #printReport .rp-row .bar i{display:block; height:100%; border-radius:5px;}
+  #printReport .rp-row .pc{flex:0 0 74px; text-align:right; font-variant-numeric:tabular-nums; color:#374151;}
+  #printReport .rp-box{border:1px solid #e5e7eb; border-radius:8px; padding:9px 12px; margin-bottom:8px; break-inside:avoid;}
+  #printReport .rp-box .t{font-weight:700;}
+  #printReport .rp-box .s{color:#4b5563; margin-top:2px;}
+  #printReport .rp-issue{border-left:3px solid #dc2626; background:#fef2f2; padding:7px 12px; margin-bottom:8px; border-radius:0 6px 6px 0; break-inside:avoid;}
+  #printReport ul{margin:4px 0 8px 18px; padding:0;}
+  #printReport li{margin:2px 0;}
+  #printReport .rp-remark{white-space:pre-wrap; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:12px 14px;}
+  #printReport .rp-sign img{max-height:70px; border:1px solid #e5e7eb; border-radius:6px; background:#fff; margin-top:6px;}
+  #printReport .rp-foot{margin-top:24px; padding-top:8px; border-top:1px solid #e5e7eb; color:#9ca3af; font-size:11px; text-align:center;}
   /* history */
   .histcard{padding:14px 16px; margin-bottom:10px; cursor:pointer; transition:box-shadow .15s, border-color .15s, transform .12s;}
   .histcard:hover{border-color:var(--line-strong); box-shadow:var(--shadow);}
@@ -1691,9 +1732,12 @@
       '<button class="backrow" data-action="back-from-summary">← '+(state.summaryReturnView==='prospects'?'Back to client':'Back')+'</button>' +
       '<div class="sumhead"><div><span class="badge">'+esc(tmpl.label||rec.type)+'</span>' +
         '<h1 style="font-size:24px;margin-top:8px;">'+esc(rec.storeName||'Unnamed store')+'</h1></div>' +
+      '</div>' +
+      '<div class="helper" style="margin-bottom:12px;">'+(rec.storeLocation?esc(rec.storeLocation)+' · ':'')+fmtAuditWhen(rec.auditDate,rec.auditTime)+'</div>' +
+      '<div class="sumactions">' +
+        '<button type="button" class="btn btn-primary btn-sm" data-action="print-audit-report" data-id="'+rec.id+'">📄 PDF report</button>' +
         '<button type="button" class="btn btn-ghost btn-sm" data-action="copy-audit-summary" data-id="'+rec.id+'">📋 Copy Summary</button>' +
       '</div>' +
-      '<div class="helper" style="margin-bottom:16px;">'+(rec.storeLocation?esc(rec.storeLocation)+' · ':'')+fmtAuditWhen(rec.auditDate,rec.auditTime)+'</div>' +
       (rec.contactName || rec.contactMobile ? (
         '<div class="card" style="padding:4px 16px;margin-bottom:16px;">' +
           '<div class="sumrow"><span class="k">Point of contact</span><span class="v">'+esc(rec.contactName||'—')+(rec.contactDesignation?' ('+esc(rec.contactDesignation)+')':'')+'</span></div>' +
@@ -1742,6 +1786,85 @@
       sh('📝','Final remark') +
       '<div class="remarkbox">'+esc(rec.remark||'—')+'</div>' +
     '</main>';
+  }
+
+  // Client-facing report. Built into a hidden #printReport block; the browser's print dialog turns it into a PDF.
+  function buildAuditReportHtml(rec){
+    var tmpl = state.templates[rec.type] || { label: rec.type };
+    var pct = rec.completionPct;
+    var tone = pct>=85 ? ['#15803d','Excellent'] : (pct>=70 ? ['#16a34a','Good'] : (pct>=40 ? ['#d97706','Needs improvement'] : ['#dc2626','Critical attention needed']));
+    var barColor = function(v){ return v>=70 ? '#16a34a' : (v>=40 ? '#d97706' : '#dc2626'); };
+    var secs = (rec.sections||[]).filter(sectionWasAudited);
+    var client = state.prospects.filter(function(p){ return prospectAudits(p).some(function(h){ return h.id===rec.id; }); })[0];
+    var inq = client ? (client.inquiry||[]).filter(function(e){ return e.auditId===rec.id && (e.problem||'').trim(); }) : [];
+    var acts = state.correctiveActions.filter(function(a){ return a.auditId===rec.id; });
+    var recs = computeAuditRecommendations(rec);
+    var delta = (rec.prevScore!==null && rec.prevScore!==undefined) ? pct-rec.prevScore : null;
+    var attention = secs.map(function(s){
+      return { name:s.name, items:(s.items||[]).filter(function(it){ return it.state!=='checked' && it.state!=='na'; }) };
+    }).filter(function(s){ return s.items.length; });
+    var who = rec.witnessName ? rec.witnessName+(rec.witnessDesignation?' ('+rec.witnessDesignation+')':'') : '';
+    var h = '';
+    h += '<div class="rp-top"><div class="rp-brand"><img src="'+LOGO_SRC+'" alt="">Diagnosis Room</div><div class="rp-kind">Floor Audit Report</div></div>';
+    h += '<h1>'+esc(rec.storeName||'Unnamed store')+'</h1>';
+    h += '<div class="rp-sub">'+esc(tmpl.label||rec.type)+(rec.storeLocation?' · '+esc(rec.storeLocation):'')+'</div>';
+    h += '<div class="rp-meta"><span><b>Audit date:</b> '+esc(fmtAuditWhen(rec.auditDate, rec.auditTime))+'</span>' +
+      (rec.contactName ? '<span><b>Point of contact:</b> '+esc(rec.contactName)+(rec.contactDesignation?' ('+esc(rec.contactDesignation)+')':'')+'</span>' : '') +
+      (who ? '<span><b>Witnessed by:</b> '+esc(who)+'</span>' : '') + '</div>';
+    h += '<div class="rp-score">' +
+      '<div class="rp-big" style="background:'+tone[0]+';"><div class="n">'+pct+'%</div><div class="l">'+tone[1]+'</div></div>' +
+      '<div class="rp-tile"><div class="n">'+rec.checked+' / '+rec.total+'</div><div class="l">Items checked</div></div>' +
+      '<div class="rp-tile"><div class="n">'+(delta===null ? '—' : (delta>0?'▲ +':(delta<0?'▼ ':'')) + (delta===0?'0':delta)+(delta===null?'':' pts'))+'</div><div class="l">'+(delta===null ? 'First audit' : 'vs previous visit')+'</div></div>' +
+    '</div>';
+    if (secs.length){
+      h += '<h2>Area scorecard</h2>' + secs.map(function(s){
+        var v = s.total ? Math.round(s.checked/s.total*100) : 100;
+        return '<div class="rp-row"><span class="nm">'+esc(s.name)+'</span><span class="bar"><i style="width:'+v+'%;background:'+barColor(v)+';"></i></span><span class="pc">'+v+'% · '+s.checked+'/'+s.total+'</span></div>';
+      }).join('');
+    }
+    var issues = secs.filter(function(s){ return s.issue; });
+    if (issues.length){
+      h += '<h2>What we found</h2>' + issues.map(function(s){ return '<div class="rp-issue"><b>'+esc(s.name)+':</b> '+esc(s.issue)+'</div>'; }).join('');
+    }
+    if (inq.length){
+      h += '<h2>Problems reported by the team</h2>' + inq.map(function(e){
+        return '<div class="rp-box"><div class="t">'+esc(e.problem)+'</div>' +
+          ((e.area||e.action) ? '<div class="s">'+(e.area?'Area: '+esc(e.area):'')+(e.area&&e.action?' · ':'')+(e.action?'Tried so far: '+esc(e.action):'')+'</div>' : '') + '</div>';
+      }).join('');
+    }
+    if (attention.length){
+      h += '<h2>Items needing attention</h2>' + attention.map(function(s){
+        return '<div style="break-inside:avoid;"><b>'+esc(s.name)+'</b><ul>'+s.items.map(function(it){ return '<li>'+esc(it.text)+'</li>'; }).join('')+'</ul></div>';
+      }).join('');
+    }
+    if (recs.length){
+      h += '<h2>Recommended next steps</h2>' + recs.map(function(r){
+        return '<div class="rp-box"><div class="t">'+esc(r.name)+' <span style="font-weight:400;color:#6b7280;">— currently '+r.pct+'%</span></div><div class="s">'+esc(r.suggestion)+'</div></div>';
+      }).join('');
+    }
+    if (acts.length){
+      h += '<h2>Corrective actions</h2>' + acts.map(function(a){
+        return '<div class="rp-box"><div class="t">'+esc(a.description||'')+'</div><div class="s">'+(a.done?'Completed':(a.dueDate?'Due '+esc(fmtDateShort(new Date(a.dueDate+'T00:00:00').getTime())):'Open'))+'</div></div>';
+      }).join('');
+    }
+    if ((rec.remark||'').trim()) h += '<h2>Summary &amp; remarks</h2><div class="rp-remark">'+esc(rec.remark)+'</div>';
+    if (rec.witnessSignature) h += '<div class="rp-sign"><h2>Witness signature</h2><img src="'+rec.witnessSignature+'" alt="Witness signature"></div>';
+    h += '<div class="rp-foot">Prepared by Diagnosis Room · '+esc(new Date().toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}))+'</div>';
+    return h;
+  }
+  function printAuditReport(rec){
+    var host = document.getElementById('printReport');
+    if (!host){ host = document.createElement('div'); host.id = 'printReport'; document.body.appendChild(host); }
+    host.innerHTML = buildAuditReportHtml(rec);
+    var oldTitle = document.title;
+    document.title = ((rec.storeName||'Audit')+' - Audit Report '+(rec.auditDate||'')).replace(/[\\\/:*?"<>|]/g,'');
+    document.body.classList.add('printing');
+    var done = function(){
+      window.removeEventListener('afterprint', done);
+      setTimeout(function(){ document.body.classList.remove('printing'); document.title = oldTitle; host.innerHTML = ''; }, 1000);
+    };
+    window.addEventListener('afterprint', done);
+    setTimeout(function(){ try{ window.print(); }catch(e){ done(); } }, 80);
   }
 
   function csvEscape(v){
@@ -4047,6 +4170,10 @@
     else if (action==='toggle-witness-same'){
       d.witnessSameAsContact = !(d.witnessSameAsContact!==false);
       persistDraft(); render();
+    }
+    else if (action==='print-audit-report'){
+      var recPR = state.history.filter(function(h){ return h.id===t.dataset.id; })[0];
+      if (recPR) printAuditReport(recPR);
     }
     else if (action==='copy-audit-summary'){
       var recCS = state.history.filter(function(h){ return h.id===t.dataset.id; })[0];
