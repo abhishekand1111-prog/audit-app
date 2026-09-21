@@ -581,8 +581,39 @@
     viewingAuditId: null,
     summaryReturnView: 'setup'
   };
+  // Remember where the user was, so a refresh or reopening the app lands on the same page.
+  var LS_NAV = 'diagnosisroom_nav_v1';
+  var NAV_VIEWS = ['dashboard','week','editor','pricing','actions','prospects','lookup','content','search','summary'];
+  var navScrollY = 0;
+  (function restoreNav(){
+    var n = loadJSON(LS_NAV, null);
+    if (!n || NAV_VIEWS.indexOf(n.view) < 0) return;
+    function has(list, id){ return !!id && list.some(function(x){ return x.id===id; }); }
+    if (n.view==='summary'){
+      if (!has(state.history, n.viewingAuditId)) return;
+      state.viewingAuditId = n.viewingAuditId;
+      if (NAV_VIEWS.indexOf(n.summaryReturnView) >= 0 && n.summaryReturnView!=='summary') state.summaryReturnView = n.summaryReturnView;
+    }
+    if (n.view==='prospects' && has(state.prospects, n.activeProspectId)) state.activeProspectId = n.activeProspectId;
+    if (n.view==='content' && has(state.contentIdeas, n.activeContentId)) state.activeContentId = n.activeContentId;
+    if (n.editorTab==='dinein' || n.editorTab==='qsr') state.editorTab = n.editorTab;
+    if (n.actionsTab) state.actionsTab = n.actionsTab;
+    if (n.historyTab) state.historyTab = n.historyTab;
+    if (n.weekTab) state.weekTab = n.weekTab;
+    if (n.contentCoverageTab) state.contentCoverageTab = n.contentCoverageTab;
+    state.view = n.view;
+    navScrollY = Number(n.scrollY) || 0;
+  })();
+  function saveNav(){
+    if (state.draft || !NAV_VIEWS.some(function(v){ return v===state.view; })) return;
+    saveJSON(LS_NAV, { view:state.view, activeProspectId:state.activeProspectId, activeContentId:state.activeContentId,
+      viewingAuditId:state.viewingAuditId, summaryReturnView:state.summaryReturnView, editorTab:state.editorTab,
+      actionsTab:state.actionsTab, historyTab:state.historyTab, weekTab:state.weekTab, contentCoverageTab:state.contentCoverageTab,
+      scrollY: Math.round(window.pageYOffset || 0) });
+  }
+  var navTimer = null;
+  window.addEventListener('scroll', function(){ clearTimeout(navTimer); navTimer = setTimeout(saveNav, 300); }, { passive:true });
   if (state.draft) state.view = 'audit';
-
   var fsDb = null;
   var fsUnsubs = [];
 
@@ -603,9 +634,10 @@
   function fsSyncConfig(fieldName, value){
     if (!fsDb || !state.authUser) return;
     var obj = {};
-    obj[fieldName] = value;
+    try{ obj[fieldName] = JSON.parse(JSON.stringify(value)); }catch(e){ obj[fieldName] = value; }
     state.syncPending = true;
-    fsUserDataDoc('config').set(obj, {merge:true}).then(syncOk, syncFail);
+    try{ fsUserDataDoc('config').set(obj, {merge:true}).then(syncOk, syncFail); }
+    catch(e){ syncFail(e); }
   }
 
   // Every list that grows is stored one document per record (data/<prefix><id>), so nothing shares a 1 MB ceiling.
@@ -740,7 +772,7 @@
         }
       } else {
         if (isConfig){
-          ref.set({ templates: state.templates, pricing: state.pricing, schedule: state.schedule, serviceClasses: state.serviceClasses, deliverables: state.deliverables, paramLibrary: state.paramLibrary, targets: state.targets, reauditOverrides: state.reauditOverrides }).catch(function(){});
+          try{ ref.set(JSON.parse(JSON.stringify({ templates: state.templates, pricing: state.pricing, schedule: state.schedule, serviceClasses: state.serviceClasses, deliverables: state.deliverables, paramLibrary: state.paramLibrary, targets: state.targets, reauditOverrides: state.reauditOverrides }))).catch(function(){}); }catch(e){}
         } else {
           ref.set({ list: state[name] || [] }).catch(function(){});
         }
@@ -1027,6 +1059,8 @@
     else if (v==='dashboard') html = renderDashboard();
     else if (v==='week') html = renderWeekView();
     app.innerHTML = topbar() + html;
+    saveNav();
+    if (navScrollY){ var ny = navScrollY; navScrollY = 0; window.scrollTo(0, ny); }
     var lookupTAs = app.querySelectorAll('.lookuptext, .edtext, .inqtext');
     for (var lti=0; lti<lookupTAs.length; lti++){
       lookupTAs[lti].style.height = 'auto';
@@ -4073,6 +4107,12 @@
       persistTemplates(); render();
     }
     else if (action==='copy-section-to-other'){
+      function copyItem(it){
+        var c = { id:uid(), text:it.text };
+        if (it.requiresInfo) c.requiresInfo = true;
+        if (it.infoLabel) c.infoLabel = it.infoLabel;
+        return c;
+      }
       var srcTmpl = state.templates[state.editorTab];
       var srcSec = srcTmpl.sections.filter(function(s){return s.id===t.dataset.sec;})[0];
       if (!srcSec) return;
@@ -4082,12 +4122,12 @@
       if (existing){
         srcSec.items.forEach(function(it){
           var already = existing.items.some(function(ei){ return ei.text.toLowerCase()===it.text.toLowerCase(); });
-          if (!already) existing.items.push({ id:uid(), text:it.text, requiresInfo:it.requiresInfo, infoLabel:it.infoLabel });
+          if (!already) existing.items.push(copyItem(it));
         });
       } else {
         otherTmpl.sections.push({
           id:uid(), name:srcSec.name,
-          items:srcSec.items.map(function(it){ return { id:uid(), text:it.text, requiresInfo:it.requiresInfo, infoLabel:it.infoLabel }; })
+          items:srcSec.items.map(copyItem)
         });
       }
       persistTemplates(); render();
