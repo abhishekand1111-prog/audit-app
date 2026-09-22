@@ -3094,14 +3094,38 @@
 
   // The four proven angles a piece of content can take (an Instagram-creator tip). Every idea should lean on one or two of these, not the topic itself.
   var CONTENT_ANGLES = [
-    { key:'belief', icon:'💭', label:'Belief', helper:'An opinion or honest take — say what you really think about how the industry does things.' },
-    { key:'myth', icon:'❌', label:'Myth-buster', helper:'Call out a myth or misconception people in the niche believe.' },
-    { key:'process', icon:'🎬', label:'Insight / Process', helper:'Behind-the-scenes, a case study, or a before-after transformation.' },
-    { key:'offer', icon:'🎯', label:'Offer', helper:'What you sell — a direct pitch or call to action.' }
+    { key:'belief', icon:'💭', label:'Belief', helper:'An opinion or honest take — say what you really think about how the industry does things.',
+      c1:{ label:'What people usually think or do', ph:'The common view or habit you’re pushing back on' },
+      c2:{ label:'Your honest take', ph:'What you actually believe, and why — say this on camera' } },
+    { key:'myth', icon:'❌', label:'Myth-buster', helper:'Call out a myth or misconception people in the niche believe.',
+      c1:{ label:'The myth', ph:'The misconception people in the niche believe' },
+      c2:{ label:'The truth', ph:'What’s actually true, and the proof or reasoning behind it' } },
+    { key:'process', icon:'🎬', label:'Insight / Process', helper:'Behind-the-scenes, a case study, or a before-after transformation.',
+      c1:{ label:'Before — the problem', ph:'The situation before: the pain point, the mess, the starting case' },
+      c2:{ label:'Behind the scenes — the after', ph:'What you did and the result — full script / shot list' } },
+    { key:'offer', icon:'🎯', label:'Offer', helper:'What you sell — a direct pitch or call to action.',
+      c1:{ label:'Who this is for', ph:'The problem your offer solves for them' },
+      c2:{ label:'The offer', ph:'What you’re offering — the pitch and script for it' } }
   ];
   function contentAngleOf(key){ return CONTENT_ANGLES.filter(function(a){ return a.key===key; })[0]; }
   function contentAngleChips(c){
     return (c.angles||[]).map(function(k){ var a = contentAngleOf(k); return a ? '<span class="angletag">'+a.icon+' '+esc(a.label)+'</span>' : ''; }).join('');
+  }
+  // The angle you picked reshapes Context 1/2 so the field asks for what that angle actually needs, instead of a generic "problem / script".
+  function contentContextFields(c){
+    var keys = c.angles || [];
+    var primary = keys.length ? contentAngleOf(keys[0]) : null;
+    if (!primary) return {
+      c1lbl:'Context 1 — the problem', c1ph:'The problem / pain point that makes viewers pay attention',
+      c2lbl:'Context 2 — the script', c2ph:'Everything to say/do on shoot day — full script / shot list',
+      note:'Pick a content angle above to shape these two fields for it.'
+    };
+    var second = keys.length>1 ? contentAngleOf(keys[1]) : null;
+    return {
+      c1lbl:'Context 1 — '+primary.c1.label, c1ph:primary.c1.ph,
+      c2lbl:'Context 2 — '+primary.c2.label, c2ph:primary.c2.ph,
+      note:'Shaped for '+primary.icon+' '+primary.label+(second ? ' — also touch on '+second.icon+' '+second.label+' somewhere in the script.' : '.')
+    };
   }
 
   var CONTENT_HEADS = [
@@ -3244,6 +3268,7 @@
     var c = findContent(state.activeContentId);
     if (!c){ state.activeContentId = null; return renderContent(); }
     var st2 = contentStatus(c);
+    var ctxF = contentContextFields(c);
     return '<main>' +
       '<button class="backrow" data-action="back-to-content">← Back to content</button>' +
       '<div class="eyebrow">Content Idea</div>' +
@@ -3276,8 +3301,8 @@
         '<div class="field"><label for="cTopic">Idea / topic</label><input id="cTopic" data-bind-content="topic" value="'+esc(c.topic)+'" placeholder="e.g. 5 signs your kitchen would fail an audit"></div>' +
         '<div class="field"><label for="cInsight">Insight</label><textarea id="cInsight" data-bind-content="insight" placeholder="The key point / value viewers walk away with">'+esc(c.insight)+'</textarea></div>' +
         '<div class="field"><label for="cHook">Hook</label><input id="cHook" data-bind-content="hook" value="'+esc(c.hook)+'" placeholder="The first line / on-screen text that stops the scroll"></div>' +
-        '<div class="field"><label for="cContext1">Context 1 — the problem</label><textarea id="cContext1" data-bind-content="context1" placeholder="The problem / pain point that makes viewers pay attention">'+esc(c.context1||'')+'</textarea></div>' +
-        '<div class="field"><label for="cContext2">Context 2 — the script</label><textarea id="cContext2" data-bind-content="context2" style="min-height:140px;" placeholder="Everything to say/do on shoot day — full script / shot list">'+esc(c.context2||c.script||'')+'</textarea></div>' +
+        '<div class="field"><label for="cContext1">'+esc(ctxF.c1lbl)+'</label><textarea id="cContext1" data-bind-content="context1" placeholder="'+esc(ctxF.c1ph)+'">'+esc(c.context1||'')+'</textarea></div>' +
+        '<div class="field"><label for="cContext2">'+esc(ctxF.c2lbl)+'</label><textarea id="cContext2" data-bind-content="context2" style="min-height:140px;" placeholder="'+esc(ctxF.c2ph)+'">'+esc(c.context2||c.script||'')+'</textarea><div class="helper" style="margin-top:4px;">'+esc(ctxF.note)+'</div></div>' +
         '<div class="field"><label for="cCta">CTA</label><input id="cCta" data-bind-content="cta" value="'+esc(c.cta)+'" placeholder="e.g. Comment AUDIT for a free checklist"></div>' +
         '<div class="field"><label for="cPoll">Poll</label><input id="cPoll" data-bind-content="poll" value="'+esc(c.poll||'')+'" placeholder="e.g. Would your kitchen pass this? Yes / No"></div>' +
       '</div>' +
