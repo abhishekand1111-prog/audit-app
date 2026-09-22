@@ -485,7 +485,6 @@
   var LS_RD = 'diagnosisroom_readings_v1';
   var LS_PL = 'diagnosisroom_paramlib_v1';
   var LS_TG = 'diagnosisroom_targets_v1';
-  var LS_AP = 'diagnosisroom_audience_v1';
   var LS_LB = 'diagnosisroom_lastbackup_v1';
 
   var DEFAULT_PRICING = {
@@ -615,7 +614,6 @@
     paramLibrary: loadJSON(LS_PL, null) || JSON.parse(JSON.stringify(DEFAULT_PARAM_LIBRARY)),
     readings: loadJSON(LS_RD, []),
     targets: loadJSON(LS_TG, null) || { revenue:0, clients:0 },
-    audienceProfile: loadJSON(LS_AP, ''),
     prospects: loadJSON(LS_PR, []),
     activeProspectId: null,
     pendingProspectId: null,
@@ -829,13 +827,12 @@
           if (data.paramLibrary) state.paramLibrary = data.paramLibrary;
           if (data.targets) state.targets = data.targets;
           if (data.reauditOverrides) state.reauditOverrides = data.reauditOverrides;
-          if (data.audienceProfile!==undefined) state.audienceProfile = data.audienceProfile;
         } else {
           state[name] = data.list || [];
         }
       } else {
         if (isConfig){
-          try{ ref.set(JSON.parse(JSON.stringify({ templates: state.templates, pricing: state.pricing, schedule: state.schedule, serviceClasses: state.serviceClasses, deliverables: state.deliverables, paramLibrary: state.paramLibrary, targets: state.targets, reauditOverrides: state.reauditOverrides, audienceProfile: state.audienceProfile }))).catch(function(){}); }catch(e){}
+          try{ ref.set(JSON.parse(JSON.stringify({ templates: state.templates, pricing: state.pricing, schedule: state.schedule, serviceClasses: state.serviceClasses, deliverables: state.deliverables, paramLibrary: state.paramLibrary, targets: state.targets, reauditOverrides: state.reauditOverrides }))).catch(function(){}); }catch(e){}
         } else {
           ref.set({ list: state[name] || [] }).catch(function(){});
         }
@@ -877,7 +874,6 @@
   function persistLookups(){ saveJSON(LS_LK, state.lookups); fsSyncRecords(RS.lookups); }
   function persistContentIdeas(){ saveJSON(LS_CI, state.contentIdeas); fsSyncRecords(RS.contentIdeas); }
   function persistReauditOverrides(){ saveJSON(LS_RO, state.reauditOverrides); fsSyncConfig('reauditOverrides', state.reauditOverrides); }
-  function persistAudienceProfile(){ saveJSON(LS_AP, state.audienceProfile); fsSyncConfig('audienceProfile', state.audienceProfile); }
   function persistDraft(){ saveJSON(LS_D, state.draft); }
   function clearDraft(){ state.draft = null; try{ localStorage.removeItem(LS_D); }catch(e){} }
 
@@ -1919,14 +1915,13 @@
       lookups: state.lookups,
       contentIdeas: state.contentIdeas,
       reauditOverrides: state.reauditOverrides,
-      targets: state.targets,
-      audienceProfile: state.audienceProfile
+      targets: state.targets
     }, null, 2);
   }
 
   function applyBackupData(data){
     if (!data || typeof data!=='object') return false;
-    var known = ['templates','history','pricing','correctiveActions','schedule','serviceClasses','deliverables','paramLibrary','readings','prospects','lookups','contentIdeas','reauditOverrides','targets','audienceProfile'];
+    var known = ['templates','history','pricing','correctiveActions','schedule','serviceClasses','deliverables','paramLibrary','readings','prospects','lookups','contentIdeas','reauditOverrides','targets'];
     var found = known.some(function(k){ return data[k]!==undefined; });
     if (!found) return false;
     if (data.templates) state.templates = data.templates;
@@ -1943,9 +1938,8 @@
     if (data.contentIdeas) state.contentIdeas = data.contentIdeas;
     if (data.reauditOverrides) state.reauditOverrides = data.reauditOverrides;
     if (data.targets) state.targets = data.targets;
-    if (data.audienceProfile!==undefined) state.audienceProfile = data.audienceProfile;
     persistTemplates(); persistHistory(); persistPricing(); persistActions(); persistSchedule();
-    persistServiceClasses(); persistDeliverables(); persistParamLibrary(); persistReadings(); persistProspects(); persistLookups(); persistContentIdeas(); persistReauditOverrides(); persistTargets(); persistAudienceProfile();
+    persistServiceClasses(); persistDeliverables(); persistParamLibrary(); persistReadings(); persistProspects(); persistLookups(); persistContentIdeas(); persistReauditOverrides(); persistTargets();
     return true;
   }
 
@@ -2077,10 +2071,6 @@
       '</div>' +
 
       renderStorageMeter() +
-
-      '<h1 style="font-size:20px;margin:0 0 4px;">Target audience profile</h1>' +
-      '<div class="helper" style="margin-bottom:10px;">Describe who your content is for — their role, day-to-day frustrations, what they care about. When you turn on Story mode for a content idea, this is mixed in to frame the setup.</div>' +
-      '<div class="field" style="margin-bottom:28px;"><textarea id="audienceProfileInput" data-action="edit-audience-profile" placeholder="e.g. Dine-in restaurant owners with 2–5 outlets, overwhelmed by staff turnover and inconsistent hygiene, want systems they can hand off to a manager." style="min-height:100px;">'+esc(state.audienceProfile||'')+'</textarea></div>' +
 
       '<h1 style="font-size:20px;margin:0 0 4px;">Monthly Targets</h1>' +
       '<div class="helper" style="margin-bottom:14px;margin-top:6px;">Set what you\'re aiming for this month. Revenue is worked out from your clients: the price you enter when you mark a client as converted counts in the month it was converted, and a monthly retainer counts every month while that client stays active.</div>' +
@@ -3121,28 +3111,7 @@
   function contentAngleChips(c){
     return (c.angles||[]).map(function(k){ var a = contentAngleOf(k); return a ? '<span class="angletag">'+a.icon+' '+esc(a.label)+'</span>' : ''; }).join('');
   }
-  // Story mode doesn't ask you to write from scratch — it mixes what you've already typed (Hook, Context 1/2, Insight, CTA) with the target audience profile from Settings.
-  function contentStoryDefaults(c){
-    var setupParts = [];
-    if ((state.audienceProfile||'').trim()) setupParts.push('Your audience: '+state.audienceProfile.trim());
-    if ((c.hook||'').trim()) setupParts.push(c.hook.trim());
-    else if ((c.topic||'').trim()) setupParts.push(c.topic.trim());
-    var resParts = [];
-    if ((c.insight||'').trim()) resParts.push(c.insight.trim());
-    if ((c.cta||'').trim()) resParts.push('Call to action: '+c.cta.trim());
-    return {
-      storySetup: setupParts.join('\n\n'),
-      storyConflict: (c.context1||'').trim(),
-      storyTurn: (c.context2||c.script||'').trim(),
-      storyResolution: resParts.join('\n\n')
-    };
-  }
-  function fillStoryFromContent(c){
-    var d = contentStoryDefaults(c);
-    ['storySetup','storyConflict','storyTurn','storyResolution'].forEach(function(k){
-      if (!(c[k]||'').trim()) c[k] = d[k];
-    });
-  }
+
   // The angle you picked reshapes Context 1/2 so the field asks for what that angle actually needs, instead of a generic "problem / script".
   function contentContextFields(c){
     var keys = c.angles || [];
@@ -3210,7 +3179,7 @@
       '<div class="histtop"><span class="badge">'+((c.context2||c.script||'').trim()?'Scripted':'No script yet')+'</span><span class="pill '+st.tone+'">'+esc(st.label)+'</span></div>' +
       '<div style="font-weight:700;margin-top:8px;">'+esc(c.topic||'Untitled idea')+'</div>' +
       (showTags ? '<div style="margin-top:6px;">'+contentTagHtml(c)+'</div>' : (c.segment==='both' ? '<div style="margin-top:6px;"><span class="pill good">'+esc(SEGMENT_LABELS.both)+'</span></div>' : '')) +
-      ((c.angles||[]).length || c.storyMode ? '<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:5px;">'+contentAngleChips(c)+(c.storyMode?'<span class="angletag">📖 Story</span>':'')+'</div>' : '') +
+      ((c.angles||[]).length ? '<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:5px;">'+contentAngleChips(c)+'</div>' : '') +
       (c.hook ? '<div class="histmeta">Hook: '+esc(c.hook)+'</div>' : '') +
     '</div>';
   }
@@ -3354,22 +3323,6 @@
         '<div class="field"><label for="cContext2">'+esc(ctxF.c2lbl)+'</label><textarea id="cContext2" data-bind-content="context2" style="min-height:140px;" placeholder="'+esc(ctxF.c2ph)+'">'+esc(c.context2||c.script||'')+'</textarea><div class="helper" style="margin-top:4px;">'+esc(ctxF.note)+'</div></div>' +
         '<div class="field"><label for="cCta">CTA</label><input id="cCta" data-bind-content="cta" value="'+esc(c.cta)+'" placeholder="e.g. Comment AUDIT for a free checklist"></div>' +
         '<div class="field"><label for="cPoll">Poll</label><input id="cPoll" data-bind-content="poll" value="'+esc(c.poll||'')+'" placeholder="e.g. Would your kitchen pass this? Yes / No"></div>' +
-      '</div>' +
-      sh('📖','Tell it as a story') +
-      '<div class="card" style="padding:14px 16px;margin-bottom:20px;">' +
-        '<div class="helper" style="margin:0 0 10px;">Turn on when this idea is better told as a mini-story than explained straight — people remember and rewatch stories. Turning it on fills the four beats below from what you\'ve already typed above, mixed with your target audience profile from Settings — it only fills a beat that\'s still empty, so nothing you write is overwritten.</div>' +
-        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">' +
-          '<button type="button" class="naBtn '+(c.storyMode?'on':'')+'" data-action="toggle-content-story" style="padding:9px 14px;">'+(c.storyMode?'✓ Story mode':'Story mode')+'</button>' +
-          (c.storyMode ? '<button type="button" class="btn btn-text btn-sm" data-action="refill-story-beats">↻ Refill empty beats from content</button>' : '') +
-        '</div>' +
-        (c.storyMode ? (
-          '<div class="formstack" style="margin-top:14px;">' +
-            '<div class="field"><label for="cStorySetup">1 · Setup</label><textarea id="cStorySetup" data-bind-content="storySetup" placeholder="Who, where, the normal day before anything went wrong">'+esc(c.storySetup||'')+'</textarea></div>' +
-            '<div class="field"><label for="cStoryConflict">2 · Conflict</label><textarea id="cStoryConflict" data-bind-content="storyConflict" placeholder="What went wrong — the problem or complaint that changed things">'+esc(c.storyConflict||'')+'</textarea></div>' +
-            '<div class="field"><label for="cStoryTurn">3 · Turning point</label><textarea id="cStoryTurn" data-bind-content="storyTurn" placeholder="What you or the client did about it — the decision that changed the outcome">'+esc(c.storyTurn||'')+'</textarea></div>' +
-            '<div class="field"><label for="cStoryResolution">4 · Resolution &amp; lesson</label><textarea id="cStoryResolution" data-bind-content="storyResolution" placeholder="How it ended, and what the audience should take away — this leads into your CTA">'+esc(c.storyResolution||'')+'</textarea></div>' +
-          '</div>'
-        ) : '') +
       '</div>' +
       sh('🎬','Shoot day') +
       '<div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:20px;">' +
@@ -4037,7 +3990,7 @@
     else if (action==='go-search'){ if(!state.draft){ state.view='search'; render(); } }
     else if (action==='go-content'){ if(!state.draft){ state.activeContentId=null; state.view='content'; render(); } }
     else if (action==='add-content'){
-      var newC = { id: uid(), topic:'', insight:'', hook:'', context1:'', context2:'', cta:'', poll:'', segment:'', area:'', angles:[], storyMode:false, storySetup:'', storyConflict:'', storyTurn:'', storyResolution:'', shootDate:'', notScheduled:false, posted:false, postedAt:null, createdAt: Date.now() };
+      var newC = { id: uid(), topic:'', insight:'', hook:'', context1:'', context2:'', cta:'', poll:'', segment:'', area:'', angles:[], shootDate:'', notScheduled:false, posted:false, postedAt:null, createdAt: Date.now() };
       state.contentIdeas.unshift(newC); persistContentIdeas();
       state.activeContentId = newC.id; render();
     }
@@ -4079,7 +4032,7 @@
       render();
     }
     else if (action==='add-content-in'){
-      var newCi = { id: uid(), topic:'', insight:'', hook:'', context1:'', context2:'', cta:'', poll:'', segment:t.dataset.seg, area:t.dataset.area, angles:[], storyMode:false, storySetup:'', storyConflict:'', storyTurn:'', storyResolution:'', shootDate:'', notScheduled:false, posted:false, postedAt:null, createdAt: Date.now() };
+      var newCi = { id: uid(), topic:'', insight:'', hook:'', context1:'', context2:'', cta:'', poll:'', segment:t.dataset.seg, area:t.dataset.area, angles:[], shootDate:'', notScheduled:false, posted:false, postedAt:null, createdAt: Date.now() };
       state.contentIdeas.unshift(newCi); persistContentIdeas();
       state.activeContentId = newCi.id; render();
     }
@@ -4113,18 +4066,6 @@
         if (ai>=0) tac.angles.splice(ai,1); else tac.angles.push(t.dataset.val);
         persistContentIdeas(); render();
       }
-    }
-    else if (action==='toggle-content-story'){
-      var tcs = findContent(state.activeContentId);
-      if (tcs){
-        tcs.storyMode = !tcs.storyMode;
-        if (tcs.storyMode) fillStoryFromContent(tcs);
-        persistContentIdeas(); render();
-      }
-    }
-    else if (action==='refill-story-beats'){
-      var rsb = findContent(state.activeContentId);
-      if (rsb){ fillStoryFromContent(rsb); persistContentIdeas(); render(); }
     }
     else if (action==='toggle-content-notscheduled'){
       var nc = findContent(state.activeContentId);
@@ -4770,10 +4711,6 @@
       var tnum = parseFloat(el.value); if (isNaN(tnum)) tnum = 0;
       state.targets[el.dataset.target] = tnum;
       persistTargets();
-    }
-    else if (el.dataset.action === 'edit-audience-profile'){
-      state.audienceProfile = el.value; persistAudienceProfile();
-      el.style.height = 'auto'; el.style.height = el.scrollHeight+'px';
     }
     else if (el.dataset.caEditField){
       var caEdit = state.correctiveActions.filter(function(a){ return a.id===el.dataset.caEditId; })[0];
