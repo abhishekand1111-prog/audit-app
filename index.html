@@ -3283,6 +3283,22 @@
       '<div class="helper" style="margin:4px 0 20px;">'+esc(summary)+'</div>';
   }
 
+  // How your ideas are spread across the four angles, across every idea regardless of segment or status.
+  function renderAngleMix(){
+    if (!state.contentIdeas.length) return '';
+    var counts = {};
+    CONTENT_ANGLES.forEach(function(a){ counts[a.key] = 0; });
+    var noAngle = 0;
+    state.contentIdeas.forEach(function(c){
+      if (!(c.angles||[]).length){ noAngle++; return; }
+      c.angles.forEach(function(k){ if (counts[k]!==undefined) counts[k]++; });
+    });
+    return '<div class="helper" style="margin:0 0 14px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;">' +
+      '<span style="font-weight:700;color:var(--ink-600);">Angle mix:</span>' +
+      CONTENT_ANGLES.map(function(a){ return '<span class="angletag">'+a.icon+' '+esc(a.label)+' · '+counts[a.key]+'</span>'; }).join('') +
+      (noAngle ? '<span class="angletag" style="color:var(--accent-ink);">No angle yet · '+noAngle+'</span>' : '') +
+    '</div>';
+  }
   function renderContent(){
     if (state.activeContentId) return renderContentDetail();
     return '<main>' +
@@ -3291,6 +3307,7 @@
         '<button class="btn btn-primary btn-sm" data-action="add-content">+ New Idea</button>' +
       '</div>' +
       '<div class="helper" style="margin:8px 0 14px;">Pick an angle, then Idea → Insight → Hook → Context → CTA → Poll, against a shoot day, through to Posted.</div>' +
+      renderAngleMix() +
       (state.contentIdeas.length===0 ? '<div class="empty" style="margin-bottom:14px;"><div class="big">🎬</div>No content ideas yet.<br>Add one to start planning your next shoot.</div>' : '') +
       renderContentBoard() +
     '</main>';
