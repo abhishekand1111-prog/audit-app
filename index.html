@@ -147,6 +147,11 @@
   .overallprog{margin-top:12px;}
   .progtrack{height:6px; background:var(--surface-2); border-radius:4px; overflow:hidden;}
   .progfill{height:100%; background:var(--accent); border-radius:4px; transition:width .25s;}
+  .timedist{display:flex; height:9px; border-radius:5px; overflow:hidden; background:var(--surface-2); margin-top:10px;}
+  .timedist-seg{transition:width .25s; flex:none;}
+  .timedist-key{display:flex; gap:16px; margin-top:8px; font-size:11.5px; color:var(--ink-600); flex-wrap:wrap;}
+  .timedist-key span{display:inline-flex; align-items:center; gap:6px;}
+  .timedist-key i{width:9px; height:9px; border-radius:3px; display:inline-block;}
   .progtext{display:flex; justify-content:space-between; font-size:11.5px; color:var(--ink-600); margin-top:5px;}
   .barctl{display:flex; gap:8px; margin-top:12px;}
 
@@ -483,6 +488,7 @@
   var LS_SVC = 'diagnosisroom_serviceclasses_v1';
   var LS_DL = 'diagnosisroom_deliverables_v1';
   var LS_RD = 'diagnosisroom_readings_v1';
+  var LS_WD = 'diagnosisroom_workdays_v1';
   var LS_PL = 'diagnosisroom_paramlib_v1';
   var LS_TG = 'diagnosisroom_targets_v1';
   var LS_LB = 'diagnosisroom_lastbackup_v1';
@@ -613,6 +619,7 @@
     deliverables: loadJSON(LS_DL, null) || JSON.parse(JSON.stringify(DEFAULT_DELIVERABLES)),
     paramLibrary: loadJSON(LS_PL, null) || JSON.parse(JSON.stringify(DEFAULT_PARAM_LIBRARY)),
     readings: loadJSON(LS_RD, []),
+    workdays: loadJSON(LS_WD, []),
     targets: loadJSON(LS_TG, null) || { revenue:0, clients:0 },
     prospects: loadJSON(LS_PR, []),
     activeProspectId: null,
@@ -643,7 +650,7 @@
   };
   // Remember where the user was, so a refresh or reopening the app lands on the same page.
   var LS_NAV = 'diagnosisroom_nav_v1';
-  var NAV_VIEWS = ['dashboard','week','editor','pricing','actions','prospects','lookup','content','search','summary'];
+  var NAV_VIEWS = ['dashboard','week','editor','pricing','actions','prospects','lookup','content','search','summary','time'];
   var navScrollY = 0;
   (function restoreNav(){
     var n = loadJSON(LS_NAV, null);
@@ -715,7 +722,8 @@
     { key:'correctiveActions', prefix:'action_', legacy:'correctiveActions', ls:LS_A,  flag:'actionsMigrated', sort:byTime('createdAt', 1) },
     { key:'contentIdeas',      prefix:'idea_',   legacy:'contentIdeas',      ls:LS_CI, flag:'ideasMigrated',   sort:byTime('createdAt', -1) },
     { key:'lookups',           prefix:'lookup_', legacy:'lookups',           ls:LS_LK, flag:'lookupsMigrated', sort:byTime('createdAt', -1) },
-    { key:'readings',          prefix:'reading_', legacy:'readings',         ls:LS_RD, flag:'readingsMigrated', sort:byTime('createdAt', 1) }
+    { key:'readings',          prefix:'reading_', legacy:'readings',         ls:LS_RD, flag:'readingsMigrated', sort:byTime('createdAt', 1) },
+    { key:'workdays',          prefix:'wday_',    legacy:'workdays',         ls:LS_WD, flag:'workdaysMigrated', sort:byTime('checkInAt', -1) }
   ];
   var RS = {};
   RECORD_SETS.forEach(function(rs){ rs.synced = {}; rs.ready = false; rs.busy = false; rs.retry = null; RS[rs.key] = rs; });
@@ -870,6 +878,7 @@
   function persistDeliverables(){ saveJSON(LS_DL, state.deliverables); fsSyncConfig('deliverables', state.deliverables); }
   function persistParamLibrary(){ saveJSON(LS_PL, state.paramLibrary); fsSyncConfig('paramLibrary', state.paramLibrary); }
   function persistReadings(){ saveJSON(LS_RD, state.readings); fsSyncRecords(RS.readings); }
+  function persistWorkdays(){ saveJSON(LS_WD, state.workdays); fsSyncRecords(RS.workdays); }
   function persistProspects(){ saveJSON(LS_PR, state.prospects); fsSyncRecords(RS.prospects); }
   function persistLookups(){ saveJSON(LS_LK, state.lookups); fsSyncRecords(RS.lookups); }
   function persistContentIdeas(){ saveJSON(LS_CI, state.contentIdeas); fsSyncRecords(RS.contentIdeas); }
@@ -957,6 +966,29 @@
   function stopSection(sec){ if (sec.runningSince){ sec.accumMs += Date.now() - sec.runningSince; sec.runningSince = null; } }
   function startSection(sec){ if (!sec.runningSince) sec.runningSince = Date.now(); }
   function stopOverall(d){ if (d.overall.runningSince){ d.overall.accumMs += Date.now() - d.overall.runningSince; d.overall.runningSince = null; } }
+
+  // ---------- check-in / away time: a personal daily timer, separate from audit timers. If a break/drive/outing
+  // or the day itself is left running (forgotten to stop), it just keeps accumulating — nothing auto-resets.
+  var AWAY_CATS = [
+    { key:'break',  label:'Break',  icon:'☕', verb:'On break',  color:'var(--ink-400)' },
+    { key:'drive',  label:'Drive',  icon:'🚗', verb:'Driving',   color:'var(--good)' },
+    { key:'outing', label:'Outing', icon:'🚶', verb:'Out',       color:'var(--bad)' }
+  ];
+  function awayCatOf(key){ return AWAY_CATS.filter(function(c){ return c.key===key; })[0]; }
+  function openWorkday(){ return state.workdays.filter(function(w){ return !w.checkOutAt; })[0] || null; }
+  function chanElapsed(ch){
+    var acc = (ch && ch.accumMs) || 0;
+    if (ch && ch.runningSince) acc += Date.now()-ch.runningSince;
+    return acc;
+  }
+  function workdayWorkElapsed(w){ return chanElapsed(w.work); }
+  function workdayAwayElapsed(w, key){ return chanElapsed(w.away && w.away[key]); }
+  function workdayActiveAway(w){
+    if (!w || !w.away) return null;
+    var found = AWAY_CATS.filter(function(c){ return w.away[c.key] && w.away[c.key].runningSince; })[0];
+    return found ? found.key : null;
+  }
+  function fmtClock(ts){ return ts ? new Date(ts).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}) : ''; }
   function startOverall(d){ if (!d.overall.runningSince) d.overall.runningSince = Date.now(); }
 
   function setActiveSection(d, secId){
@@ -1118,6 +1150,7 @@
     else if (v==='search') html = renderSearch();
     else if (v==='dashboard') html = renderDashboard();
     else if (v==='week') html = renderWeekView();
+    else if (v==='time') html = renderTimeView();
     app.innerHTML = topbar() + html;
     saveNav();
     if (navScrollY){ var ny = navScrollY; navScrollY = 0; window.scrollTo(0, ny); }
@@ -1158,6 +1191,7 @@
       '<nav class="sidebar '+(state.sidebarOpen?'open':'')+'">' +
         '<div class="sidebar-brand">'+logoImg()+'<span class="name">Diagnosis Room</span></div>' +
         item('dashboard','go-dashboard','Dashboard') +
+        item('time','go-time','The Day', (function(){ var ow=openWorkday(); if(!ow) return ''; var ak=workdayActiveAway(ow); return ak?awayCatOf(ak).icon:'🟢'; })()) +
         item('week','go-week','Week Ahead', (function(){ var n=weekGroups(7).count; return n?String(n):''; })()) +
         item('setup','go-setup','New Audit') +
         item('editor','go-editor','Checklist') +
@@ -1915,13 +1949,14 @@
       lookups: state.lookups,
       contentIdeas: state.contentIdeas,
       reauditOverrides: state.reauditOverrides,
-      targets: state.targets
+      targets: state.targets,
+      workdays: state.workdays
     }, null, 2);
   }
 
   function applyBackupData(data){
     if (!data || typeof data!=='object') return false;
-    var known = ['templates','history','pricing','correctiveActions','schedule','serviceClasses','deliverables','paramLibrary','readings','prospects','lookups','contentIdeas','reauditOverrides','targets'];
+    var known = ['templates','history','pricing','correctiveActions','schedule','serviceClasses','deliverables','paramLibrary','readings','prospects','lookups','contentIdeas','reauditOverrides','targets','workdays'];
     var found = known.some(function(k){ return data[k]!==undefined; });
     if (!found) return false;
     if (data.templates) state.templates = data.templates;
@@ -1933,13 +1968,14 @@
     if (data.deliverables) state.deliverables = data.deliverables;
     if (data.paramLibrary) state.paramLibrary = data.paramLibrary;
     if (data.readings) state.readings = data.readings;
+    if (data.workdays) state.workdays = data.workdays;
     if (data.prospects) state.prospects = data.prospects;
     if (data.lookups) state.lookups = data.lookups;
     if (data.contentIdeas) state.contentIdeas = data.contentIdeas;
     if (data.reauditOverrides) state.reauditOverrides = data.reauditOverrides;
     if (data.targets) state.targets = data.targets;
     persistTemplates(); persistHistory(); persistPricing(); persistActions(); persistSchedule();
-    persistServiceClasses(); persistDeliverables(); persistParamLibrary(); persistReadings(); persistProspects(); persistLookups(); persistContentIdeas(); persistReauditOverrides(); persistTargets();
+    persistServiceClasses(); persistDeliverables(); persistParamLibrary(); persistReadings(); persistProspects(); persistLookups(); persistContentIdeas(); persistReauditOverrides(); persistTargets(); persistWorkdays();
     return true;
   }
 
@@ -2021,7 +2057,8 @@
         { label:'Corrective actions', list:state.correctiveActions, unit:'action' },
         { label:'Content ideas', list:state.contentIdeas, unit:'idea' },
         { label:'Lookups & tasks', list:state.lookups, unit:'item' },
-        { label:'Parameter readings', list:state.readings, unit:'reading' }
+        { label:'Parameter readings', list:state.readings, unit:'reading' },
+        { label:'Check-in days', list:state.workdays, unit:'day' }
       ].map(function(s){
         var total = 0, biggest = 0;
         s.list.forEach(function(r){ var b = jsonBytes(r); total += b; if (b>biggest) biggest = b; });
@@ -3408,6 +3445,80 @@
     '</div>';
   }
 
+  function renderTimeDist(w){
+    var work = workdayWorkElapsed(w);
+    var segs = [{ label:'Working', color:'var(--accent)', ms:work }];
+    AWAY_CATS.forEach(function(c){ segs.push({ label:c.label, color:c.color, ms:workdayAwayElapsed(w, c.key) }); });
+    var total = segs.reduce(function(s,x){ return s+x.ms; }, 0) || 1;
+    return '<div class="timedist">' +
+        segs.map(function(s){ return '<div class="timedist-seg" data-seg="'+esc(s.label)+'" style="width:'+(s.ms/total*100)+'%;background:'+s.color+';"></div>'; }).join('') +
+      '</div>' +
+      '<div class="timedist-key">' +
+        segs.filter(function(s){ return s.ms>0 || s.label==='Working'; }).map(function(s){ return '<span><i style="background:'+s.color+';"></i>'+esc(s.label)+'</span>'; }).join('') +
+      '</div>';
+  }
+  function renderWorkdayCard(w, isOpen){
+    var work = workdayWorkElapsed(w);
+    var away = AWAY_CATS.map(function(c){ return { c:c, ms:workdayAwayElapsed(w, c.key) }; });
+    var totalAway = away.reduce(function(s,x){ return s+x.ms; }, 0);
+    var total = work+totalAway;
+    var activeKey = workdayActiveAway(w);
+    var activeCat = activeKey ? awayCatOf(activeKey) : null;
+    return '<div class="card" style="padding:16px;margin-bottom:16px;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">' +
+        '<div><div style="font-weight:700;">'+esc(fmtDateShort(w.checkInAt))+'</div>' +
+          '<div class="histmeta">'+fmtClock(w.checkInAt)+' – '+(w.checkOutAt?fmtClock(w.checkOutAt):'still going')+'</div></div>' +
+        (isOpen ? '<span class="pill '+(activeCat?'warn':'good')+'">'+(activeCat?activeCat.icon+' '+esc(activeCat.verb):'🟢 Working')+'</span>' : '<span class="pill good">Done</span>') +
+      '</div>' +
+      '<div class="statgrid" style="margin:12px 0 0;">' +
+        '<div class="stattile"><div class="v mono" data-wtimer="work-'+w.id+'">'+fmtTime(work)+'</div><div class="k">Working</div></div>' +
+        '<div class="stattile"><div class="v mono" data-wtimer="away-'+w.id+'">'+fmtTime(totalAway)+'</div><div class="k">Away</div></div>' +
+        '<div class="stattile t-accent"><div class="v mono" data-wtimer="total-'+w.id+'">'+fmtTime(total)+'</div><div class="k">Total</div></div>' +
+      '</div>' +
+      renderTimeDist(w) +
+      (away.some(function(x){ return x.ms>0; }) ? '<div class="histmeta" style="margin-top:10px;">' +
+        away.filter(function(x){ return x.ms>0; }).map(function(x){ return x.c.icon+' '+esc(x.c.label)+' '+fmtTime(x.ms); }).join(' · ') +
+      '</div>' : '') +
+      (w.entries && w.entries.length ? '<div class="histmeta" style="margin-top:10px;">' +
+        w.entries.map(function(e){
+          var ec = awayCatOf(e.type);
+          return (ec?ec.icon+' '+ec.label:e.type)+': '+fmtClock(e.startAt)+' – '+(e.endAt?fmtClock(e.endAt):'running…')+(e.endAt?' ('+fmtTime(e.endAt-e.startAt)+')':'');
+        }).join('<br>') +
+      '</div>' : '') +
+    '</div>';
+  }
+  function renderTimeView(){
+    var w = openWorkday();
+    var active = w ? workdayActiveAway(w) : null;
+    var past = state.workdays.filter(function(x){ return x.checkOutAt; }).slice(0, 14);
+    return '<main>' +
+      '<div class="eyebrow">The Day</div>' +
+      '<h1 style="font-size:26px;margin-top:6px;margin-bottom:6px;">Check-in &amp; Away Time</h1>' +
+      '<div class="helper" style="margin-bottom:16px;">Track your working day here. If you forget to end a break, drive or outing — or forget to check out — the timer just keeps running until you do. Nothing resets, and the split below always reflects where the day actually went.</div>' +
+      (w ? renderWorkdayCard(w, true) : '<div class="empty" style="padding:26px 14px;margin-bottom:16px;"><div class="big">⏱️</div>Not checked in yet today.</div>') +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:28px;">' +
+        (!w
+          ? '<button class="btn btn-primary" style="flex:1;" data-action="check-in">✅ Check in</button>'
+          : (active
+              ? '<button class="btn btn-primary" style="flex:1 1 100%;" data-action="end-away">▶ End '+esc(awayCatOf(active).label.toLowerCase())+'</button>'
+              : AWAY_CATS.map(function(c){ return '<button class="btn btn-ghost" style="flex:1 1 26%;" data-action="start-away" data-cat="'+c.key+'">'+c.icon+' '+esc(c.label)+'</button>'; }).join('')
+            ) +
+            '<button class="btn btn-ghost" style="flex:1 1 100%;" data-action="check-out">🚪 Check out</button>'
+        ) +
+      '</div>' +
+      (past.length ? (
+        sh('📅','Past days') +
+        '<div class="card" style="padding:4px 16px;margin-bottom:20px;">' +
+          past.map(function(x){
+            var pwork = workdayWorkElapsed(x);
+            var pAway = AWAY_CATS.map(function(c){ return workdayAwayElapsed(x, c.key); }).reduce(function(s,v){ return s+v; }, 0);
+            return '<div class="sumrow"><span class="k">'+esc(fmtDateShort(x.checkInAt))+'</span><span class="v">'+fmtTime(pwork)+' worked · '+fmtTime(pAway)+' away</span></div>';
+          }).join('') +
+        '</div>'
+      ) : '') +
+    '</main>';
+  }
+
   function renderLookup(){
     function sortFn(a,b){ return (b.createdAt||0)-(a.createdAt||0); }
     var groups = {
@@ -3917,14 +4028,35 @@
 
   // ---------- ticking ----------
   setInterval(function(){
-    if (state.view!=='audit' || !state.draft || state.draft.finishedAt) return;
-    var d = state.draft;
-    var ot = document.querySelector('[data-timer="overall"]');
-    if (ot) ot.textContent = fmtTime(overallElapsed(d));
-    d.sections.forEach(function(sec){
-      var el = document.querySelector('[data-timer="sec-'+sec.id+'"]');
-      if (el) el.textContent = fmtTime(sectionElapsed(sec));
-    });
+    if (state.view==='audit' && state.draft && !state.draft.finishedAt){
+      var d = state.draft;
+      var ot = document.querySelector('[data-timer="overall"]');
+      if (ot) ot.textContent = fmtTime(overallElapsed(d));
+      d.sections.forEach(function(sec){
+        var el = document.querySelector('[data-timer="sec-'+sec.id+'"]');
+        if (el) el.textContent = fmtTime(sectionElapsed(sec));
+      });
+    }
+    if (state.view==='time'){
+      var ow = openWorkday();
+      if (ow){
+        var work = workdayWorkElapsed(ow);
+        var awayVals = AWAY_CATS.map(function(c){ return workdayAwayElapsed(ow, c.key); });
+        var totalAway = awayVals.reduce(function(s,v){ return s+v; }, 0);
+        var total = work+totalAway;
+        var wEl = document.querySelector('[data-wtimer="work-'+ow.id+'"]');
+        var aEl = document.querySelector('[data-wtimer="away-'+ow.id+'"]');
+        var tEl = document.querySelector('[data-wtimer="total-'+ow.id+'"]');
+        if (wEl) wEl.textContent = fmtTime(work);
+        if (aEl) aEl.textContent = fmtTime(totalAway);
+        if (tEl) tEl.textContent = fmtTime(total);
+        var segs = document.querySelectorAll('.timedist-seg');
+        if (segs.length === AWAY_CATS.length+1){
+          var vals = [work].concat(awayVals), segTotal = total || 1;
+          segs.forEach(function(seg, i){ seg.style.width = (vals[i]/segTotal*100)+'%'; });
+        }
+      }
+    }
   }, 1000);
 
   // ---------- CSV download (plain browser save, no artifact sandbox here) ----------
@@ -3979,6 +4111,7 @@
     else if (action==='close-sidebar'){ state.sidebarOpen = false; render(); }
     else if (action==='go-dashboard'){ if(!state.draft){ state.view='dashboard'; render(); } }
     else if (action==='go-week'){ if(!state.draft){ state.weekTab = null; state.view='week'; window.scrollTo(0,0); render(); } }
+    else if (action==='go-time'){ if(!state.draft){ state.view='time'; window.scrollTo(0,0); render(); } }
     else if (action==='week-tab'){ state.weekTab = t.dataset.tab; render(); }
     else if (action==='dash-lookup-tab'){ state.dashLookupTab = t.dataset.tab; render(); }
     else if (action==='go-setup'){ if(!state.draft) { state.view='setup'; render(); } }
@@ -4074,6 +4207,51 @@
     else if (action==='toggle-content-posted'){
       var pc = findContent(state.activeContentId);
       if (pc){ pc.posted = !pc.posted; pc.postedAt = pc.posted ? Date.now() : null; persistContentIdeas(); render(); }
+    }
+    else if (action==='check-in'){
+      if (!openWorkday()){
+        var newAway = {}; AWAY_CATS.forEach(function(c){ newAway[c.key] = { accumMs:0, runningSince:null }; });
+        state.workdays.unshift({ id: uid(), date: todayISO(), checkInAt: Date.now(), checkOutAt: null,
+          work: { accumMs:0, runningSince: Date.now() }, away: newAway, entries: [], createdAt: Date.now() });
+        persistWorkdays(); render();
+      }
+    }
+    else if (action==='start-away'){
+      var saW = openWorkday(), saKey = t.dataset.cat;
+      if (saW && awayCatOf(saKey) && !workdayActiveAway(saW)){
+        if (saW.work.runningSince){ saW.work.accumMs += Date.now()-saW.work.runningSince; saW.work.runningSince = null; }
+        saW.away[saKey].runningSince = Date.now();
+        saW.entries.push({ id: uid(), type: saKey, startAt: Date.now(), endAt: null });
+        persistWorkdays(); render();
+      }
+    }
+    else if (action==='end-away'){
+      var eaW = openWorkday(), eaKey = eaW ? workdayActiveAway(eaW) : null;
+      if (eaW && eaKey){
+        eaW.away[eaKey].accumMs += Date.now()-eaW.away[eaKey].runningSince;
+        eaW.away[eaKey].runningSince = null;
+        var eaLast = eaW.entries[eaW.entries.length-1];
+        if (eaLast && !eaLast.endAt) eaLast.endAt = Date.now();
+        eaW.work.runningSince = Date.now();
+        persistWorkdays(); render();
+      }
+    }
+    else if (action==='check-out'){
+      var coW = openWorkday();
+      if (coW){
+        var coKey = workdayActiveAway(coW);
+        if (coKey){
+          coW.away[coKey].accumMs += Date.now()-coW.away[coKey].runningSince;
+          coW.away[coKey].runningSince = null;
+          var coLast = coW.entries[coW.entries.length-1];
+          if (coLast && !coLast.endAt) coLast.endAt = Date.now();
+        } else if (coW.work.runningSince){
+          coW.work.accumMs += Date.now()-coW.work.runningSince;
+          coW.work.runningSince = null;
+        }
+        coW.checkOutAt = Date.now();
+        persistWorkdays(); render();
+      }
     }
     else if (action==='add-lookup'){
       var newLkCat = t.dataset.cat==='lookup' ? 'lookup' : 'task';
