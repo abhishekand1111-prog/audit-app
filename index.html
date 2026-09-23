@@ -630,6 +630,7 @@
     contentIdeas: loadJSON(LS_CI, []),
     reauditOverrides: loadJSON(LS_RO, {}),
     activeContentId: null,
+    contentForceEdit: false,
     contentCoverageTab: 'dinein',
     contentOpen: {},
     weekTab: null,
@@ -3319,6 +3320,26 @@
     '</main>';
   }
 
+  // Once an idea is posted, show it as a finished plain-text script rather than an editable form — it's done, not
+  // being worked on. "Edit script" drops back into the normal editor for a correction.
+  function renderContentScriptPlain(c, ctxF){
+    function row(label, val, multiline){
+      if (!(val||'').trim()) return '';
+      return '<div style="margin-bottom:16px;"><div class="histmeta" style="font-weight:700;margin-bottom:4px;">'+esc(label)+'</div>' +
+        (multiline ? '<div class="remarkbox">'+esc(val)+'</div>' : '<div style="font-size:15px;">'+esc(val)+'</div>') +
+      '</div>';
+    }
+    return '<div class="card" style="padding:16px;margin-bottom:20px;">' +
+      '<div class="histmeta" style="margin-bottom:14px;">📌 Posted'+(c.postedAt?' '+fmtRelativeTime(c.postedAt):'')+' — shown as the finished script.</div>' +
+      row('Insight', c.insight) +
+      row('Hook', c.hook) +
+      row(ctxF.c1lbl.replace(/^Context 1 — /,''), c.context1, true) +
+      row(ctxF.c2lbl.replace(/^Context 2 — /,''), c.context2||c.script, true) +
+      row('CTA', c.cta) +
+      row('Poll', c.poll) +
+      '<button type="button" class="btn btn-ghost btn-sm" style="margin-top:6px;" data-action="toggle-content-force-edit">✏️ Edit script</button>' +
+    '</div>';
+  }
   function renderContentDetail(){
     var c = findContent(state.activeContentId);
     if (!c){ state.activeContentId = null; return renderContent(); }
@@ -3352,15 +3373,18 @@
             '</select></div>'
           : '<div class="helper" style="margin-top:-6px;">Pick a segment to choose the area this content covers.</div>') +
       '</div>' +
-      '<div class="formstack">' +
-        '<div class="field"><label for="cTopic">Idea / topic</label><input id="cTopic" data-bind-content="topic" value="'+esc(c.topic)+'" placeholder="e.g. 5 signs your kitchen would fail an audit"></div>' +
-        '<div class="field"><label for="cInsight">Insight</label><textarea id="cInsight" data-bind-content="insight" placeholder="The key point / value viewers walk away with">'+esc(c.insight)+'</textarea></div>' +
-        '<div class="field"><label for="cHook">Hook</label><input id="cHook" data-bind-content="hook" value="'+esc(c.hook)+'" placeholder="The first line / on-screen text that stops the scroll"></div>' +
-        '<div class="field"><label for="cContext1">'+esc(ctxF.c1lbl)+'</label><textarea id="cContext1" data-bind-content="context1" placeholder="'+esc(ctxF.c1ph)+'">'+esc(c.context1||'')+'</textarea></div>' +
-        '<div class="field"><label for="cContext2">'+esc(ctxF.c2lbl)+'</label><textarea id="cContext2" data-bind-content="context2" style="min-height:140px;" placeholder="'+esc(ctxF.c2ph)+'">'+esc(c.context2||c.script||'')+'</textarea><div class="helper" style="margin-top:4px;">'+esc(ctxF.note)+'</div></div>' +
-        '<div class="field"><label for="cCta">CTA</label><input id="cCta" data-bind-content="cta" value="'+esc(c.cta)+'" placeholder="e.g. Comment AUDIT for a free checklist"></div>' +
-        '<div class="field"><label for="cPoll">Poll</label><input id="cPoll" data-bind-content="poll" value="'+esc(c.poll||'')+'" placeholder="e.g. Would your kitchen pass this? Yes / No"></div>' +
-      '</div>' +
+      (c.posted && !state.contentForceEdit ? renderContentScriptPlain(c, ctxF) : (
+        (c.posted ? '<div class="helper" style="margin-bottom:8px;">Editing the posted script. <span style="text-decoration:underline;cursor:pointer;color:var(--accent-ink);" data-action="toggle-content-force-edit">Done editing — show as script</span></div>' : '') +
+        '<div class="formstack">' +
+          '<div class="field"><label for="cTopic">Idea / topic</label><input id="cTopic" data-bind-content="topic" value="'+esc(c.topic)+'" placeholder="e.g. 5 signs your kitchen would fail an audit"></div>' +
+          '<div class="field"><label for="cInsight">Insight</label><textarea id="cInsight" data-bind-content="insight" placeholder="The key point / value viewers walk away with">'+esc(c.insight)+'</textarea></div>' +
+          '<div class="field"><label for="cHook">Hook</label><input id="cHook" data-bind-content="hook" value="'+esc(c.hook)+'" placeholder="The first line / on-screen text that stops the scroll"></div>' +
+          '<div class="field"><label for="cContext1">'+esc(ctxF.c1lbl)+'</label><textarea id="cContext1" data-bind-content="context1" placeholder="'+esc(ctxF.c1ph)+'">'+esc(c.context1||'')+'</textarea></div>' +
+          '<div class="field"><label for="cContext2">'+esc(ctxF.c2lbl)+'</label><textarea id="cContext2" data-bind-content="context2" style="min-height:140px;" placeholder="'+esc(ctxF.c2ph)+'">'+esc(c.context2||c.script||'')+'</textarea><div class="helper" style="margin-top:4px;">'+esc(ctxF.note)+'</div></div>' +
+          '<div class="field"><label for="cCta">CTA</label><input id="cCta" data-bind-content="cta" value="'+esc(c.cta)+'" placeholder="e.g. Comment AUDIT for a free checklist"></div>' +
+          '<div class="field"><label for="cPoll">Poll</label><input id="cPoll" data-bind-content="poll" value="'+esc(c.poll||'')+'" placeholder="e.g. Would your kitchen pass this? Yes / No"></div>' +
+        '</div>'
+      )) +
       sh('🎬','Shoot day') +
       '<div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:20px;">' +
         '<div class="field" style="flex:1; min-width:160px; margin-bottom:0;"><label for="cShootDate">Shoot date</label><input id="cShootDate" type="date" data-bind-content="shootDate" value="'+esc(c.shootDate)+'" '+(c.notScheduled?'disabled':'')+'></div>' +
@@ -3445,6 +3469,32 @@
     '</div>';
   }
 
+  // Today's check-in/break/drive/outing split, shown on the dashboard as a quick summary (tap to open The Day).
+  function renderDashboardTimeCard(){
+    var todayStr = todayISO();
+    var days = state.workdays.filter(function(w){ return w.date===todayStr; });
+    if (!days.length) return '';
+    var work = days.reduce(function(s,w){ return s+workdayWorkElapsed(w); }, 0);
+    var awayByCat = {};
+    AWAY_CATS.forEach(function(c){ awayByCat[c.key] = days.reduce(function(s,w){ return s+workdayAwayElapsed(w, c.key); }, 0); });
+    var totalAway = AWAY_CATS.reduce(function(s,c){ return s+awayByCat[c.key]; }, 0);
+    var total = work+totalAway;
+    var openW = days.filter(function(w){ return !w.checkOutAt; })[0];
+    var activeKey = openW ? workdayActiveAway(openW) : null;
+    var statusPill = openW ? '<span class="pill '+(activeKey?'warn':'good')+'" style="margin-bottom:10px;display:inline-block;">'+(activeKey?awayCatOf(activeKey).icon+' '+esc(awayCatOf(activeKey).verb):'🟢 Working')+'</span>' : '<span class="pill" style="margin-bottom:10px;display:inline-block;">Checked out</span>';
+    return sh('⏱️',"Today's Time") +
+      '<div class="card" style="padding:14px 16px;margin-bottom:20px;cursor:pointer;" data-action="go-time">' +
+        statusPill +
+        '<div class="statgrid" style="margin:0;">' +
+          '<div class="stattile"><div class="v mono" data-dashwtimer="work">'+fmtTime(work)+'</div><div class="k">Working</div></div>' +
+          '<div class="stattile"><div class="v mono" data-dashwtimer="away">'+fmtTime(totalAway)+'</div><div class="k">Away</div></div>' +
+          '<div class="stattile t-accent"><div class="v mono" data-dashwtimer="total">'+fmtTime(total)+'</div><div class="k">Total</div></div>' +
+        '</div>' +
+        (totalAway>0 ? '<div class="histmeta" style="margin-top:10px;">' +
+          AWAY_CATS.filter(function(c){ return awayByCat[c.key]>0; }).map(function(c){ return c.icon+' '+esc(c.label)+' '+fmtTime(awayByCat[c.key]); }).join(' · ') +
+        '</div>' : '') +
+      '</div>';
+  }
   function renderTimeDist(w){
     var work = workdayWorkElapsed(w);
     var segs = [{ label:'Working', color:'var(--accent)', ms:work }];
@@ -3960,6 +4010,8 @@
         '<h1 style="font-size:25px;">'+esc(greeting)+'</h1>' +
       '</div>' +
 
+      renderDashboardTimeCard() +
+
       '<div class="sechead2"><span class="ic">🕘</span><h2>Today\'s Activity</h2></div>' +
       (todayActivity.length===0 ? '<div class="helper" style="margin-bottom:20px;">Nothing logged yet today — get started below.</div>' :
         '<div class="card" style="padding:4px 16px;margin-bottom:'+(todayActivity.length>8?'8px':'20px')+';">' +
@@ -4055,6 +4107,20 @@
           var vals = [work].concat(awayVals), segTotal = total || 1;
           segs.forEach(function(seg, i){ seg.style.width = (vals[i]/segTotal*100)+'%'; });
         }
+      }
+    }
+    if (state.view==='dashboard' && document.querySelector('[data-dashwtimer]')){
+      var todayStr2 = todayISO();
+      var days2 = state.workdays.filter(function(w){ return w.date===todayStr2; });
+      if (days2.length){
+        var dWork = days2.reduce(function(s,w){ return s+workdayWorkElapsed(w); }, 0);
+        var dAway = days2.reduce(function(s,w){ return s+AWAY_CATS.reduce(function(ss,c){ return ss+workdayAwayElapsed(w,c.key); }, 0); }, 0);
+        var dwEl = document.querySelector('[data-dashwtimer="work"]');
+        var daEl = document.querySelector('[data-dashwtimer="away"]');
+        var dtEl = document.querySelector('[data-dashwtimer="total"]');
+        if (dwEl) dwEl.textContent = fmtTime(dWork);
+        if (daEl) daEl.textContent = fmtTime(dAway);
+        if (dtEl) dtEl.textContent = fmtTime(dWork+dAway);
       }
     }
   }, 1000);
@@ -4181,9 +4247,10 @@
         persistContentIdeas(); render();
       }
     }
-    else if (action==='open-content'){ state.activeContentId = t.dataset.id; render(); }
-    else if (action==='goto-content'){ if(!state.draft){ state.activeContentId = t.dataset.id; state.view='content'; render(); } }
+    else if (action==='open-content'){ state.activeContentId = t.dataset.id; state.contentForceEdit = false; render(); }
+    else if (action==='goto-content'){ if(!state.draft){ state.activeContentId = t.dataset.id; state.contentForceEdit = false; state.view='content'; render(); } }
     else if (action==='back-to-content'){ state.activeContentId = null; render(); }
+    else if (action==='toggle-content-force-edit'){ state.contentForceEdit = !state.contentForceEdit; render(); }
     else if (action==='delete-content'){
       if (window.confirm('Delete this content idea? This cannot be undone.')){
         state.contentIdeas = state.contentIdeas.filter(function(c){ return c.id!==t.dataset.id; });
