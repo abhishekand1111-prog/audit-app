@@ -990,6 +990,40 @@
     return found ? found.key : null;
   }
   function fmtClock(ts){ return ts ? new Date(ts).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}) : ''; }
+
+  // ---------- meeting timer (client) & work timer (content) — for time spent that isn't a full audit or a shoot ----------
+  function renderMeetingTimerCard(p){
+    var running = !!(p.meeting && p.meeting.runningSince);
+    var total = chanElapsed(p.meeting);
+    var log = (p.meetingLog||[]).slice().reverse().slice(0,5);
+    return sh('⏱️','Meeting time') +
+      '<div class="card" style="padding:14px 16px;margin-bottom:20px;">' +
+        '<div class="helper" style="margin:0 0 10px;">Track time spent with this client when there’s no audit — a sales call, a check-in, a proposal discussion.</div>' +
+        '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">' +
+          '<div class="mono" data-acttimer="meet-'+p.id+'" style="font-size:22px;font-weight:700;">'+fmtTime(total)+'</div>' +
+          '<button type="button" class="btn '+(running?'btn-primary':'btn-ghost')+' btn-sm" data-action="toggle-meeting-timer">'+(running?'⏸ Stop meeting':'▶ Start meeting')+'</button>' +
+        '</div>' +
+        (log.length ? '<div class="histmeta" style="margin-top:12px;">' +
+          log.map(function(m){ return fmtDateShort(m.startAt)+' '+fmtClock(m.startAt)+' – '+(m.endAt?fmtClock(m.endAt):'running…')+(m.endAt?' ('+fmtTime(m.endAt-m.startAt)+')':''); }).join('<br>') +
+        '</div>' : '') +
+      '</div>';
+  }
+  function renderContentTimerCard(c){
+    var running = !!(c.work && c.work.runningSince);
+    var total = chanElapsed(c.work);
+    var log = (c.workLog||[]).slice().reverse().slice(0,5);
+    return sh('⏱️','Time on this idea') +
+      '<div class="card" style="padding:14px 16px;margin-bottom:20px;">' +
+        '<div class="helper" style="margin:0 0 10px;">'+(c.posted ? 'Total time spent writing and shooting this idea.' : 'Track time spent writing or shooting this idea — separate from the shoot day booking.')+'</div>' +
+        '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">' +
+          '<div class="mono" data-acttimer="work-'+c.id+'" style="font-size:22px;font-weight:700;">'+fmtTime(total)+'</div>' +
+          (c.posted ? '' : '<button type="button" class="btn '+(running?'btn-primary':'btn-ghost')+' btn-sm" data-action="toggle-content-timer">'+(running?'⏸ Stop':'▶ Start')+'</button>') +
+        '</div>' +
+        (log.length ? '<div class="histmeta" style="margin-top:12px;">' +
+          log.map(function(m){ return fmtDateShort(m.startAt)+' '+fmtClock(m.startAt)+' – '+(m.endAt?fmtClock(m.endAt):'running…')+(m.endAt?' ('+fmtTime(m.endAt-m.startAt)+')':''); }).join('<br>') +
+        '</div>' : '') +
+      '</div>';
+  }
   function startOverall(d){ if (!d.overall.runningSince) d.overall.runningSince = Date.now(); }
 
   function setActiveSection(d, secId){
@@ -3357,6 +3391,7 @@
       '<div class="eyebrow">Content Idea</div>' +
       '<h1 style="font-size:24px;margin-top:6px;margin-bottom:8px;">'+esc(c.topic||'Untitled idea')+'</h1>' +
       (st2.label ? '<div style="margin-bottom:14px;"><span class="pill '+st2.tone+'">'+esc(st2.label)+'</span></div>' : '') +
+      renderContentTimerCard(c) +
       sh('🎯','Content angle') +
       '<div class="card" style="padding:14px 16px;margin-bottom:20px;">' +
         '<div class="helper" style="margin:0 0 10px;">The area on the left is the topic — this is the angle that makes it worth watching. Pick one or two, not the topic itself, and keep the content itself simple and easy to follow.</div>' +
