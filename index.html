@@ -4201,6 +4201,20 @@
         }
       }
     }
+    if (state.view==='prospects' && state.activeProspectId){
+      var mp2 = findProspect(state.activeProspectId);
+      if (mp2 && mp2.meeting && mp2.meeting.runningSince){
+        var meEl = document.querySelector('[data-acttimer="meet-'+mp2.id+'"]');
+        if (meEl) meEl.textContent = fmtTime(chanElapsed(mp2.meeting));
+      }
+    }
+    if (state.view==='content' && state.activeContentId){
+      var wc2 = findContent(state.activeContentId);
+      if (wc2 && wc2.work && wc2.work.runningSince){
+        var wcEl = document.querySelector('[data-acttimer="work-'+wc2.id+'"]');
+        if (wcEl) wcEl.textContent = fmtTime(chanElapsed(wc2.work));
+      }
+    }
     if (state.view==='dashboard' && document.querySelector('[data-dashwtimer]')){
       var todayStr2 = todayISO();
       var days2 = state.workdays.filter(function(w){ return w.date===todayStr2; });
@@ -4356,6 +4370,23 @@
         tac.angles = tac.angles || [];
         var ai = tac.angles.indexOf(t.dataset.val);
         if (ai>=0) tac.angles.splice(ai,1); else tac.angles.push(t.dataset.val);
+        persistContentIdeas(); render();
+      }
+    }
+    else if (action==='toggle-content-timer'){
+      var tct = findContent(state.activeContentId);
+      if (tct && !tct.posted){
+        if (!tct.work) tct.work = { accumMs:0, runningSince:null };
+        if (!tct.workLog) tct.workLog = [];
+        if (tct.work.runningSince){
+          tct.work.accumMs += Date.now()-tct.work.runningSince;
+          tct.work.runningSince = null;
+          var lastW = tct.workLog[tct.workLog.length-1];
+          if (lastW && !lastW.endAt) lastW.endAt = Date.now();
+        } else {
+          tct.work.runningSince = Date.now();
+          tct.workLog.push({ id: uid(), startAt: Date.now(), endAt: null });
+        }
         persistContentIdeas(); render();
       }
     }
@@ -4651,6 +4682,23 @@
     else if (action==='use-similar-prospectname'){
       var uspn = findProspect(state.activeProspectId);
       if (uspn){ uspn.name = t.dataset.name; persistProspects(); render(); }
+    }
+    else if (action==='toggle-meeting-timer'){
+      var mtp = findProspect(state.activeProspectId);
+      if (mtp){
+        if (!mtp.meeting) mtp.meeting = { accumMs:0, runningSince:null };
+        if (!mtp.meetingLog) mtp.meetingLog = [];
+        if (mtp.meeting.runningSince){
+          mtp.meeting.accumMs += Date.now()-mtp.meeting.runningSince;
+          mtp.meeting.runningSince = null;
+          var lastM = mtp.meetingLog[mtp.meetingLog.length-1];
+          if (lastM && !lastM.endAt) lastM.endAt = Date.now();
+        } else {
+          mtp.meeting.runningSince = Date.now();
+          mtp.meetingLog.push({ id: uid(), startAt: Date.now(), endAt: null });
+        }
+        persistProspects(); render();
+      }
     }
     else if (action==='complete-audit'){
       if (!(d.remark||'').trim()) return;
