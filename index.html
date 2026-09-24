@@ -2721,6 +2721,12 @@
     var d = new Date(); d.setDate(d.getDate()+n);
     return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
   }
+  // The rolling 7-day window (today + 6 previous days) used by the weekly time report and the dashboard week-in-review line.
+  function last7DaysCutoff(){
+    var d = new Date(todayISO()+'T00:00:00'); d.setDate(d.getDate()-6);
+    var iso = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    return { ms: d.getTime(), iso: iso };
+  }
   function followUpDueAt(f){ return new Date(f.date+'T'+(f.time||'23:59')+':00').getTime(); }
   function prospectNextDue(p){
     var t = Infinity;
@@ -3028,6 +3034,7 @@
         '<div class="helper" data-pmobile-err style="margin-top:-6px;color:var(--bad);">'+esc(mobileErrorText(p.contactMobile))+'</div>' +
         '<div class="contactrow blockrow" data-contact-btns>'+contactButtons(p)+'</div>' +
       '</div>' +
+      renderMeetingTimerCard(p) +
       renderInquiryEditor('client', p.inquiry||[], inquiryAreaOptions(p.category)) +
       renderParametersCard(p) +
       renderFollowUps(p) +
@@ -3469,6 +3476,22 @@
     '</div>';
   }
 
+  // A one-line week-in-review pulled from data already in the app — audits, conversions, posts, hours worked —
+  // so the week's shape is visible without opening Actions, Clients, Content and The Day separately.
+  function renderWeekInReviewLine(){
+    var cutoff = last7DaysCutoff();
+    var audits = state.history.filter(function(h){ return h.finishedAt>=cutoff.ms; }).length;
+    var converted = state.prospects.filter(function(p){ return p.converted && (p.convertedAt||0)>=cutoff.ms; }).length;
+    var posted = state.contentIdeas.filter(function(c){ return c.posted && (c.postedAt||0)>=cutoff.ms; }).length;
+    var worked = state.workdays.filter(function(w){ return w.date>=cutoff.iso; }).reduce(function(s,w){ return s+workdayWorkElapsed(w); }, 0);
+    var parts = [];
+    if (audits) parts.push(audits+' audit'+(audits===1?'':'s'));
+    if (converted) parts.push(converted+' client'+(converted===1?'':'s')+' converted');
+    if (posted) parts.push(posted+' post'+(posted===1?'':'s'));
+    if (worked) parts.push(fmtTime(worked)+' worked');
+    if (!parts.length) return '';
+    return '<div class="helper" style="margin:-6px 0 16px;">📈 This week: '+esc(parts.join(' · '))+'</div>';
+  }
   // Today's check-in/break/drive/outing split, shown on the dashboard as a quick summary (tap to open The Day).
   function renderDashboardTimeCard(){
     var todayStr = todayISO();
@@ -3556,6 +3579,7 @@
             '<button class="btn btn-ghost" style="flex:1 1 100%;" data-action="check-out">🚪 Check out</button>'
         ) +
       '</div>' +
+      renderWeekTimeSummary() +
       (past.length ? (
         sh('📅','Past days') +
         '<div class="card" style="padding:4px 16px;margin-bottom:20px;">' +
@@ -3567,6 +3591,31 @@
         '</div>'
       ) : '') +
     '</main>';
+  }
+  // Rolling 7-day (today + 6 previous) totals, so a bad break/drive habit shows up before it becomes a pattern.
+  function renderWeekTimeSummary(){
+    var cutoff = last7DaysCutoff();
+    var days = state.workdays.filter(function(w){ return w.date>=cutoff.iso; });
+    if (!days.length) return '';
+    var work = days.reduce(function(s,w){ return s+workdayWorkElapsed(w); }, 0);
+    var awayByCat = {};
+    AWAY_CATS.forEach(function(c){ awayByCat[c.key] = days.reduce(function(s,w){ return s+workdayAwayElapsed(w, c.key); }, 0); });
+    var totalAway = AWAY_CATS.reduce(function(s,c){ return s+awayByCat[c.key]; }, 0);
+    var total = work+totalAway;
+    var dayCount = {}; days.forEach(function(w){ dayCount[w.date] = true; });
+    var n = Object.keys(dayCount).length;
+    return sh('📊','This week') +
+      '<div class="card" style="padding:14px 16px;margin-bottom:20px;">' +
+        '<div class="histmeta" style="margin-bottom:10px;">Last 7 days · checked in on '+n+' day'+(n===1?'':'s')+'</div>' +
+        '<div class="statgrid" style="margin:0;">' +
+          '<div class="stattile"><div class="v mono">'+fmtTime(work)+'</div><div class="k">Working</div></div>' +
+          '<div class="stattile"><div class="v mono">'+fmtTime(totalAway)+'</div><div class="k">Away</div></div>' +
+          '<div class="stattile t-accent"><div class="v mono">'+fmtTime(total)+'</div><div class="k">Total</div></div>' +
+        '</div>' +
+        (totalAway>0 ? '<div class="histmeta" style="margin-top:10px;">' +
+          AWAY_CATS.filter(function(c){ return awayByCat[c.key]>0; }).map(function(c){ return c.icon+' '+esc(c.label)+' '+fmtTime(awayByCat[c.key]); }).join(' · ') +
+        '</div>' : '') +
+      '</div>';
   }
 
   function renderLookup(){
@@ -3650,6 +3699,13 @@
     var lb = lastBackupAt();
     if ((state.history.length || state.prospects.length) && (!lb || Date.now()-lb > 30*86400000)){
       alerts.push({ tone:'warn', icon:'💾', text: lb ? 'No backup in over 30 days — download one in Settings' : 'No backup downloaded yet — take your first one in Settings', action:'go-pricing' });
+    }
+    var owAlert = openWorkday();
+    if (owAlert){
+      var hoursOpen = (nowMs-owAlert.checkInAt)/3600000;
+      if (owAlert.date!==todayStr || hoursOpen>16){
+        alerts.push({ tone:'bad', icon:'⏱️', text: 'Still checked in since '+fmtDateShort(owAlert.checkInAt)+' '+fmtClock(owAlert.checkInAt)+' — check out if the day is done', action:'go-time' });
+      }
     }
     return alerts;
   }
@@ -4010,6 +4066,7 @@
         '<h1 style="font-size:25px;">'+esc(greeting)+'</h1>' +
       '</div>' +
 
+      renderWeekInReviewLine() +
       renderDashboardTimeCard() +
 
       '<div class="sechead2"><span class="ic">🕘</span><h2>Today\'s Activity</h2></div>' +
