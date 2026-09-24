@@ -630,6 +630,7 @@
     contentIdeas: loadJSON(LS_CI, []),
     reauditOverrides: loadJSON(LS_RO, {}),
     activeContentId: null,
+    timeExpandedDay: null,
     contentForceEdit: false,
     contentCoverageTab: 'dinein',
     contentOpen: {},
@@ -971,9 +972,10 @@
   // ---------- check-in / away time: a personal daily timer, separate from audit timers. If a break/drive/outing
   // or the day itself is left running (forgotten to stop), it just keeps accumulating — nothing auto-resets.
   var AWAY_CATS = [
-    { key:'break',  label:'Break',  icon:'☕', verb:'On break',  color:'var(--ink-400)' },
-    { key:'drive',  label:'Drive',  icon:'🚗', verb:'Driving',   color:'var(--good)' },
-    { key:'outing', label:'Outing', icon:'🚶', verb:'Out',       color:'var(--bad)' }
+    { key:'break',  label:'Break',  icon:'☕', verb:'On break',      color:'var(--ink-400)' },
+    { key:'drive',  label:'Drive',  icon:'🚗', verb:'Driving',       color:'var(--good)' },
+    { key:'outing', label:'Outing', icon:'🚶', verb:'Out',           color:'var(--bad)' },
+    { key:'dogs',   label:'Dogs',   icon:'🐕', verb:'With the dogs', color:'var(--ink)' }
   ];
   function awayCatOf(key){ return AWAY_CATS.filter(function(c){ return c.key===key; })[0]; }
   function openWorkday(){ return state.workdays.filter(function(w){ return !w.checkOutAt; })[0] || null; }
@@ -3572,6 +3574,18 @@
         segs.filter(function(s){ return s.ms>0 || s.label==='Working'; }).map(function(s){ return '<span><i style="background:'+s.color+';"></i>'+esc(s.label)+'</span>'; }).join('') +
       '</div>';
   }
+  // The entry log, with whatever note was attached to each session — this is the "what to stop / what to leverage" detail.
+  function renderEntriesLog(w){
+    if (!w.entries || !w.entries.length) return '';
+    return '<div class="histmeta" style="margin-top:10px;">' +
+      w.entries.slice().reverse().map(function(e){
+        var ec = awayCatOf(e.type);
+        var line = (ec?ec.icon+' '+ec.label:e.type)+': '+fmtClock(e.startAt)+' – '+(e.endAt?fmtClock(e.endAt):'running…')+(e.endAt?' ('+fmtTime(e.endAt-e.startAt)+')':'');
+        if ((e.note||'').trim()) line += ' — '+esc(e.note.trim());
+        return line;
+      }).join('<br>') +
+    '</div>';
+  }
   function renderWorkdayCard(w, isOpen){
     var work = workdayWorkElapsed(w);
     var away = AWAY_CATS.map(function(c){ return { c:c, ms:workdayAwayElapsed(w, c.key) }; });
@@ -3579,6 +3593,7 @@
     var total = work+totalAway;
     var activeKey = workdayActiveAway(w);
     var activeCat = activeKey ? awayCatOf(activeKey) : null;
+    var openEntry = (activeCat && w.entries) ? w.entries[w.entries.length-1] : null;
     return '<div class="card" style="padding:16px;margin-bottom:16px;">' +
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">' +
         '<div><div style="font-weight:700;">'+esc(fmtDateShort(w.checkInAt))+'</div>' +
@@ -3594,12 +3609,8 @@
       (away.some(function(x){ return x.ms>0; }) ? '<div class="histmeta" style="margin-top:10px;">' +
         away.filter(function(x){ return x.ms>0; }).map(function(x){ return x.c.icon+' '+esc(x.c.label)+' '+fmtTime(x.ms); }).join(' · ') +
       '</div>' : '') +
-      (w.entries && w.entries.length ? '<div class="histmeta" style="margin-top:10px;">' +
-        w.entries.map(function(e){
-          var ec = awayCatOf(e.type);
-          return (ec?ec.icon+' '+ec.label:e.type)+': '+fmtClock(e.startAt)+' – '+(e.endAt?fmtClock(e.endAt):'running…')+(e.endAt?' ('+fmtTime(e.endAt-e.startAt)+')':'');
-        }).join('<br>') +
-      '</div>' : '') +
+      (openEntry ? '<div class="field" style="margin-top:12px;margin-bottom:0;"><label>What\'s this '+esc(activeCat.label.toLowerCase())+' for?</label><input type="text" data-action="edit-away-note" value="'+esc(openEntry.note||'')+'" placeholder="e.g. Drive to Northside Grill for the audit"></div>' : '') +
+      renderEntriesLog(w) +
     '</div>';
   }
   function renderTimeView(){
@@ -3616,7 +3627,7 @@
           ? '<button class="btn btn-primary" style="flex:1;" data-action="check-in">✅ Check in</button>'
           : (active
               ? '<button class="btn btn-primary" style="flex:1 1 100%;" data-action="end-away">▶ End '+esc(awayCatOf(active).label.toLowerCase())+'</button>'
-              : AWAY_CATS.map(function(c){ return '<button class="btn btn-ghost" style="flex:1 1 26%;" data-action="start-away" data-cat="'+c.key+'">'+c.icon+' '+esc(c.label)+'</button>'; }).join('')
+              : AWAY_CATS.map(function(c){ return '<button class="btn btn-ghost" style="flex:1 1 45%;" data-action="start-away" data-cat="'+c.key+'">'+c.icon+' '+esc(c.label)+'</button>'; }).join('')
             ) +
             '<button class="btn btn-ghost" style="flex:1 1 100%;" data-action="check-out">🚪 Check out</button>'
         ) +
@@ -3624,11 +3635,16 @@
       renderWeekTimeSummary() +
       (past.length ? (
         sh('📅','Past days') +
+        '<div class="helper" style="margin:0 0 8px;">Tap a day to see what each break, drive or outing was for — the detail that tells you what to cut and what\'s worth keeping.</div>' +
         '<div class="card" style="padding:4px 16px;margin-bottom:20px;">' +
           past.map(function(x){
             var pwork = workdayWorkElapsed(x);
             var pAway = AWAY_CATS.map(function(c){ return workdayAwayElapsed(x, c.key); }).reduce(function(s,v){ return s+v; }, 0);
-            return '<div class="sumrow"><span class="k">'+esc(fmtDateShort(x.checkInAt))+'</span><span class="v">'+fmtTime(pwork)+' worked · '+fmtTime(pAway)+' away</span></div>';
+            var expanded = state.timeExpandedDay===x.id;
+            return '<div class="sumrow" style="display:block;cursor:pointer;" data-action="toggle-past-day" data-id="'+x.id+'">' +
+              '<div style="display:flex;justify-content:space-between;gap:10px;"><span class="k">'+esc(fmtDateShort(x.checkInAt))+'</span><span class="v">'+fmtTime(pwork)+' worked · '+fmtTime(pAway)+' away '+(expanded?'▲':'▼')+'</span></div>' +
+              (expanded ? renderEntriesLog(x) : '') +
+            '</div>';
           }).join('') +
         '</div>'
       ) : '') +
@@ -4445,6 +4461,10 @@
         persistWorkdays(); render();
       }
     }
+    else if (action==='toggle-past-day'){
+      state.timeExpandedDay = state.timeExpandedDay===t.dataset.id ? null : t.dataset.id;
+      render();
+    }
     else if (action==='check-out'){
       var coW = openWorkday();
       if (coW){
@@ -5115,6 +5135,11 @@
       var tnum = parseFloat(el.value); if (isNaN(tnum)) tnum = 0;
       state.targets[el.dataset.target] = tnum;
       persistTargets();
+    }
+    else if (el.dataset.action==='edit-away-note'){
+      var eanW = openWorkday();
+      var eanLast = eanW && eanW.entries && eanW.entries[eanW.entries.length-1];
+      if (eanLast && !eanLast.endAt){ eanLast.note = el.value; persistWorkdays(); }
     }
     else if (el.dataset.caEditField){
       var caEdit = state.correctiveActions.filter(function(a){ return a.id===el.dataset.caEditId; })[0];
