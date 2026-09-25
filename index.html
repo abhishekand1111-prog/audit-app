@@ -454,6 +454,42 @@
   .backrow:hover{color:var(--ink);}
   .trendwrap{margin-bottom:22px;}
   .trendcap{display:flex; justify-content:space-between; font-size:11px; color:var(--ink-400); font-family:var(--font-m); margin-top:4px;}
+  .sm-card{padding:14px 16px;}
+  .sm-top{display:flex; align-items:flex-start; justify-content:space-between; gap:10px;}
+  .sm-name{font-weight:700; font-size:15.5px; line-height:1.3;}
+  .sm-when{display:inline-flex; align-items:center; gap:6px; font-weight:700; font-size:13.5px; margin-top:8px; padding:5px 10px; border-radius:var(--r-s); background:var(--surface-2); color:var(--ink);}
+  .sm-when.due{background:var(--bad-soft); color:var(--bad);}
+  .sm-head{font-size:13.5px; color:var(--ink-600); margin-top:8px; line-height:1.45;}
+  .sm-risk{display:flex; gap:8px; align-items:flex-start; font-size:13.5px; margin-top:8px; line-height:1.45;}
+  .sm-risk .sm-dot{margin-top:6px;}
+  .sm-pills{display:flex; flex-wrap:wrap; gap:4px 14px; margin-top:8px; font-size:12px; color:var(--ink-600);}
+  .sm-pill{display:inline-flex; align-items:center; gap:6px;}
+  .sm-dot{width:8px; height:8px; border-radius:50%; display:inline-block; flex:none; background:var(--ink-400);}
+  .sm-dot.sm-system{background:none; border:1.5px solid var(--ink-400);}
+  .sm-dot.sm-person{background:var(--sm-warn);}
+  .sm-dot.sm-missing{background:var(--bad);}
+  .sm-status{font-size:10.5px; font-weight:700; padding:4px 9px; border-radius:20px; white-space:nowrap; flex:none; background:var(--surface-2); color:var(--ink-600);}
+  .sm-status.st-new{background:var(--ink); color:var(--paper);}
+  .sm-btns{display:flex; flex-wrap:wrap; gap:6px; margin-top:12px;}
+  .sm-card{--sm-warn:#B26B00;}
+  .sm-tree{margin-top:14px; padding:14px 12px; border:1px solid var(--line); border-radius:var(--r-m); background-image:radial-gradient(var(--line) 1.1px, transparent 1.1px); background-size:16px 16px;}
+  .sm-kids{margin-left:12px;}
+  .sm-item{position:relative; padding:8px 0 0 20px;}
+  .sm-item::before{content:""; position:absolute; left:0; top:0; height:26px; width:14px; border-left:1.5px solid var(--line-strong); border-bottom:1.5px solid var(--line-strong); border-bottom-left-radius:7px;}
+  .sm-item:not(:last-child)::after{content:""; position:absolute; left:0; top:26px; bottom:0; border-left:1.5px solid var(--line-strong);}
+  .sm-n{display:inline-block; max-width:100%; background:var(--surface); border:1.5px solid var(--line-strong); border-radius:var(--r-s); padding:6px 10px; position:relative;}
+  .sm-n b{display:block; font-size:12.5px; line-height:1.25;}
+  .sm-n span{display:block; font-size:11px; color:var(--ink-400); font-weight:600; margin-top:1px; line-height:1.3;}
+  .sm-n.sm-root{background:var(--ink); border-color:var(--ink); color:var(--paper); border-radius:20px;}
+  .sm-n.sm-root span{color:var(--paper); opacity:.65;}
+  .sm-n.sm-dept{border-color:var(--ink);} .sm-n.sm-dept b{text-transform:uppercase; letter-spacing:.05em; font-size:11.5px;}
+  .sm-n.sm-area.sm-person{border-color:var(--sm-warn);} .sm-n.sm-area.sm-person span{color:var(--sm-warn);}
+  .sm-n.sm-area.sm-missing{border-color:var(--bad);} .sm-n.sm-area.sm-missing span{color:var(--bad);}
+  .sm-n.sm-sub{border-width:1px; border-color:var(--line); padding-left:22px;}
+  .sm-n.sm-sub .sm-dot{position:absolute; left:8px; top:11px;}
+  .sm-n.sm-sub span{color:var(--ink-600); font-weight:400;}
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .sm-card{--sm-warn:#E0A63A;} }
+  :root[data-theme="dark"] .sm-card{--sm-warn:#E0A63A;}
   [hidden]{display:none !important;}
 </style>
 </head>
@@ -648,11 +684,15 @@
     actionsTab: 'corrective',
     actionsShowDone: false,
     viewingAuditId: null,
-    summaryReturnView: 'setup'
+    summaryReturnView: 'setup',
+    systemMaps: [],
+    mapsError: '',
+    mapsTab: 'calls',
+    mapsOpen: {}
   };
   // Remember where the user was, so a refresh or reopening the app lands on the same page.
   var LS_NAV = 'diagnosisroom_nav_v1';
-  var NAV_VIEWS = ['dashboard','week','editor','pricing','actions','prospects','lookup','content','search','summary','time'];
+  var NAV_VIEWS = ['dashboard','week','editor','pricing','actions','prospects','lookup','content','search','summary','time','maps'];
   var navScrollY = 0;
   (function restoreNav(){
     var n = loadJSON(LS_NAV, null);
@@ -852,10 +892,31 @@
     }, function(){});
     fsUnsubs.push(unsub);
   }
+  // Submissions from the public System Map page (top-level systemMaps collection, create-only for the public, owner can read/update).
+  function fsWatchSystemMaps(){
+    var unsub = fsDb.collection('systemMaps').orderBy('createdAt', 'desc').limit(300).onSnapshot(function(snap){
+      var list = [];
+      snap.forEach(function(d){
+        var r = d.data({ serverTimestamps:'estimate' });
+        r._id = d.id;
+        r._at = (r.createdAt && r.createdAt.toMillis) ? r.createdAt.toMillis() : Date.now();
+        list.push(r);
+      });
+      state.systemMaps = list;
+      state.mapsError = '';
+      if (isTypingInApp()) return;
+      render();
+    }, function(err){
+      state.mapsError = (err && err.code) ? String(err.code) : 'error';
+      if (!isTypingInApp()) render();
+    });
+    fsUnsubs.push(unsub);
+  }
   function attachFirestoreSync(){
     fsDb = firebase.firestore();
     fsStartRecordSync();
     fsWatchDoc('config', true);
+    fsWatchSystemMaps();
     var unsubSync = fsDb.onSnapshotsInSync(function(){
       state.syncPending = false;
       if (isTypingInApp()) return;
@@ -867,6 +928,7 @@
     fsUnsubs.forEach(function(u){ try{ u(); }catch(e){} });
     fsUnsubs = [];
     fsDb = null;
+    state.systemMaps = [];
     RECORD_SETS.forEach(function(rs){ clearTimeout(rs.retry); rs.ready = false; rs.busy = false; rs.synced = {}; });
   }
 
@@ -1188,6 +1250,7 @@
     else if (v==='dashboard') html = renderDashboard();
     else if (v==='week') html = renderWeekView();
     else if (v==='time') html = renderTimeView();
+    else if (v==='maps') html = renderSystemMaps();
     app.innerHTML = topbar() + html;
     saveNav();
     if (navScrollY){ var ny = navScrollY; navScrollY = 0; window.scrollTo(0, ny); }
@@ -1233,6 +1296,7 @@
         item('setup','go-setup','New Audit') +
         item('editor','go-editor','Checklist') +
         item('prospects','go-prospects','Clients') +
+        item('maps','go-maps','Call Requests', (function(){ var n=smCalls().filter(function(c){ return (c.status||'new')==='new'; }).length; return n?String(n):''; })()) +
         item('content','go-content','Content', state.contentIdeas.length?String(state.contentIdeas.length):'') +
         item('lookup','go-lookup','Lookup', (function(){ var n=state.lookups.filter(function(l){ return !l.done; }).length; return n?String(n):''; })()) +
         item('actions','go-actions','Actions', openActions?String(openActions):'') +
@@ -3676,6 +3740,137 @@
       '</div>';
   }
 
+  // ---- System Map call requests (from the public System Map page) ----
+  var SM_FORMAT = { dinein:'Dine-in', qsr:'QSR', cloud:'Cloud kitchen' };
+  var SM_STATUS = { new:'New', contacted:'Contacted', done:'Call done', client:'Added as client' };
+  var SM_STATUS_LABEL = { system:'Systemized', person:'Person-dependent', missing:'Missing' };
+  function smCalls(){ return state.systemMaps.filter(function(m){ return m.kind==='call' && m.contact; }); }
+  function smOpen(c){ var s = c.status||'new'; return s==='new' || s==='contacted'; }
+  function smSlotStart(c){ var m = /^(\d{1,2}):(\d{2})/.exec((c.contact&&c.contact.slot)||''); return m ? m[1].padStart(2,'0')+':'+m[2] : '23:59'; }
+  function smWhenLabel(c){
+    var iso = (c.contact && c.contact.date) || '';
+    if (!iso) return '';
+    var todayStr = todayISO();
+    var tm = new Date(); tm.setDate(tm.getDate()+1);
+    var tmStr = tm.getFullYear()+'-'+String(tm.getMonth()+1).padStart(2,'0')+'-'+String(tm.getDate()).padStart(2,'0');
+    var d = new Date(iso+'T00:00:00');
+    var day = iso===todayStr ? 'Today' : (iso===tmStr ? 'Tomorrow' : d.toLocaleDateString(undefined,{weekday:'short', day:'numeric', month:'short'}));
+    return day+' · '+(c.contact.slot||'');
+  }
+  // The owner's map as a hierarchy: restaurant → department → area → the two practices asked about.
+  function smMapHtml(m){
+    var map = m.map || [];
+    if (!map.length) return '';
+    var groups = [];
+    map.forEach(function(a){
+      var d = a.dept || '';
+      var g = groups.length && groups[groups.length-1].name===d ? groups[groups.length-1] : null;
+      if (!g){ g = { name:d, areas:[] }; groups.push(g); }
+      g.areas.push(a);
+    });
+    function area(a){
+      return '<div class="sm-item"><div class="sm-n sm-area sm-'+esc(a.status)+'"><b>'+esc(a.name)+'</b><span>'+esc(a.status==='system' ? 'Systemized' : (a.who||SM_STATUS_LABEL[a.status]||''))+'</span></div>' +
+        '<div class="sm-kids">'+(a.subs||[]).map(function(s){
+          return '<div class="sm-item"><div class="sm-n sm-sub"><i class="sm-dot sm-'+esc(s.status)+'"></i>'+((a.subs.length>1 || s.label!==a.name) ? '<b>'+esc(s.label)+'</b>' : '')+'<span>'+esc(s.answer)+'</span></div></div>';
+        }).join('')+'</div></div>';
+    }
+    function deptLine(areas){
+      var p = areas.filter(function(a){ return a.status==='person'; }).length, x = areas.filter(function(a){ return a.status==='missing'; }).length;
+      if (!p && !x) return 'All systemized';
+      return [x ? x+' missing' : '', p ? p+' on one person' : ''].filter(Boolean).join(' · ');
+    }
+    var n = m.counts || {};
+    return '<div class="sm-tree"><div class="sm-n sm-root"><b>'+esc(m.restaurant||'Their restaurant')+'</b><span>'+esc(SM_FORMAT[m.format]||'')+' · '+(n.system||0)+' of '+map.length+' systemized</span></div><div class="sm-kids">' +
+      groups.map(function(g){
+        if (!g.name) return g.areas.map(area).join('');
+        return '<div class="sm-item"><div class="sm-n sm-dept"><b>'+esc(g.name)+'</b><span>'+esc(deptLine(g.areas))+'</span></div><div class="sm-kids">'+g.areas.map(area).join('')+'</div></div>';
+      }).join('') + '</div></div>';
+  }
+  function smRiskHtml(m){
+    return m.risk ? '<div class="sm-risk"><i class="sm-dot sm-missing"></i><span><b>Biggest risk:</b> '+esc(m.risk)+'</span></div>' : '';
+  }
+  function smPillsHtml(m){
+    var n = m.counts || {};
+    return '<div class="sm-pills">' +
+      '<span class="sm-pill"><i class="sm-dot sm-system"></i>'+(n.system||0)+' systemized</span>' +
+      '<span class="sm-pill"><i class="sm-dot sm-person"></i>'+(n.person||0)+' on one person</span>' +
+      '<span class="sm-pill"><i class="sm-dot sm-missing"></i>'+(n.missing||0)+' missing</span></div>';
+  }
+  function smMeta(m){
+    var bits = [SM_FORMAT[m.format]||''];
+    if (m.city) bits.push(m.city);
+    if (m.chef) bits.push('Chef: '+m.chef);
+    if (m.manager) bits.push('Manager: '+m.manager);
+    bits.push((m.kind==='call'?'Requested ':'Mapped ')+fmtRelativeTime(m._at));
+    return bits.filter(Boolean).map(esc).join(' · ');
+  }
+  function smCallCard(c){
+    var s = c.status||'new', ct = c.contact||{};
+    var todayStr = todayISO();
+    var due = smOpen(c) && ct.date && ct.date<=todayStr;
+    var open = !!state.mapsOpen[c._id];
+    var btns = contactButtons({ contactMobile: ct.phone, contactName: ct.name });
+    if (s==='new') btns += '<button class="btn btn-ghost btn-sm" data-action="sm-status" data-id="'+esc(c._id)+'" data-v="contacted">Mark contacted</button>';
+    if (s==='new' || s==='contacted') btns += '<button class="btn btn-ghost btn-sm" data-action="sm-status" data-id="'+esc(c._id)+'" data-v="done">Call done</button>';
+    if (s!=='client') btns += '<button class="btn btn-ghost btn-sm" data-action="sm-add-client" data-id="'+esc(c._id)+'">+ Add as client</button>';
+    if (s==='done' || s==='client') btns += '<button class="btn btn-ghost btn-sm" data-action="sm-status" data-id="'+esc(c._id)+'" data-v="new">Reopen</button>';
+    btns += '<button class="btn btn-ghost btn-sm" data-action="sm-toggle" data-id="'+esc(c._id)+'">'+(open?'Hide map':'View map')+'</button>';
+    return '<div class="card sm-card">' +
+      '<div class="sm-top"><div><div class="sm-name">'+esc(ct.name||'Unnamed')+(c.restaurant?' · '+esc(c.restaurant):'')+'</div>' +
+        '<div class="histmeta" style="margin-top:2px;">'+smMeta(c)+'</div></div>' +
+        '<span class="sm-status st-'+esc(s)+'">'+esc(SM_STATUS[s]||s)+'</span></div>' +
+      '<div class="sm-when'+(due?' due':'')+'">📅 '+esc(smWhenLabel(c))+(due && ct.date<todayStr?' · overdue':'')+'</div>' +
+      '<div class="sm-head">'+esc(c.headline||'')+'</div>' + smRiskHtml(c) +
+      smPillsHtml(c) +
+      (ct.note ? '<div class="sm-head" style="color:var(--ink);">💬 '+esc(ct.note)+'</div>' : '') +
+      '<div class="sm-btns">'+btns+'</div>' +
+      (open ? smMapHtml(c) : '') +
+    '</div>';
+  }
+  function smMapCard(m){
+    var open = !!state.mapsOpen[m._id];
+    return '<div class="card sm-card">' +
+      '<div class="sm-top"><div><div class="sm-name">'+esc(m.restaurant||'Anonymous')+'</div><div class="histmeta" style="margin-top:2px;">'+smMeta(m)+'</div></div></div>' +
+      '<div class="sm-head">'+esc(m.headline||'')+'</div>' + smRiskHtml(m) + smPillsHtml(m) +
+      '<div class="sm-btns"><button class="btn btn-ghost btn-sm" data-action="sm-toggle" data-id="'+esc(m._id)+'">'+(open?'Hide map':'View map')+'</button></div>' +
+      (open ? smMapHtml(m) : '') +
+    '</div>';
+  }
+  function renderSystemMaps(){
+    var calls = smCalls();
+    var called = {}; calls.forEach(function(c){ called[c.mapId] = true; });
+    var latest = {};
+    state.systemMaps.forEach(function(m){ if (m.kind==='map' && !called[m.mapId] && (!latest[m.mapId] || latest[m.mapId]._at < m._at)) latest[m.mapId] = m; });
+    var maps = Object.keys(latest).map(function(k){ return latest[k]; }).sort(function(a,b){ return b._at-a._at; });
+    var openCalls = calls.filter(smOpen).sort(function(a,b){
+      var ak = (a.contact.date||'9999')+smSlotStart(a), bk = (b.contact.date||'9999')+smSlotStart(b);
+      return ak<bk?-1:(ak>bk?1:0);
+    });
+    var closedCalls = calls.filter(function(c){ return !smOpen(c); }).sort(function(a,b){ return b._at-a._at; });
+    var tab = state.mapsTab==='maps' ? 'maps' : 'calls';
+    var body;
+    if (state.mapsError){
+      body = '<div class="card" style="padding:14px 16px; border-color:var(--bad);"><b>Can\'t load System Map submissions ('+esc(state.mapsError)+').</b>' +
+        '<div class="helper" style="margin-top:6px;">If it says permission-denied, the systemMaps rule hasn\'t been added to your Firestore rules yet.</div></div>';
+    } else if (tab==='calls'){
+      body = (openCalls.length ? '<div class="cardstack">'+openCalls.map(smCallCard).join('')+'</div>'
+          : '<div class="empty" style="padding:22px 14px;"><div class="big">📞</div>No open call requests.</div>') +
+        (closedCalls.length ? '<div class="eyebrow" style="margin:20px 0 8px;">Handled</div><div class="cardstack">'+closedCalls.map(smCallCard).join('')+'</div>' : '');
+    } else {
+      body = maps.length ? '<div class="helper" style="margin-bottom:10px;">Owners who finished a map but didn\'t book a call. Anonymous unless they typed a name.</div><div class="cardstack">'+maps.map(smMapCard).join('')+'</div>'
+        : '<div class="empty" style="padding:22px 14px;"><div class="big">🗺️</div>No maps without a call yet.</div>';
+    }
+    return '<main>' +
+      '<div class="eyebrow">System Map</div>' +
+      '<h1 style="font-size:26px;margin-top:6px;margin-bottom:6px;">Call Requests</h1>' +
+      '<div class="helper" style="margin-bottom:14px;">Snapshot Call bookings from the public System Map, with the map each owner filled in.</div>' +
+      '<div class="tabs">' +
+        '<button class="tab '+(tab==='calls'?'on':'')+'" data-action="maps-tab" data-tab="calls">📞 Calls<span class="tabcount">'+openCalls.length+'</span></button>' +
+        '<button class="tab '+(tab==='maps'?'on':'')+'" data-action="maps-tab" data-tab="maps">🗺️ Maps only<span class="tabcount">'+maps.length+'</span></button>' +
+      '</div>' + body +
+    '</main>';
+  }
+
   function renderLookup(){
     function sortFn(a,b){ return (b.createdAt||0)-(a.createdAt||0); }
     var groups = {
@@ -3746,6 +3941,14 @@
       if (c.shootDate===todayStr){
         alerts.push({ tone:'good', icon:'🎬', text: (c.topic||'Untitled idea')+' — shoot scheduled today', action:'goto-content', id:c.id });
       }
+    });
+    smCalls().forEach(function(c){
+      var ct = c.contact, s = c.status||'new';
+      if (!smOpen(c)) return;
+      var who = (ct.name||'Someone')+(c.restaurant?' ('+c.restaurant+')':'');
+      if (ct.date && ct.date<todayStr) alerts.push({ tone:'bad', icon:'📞', text: who+' — Snapshot Call was due '+fmtDateShort(new Date(ct.date+'T00:00:00').getTime())+', '+(s==='new'?'not contacted yet':'not marked done'), action:'go-maps' });
+      else if (ct.date===todayStr) alerts.push({ tone:'warn', icon:'📞', text: who+' — Snapshot Call today, '+(ct.slot||''), action:'go-maps' });
+      else if (s==='new') alerts.push({ tone:'good', icon:'📞', text: who+' booked a Snapshot Call for '+smWhenLabel(c), action:'go-maps' });
     });
     var noPrice = clientsMissingPrice();
     if (noPrice.length){
@@ -4315,6 +4518,28 @@
     else if (action==='go-actions'){ if(!state.draft){ if (t.dataset.tab) state.actionsTab = t.dataset.tab; state.view='actions'; render(); } }
     else if (action==='go-prospects'){ if(!state.draft){ state.activeProspectId=null; state.view='prospects'; render(); } }
     else if (action==='go-lookup'){ if(!state.draft){ state.view='lookup'; render(); } }
+    else if (action==='go-maps'){ if(!state.draft){ state.view='maps'; window.scrollTo(0,0); render(); } }
+    else if (action==='maps-tab'){ state.mapsTab = t.dataset.tab; render(); }
+    else if (action==='sm-toggle'){ state.mapsOpen[t.dataset.id] = !state.mapsOpen[t.dataset.id]; render(); }
+    else if (action==='sm-status'){
+      if (!fsDb) return;
+      t.disabled = true;
+      fsDb.collection('systemMaps').doc(t.dataset.id).update({ status:t.dataset.v, statusAt:Date.now() })
+        .catch(function(err){ alert('Could not update this request ('+((err&&err.code)||'error')+').'); render(); });
+    }
+    else if (action==='sm-add-client'){
+      var smC = state.systemMaps.filter(function(m){ return m._id===t.dataset.id; })[0];
+      if (!smC || !fsDb) return;
+      var smCt = smC.contact || {};
+      var smP = { id: uid(), name: smC.restaurant||'', location: smC.city||'', address:'', category: smC.format==='qsr' ? 'qsr' : (smC.format==='dinein' ? 'dinein' : ''), auditId:null,
+        plannedAuditDate:'', checkinNote:'', proposed:'', priceMin:'', priceMax:'', converted:false, convertedAt:null,
+        declined:false, declinedAt:null, followUpDate: smCt.date||'', finalPrice:'', timeline:'', createdAt: Date.now(),
+        servicesOffered:'', pricingType:'', proposalStatus:'', proposalMeetingDate:'', auditsPerMonth:'',
+        contactName: smCt.name||'', contactDesignation:'', contactMobile: smCt.phone||'', systemMapId: smC._id };
+      state.prospects.push(smP); persistProspects();
+      fsDb.collection('systemMaps').doc(smC._id).update({ status:'client', statusAt:Date.now(), prospectId:smP.id }).catch(function(){});
+      state.activeProspectId = smP.id; state.view = 'prospects'; window.scrollTo(0,0); render();
+    }
     else if (action==='go-search'){ if(!state.draft){ state.view='search'; render(); } }
     else if (action==='go-content'){ if(!state.draft){ state.activeContentId=null; state.view='content'; render(); } }
     else if (action==='add-content'){
