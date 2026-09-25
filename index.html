@@ -3744,7 +3744,9 @@
   var SM_FORMAT = { dinein:'Dine-in', qsr:'QSR', cloud:'Cloud kitchen' };
   var SM_STATUS = { new:'New', contacted:'Contacted', done:'Call done', client:'Added as client' };
   var SM_STATUS_LABEL = { system:'Systemized', person:'Person-dependent', missing:'Missing' };
-  function smCalls(){ return state.systemMaps.filter(function(m){ return m.kind==='call' && m.contact; }); }
+  function smCalls(){ return state.systemMaps.filter(function(m){ return (m.kind==='call' || m.kind==='inquiry') && m.contact; }); }
+  function smBiz(c){ return c.restaurant || (c.contact && c.contact.business) || ''; }
+  function smDayOf(ts){ var d = new Date(ts||Date.now()); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
   function smOpen(c){ var s = c.status||'new'; return s==='new' || s==='contacted'; }
   function smSlotStart(c){ var m = /^(\d{1,2}):(\d{2})/.exec((c.contact&&c.contact.slot)||''); return m ? m[1].padStart(2,'0')+':'+m[2] : '23:59'; }
   function smWhenLabel(c){
@@ -3790,18 +3792,19 @@
     return m.risk ? '<div class="sm-risk"><i class="sm-dot sm-missing"></i><span><b>Biggest risk:</b> '+esc(m.risk)+'</span></div>' : '';
   }
   function smPillsHtml(m){
-    var n = m.counts || {};
+    if (!m.counts) return '';
+    var n = m.counts;
     return '<div class="sm-pills">' +
       '<span class="sm-pill"><i class="sm-dot sm-system"></i>'+(n.system||0)+' systemized</span>' +
       '<span class="sm-pill"><i class="sm-dot sm-person"></i>'+(n.person||0)+' on one person</span>' +
       '<span class="sm-pill"><i class="sm-dot sm-missing"></i>'+(n.missing||0)+' missing</span></div>';
   }
   function smMeta(m){
-    var bits = [SM_FORMAT[m.format]||''];
-    if (m.city) bits.push(m.city);
+    var bits = [m.kind==='inquiry' ? 'Website inquiry' : (SM_FORMAT[m.format]||'')];
+    if (m.city || (m.contact && m.contact.location)) bits.push(m.city || m.contact.location);
     if (m.chef) bits.push('Chef: '+m.chef);
     if (m.manager) bits.push('Manager: '+m.manager);
-    bits.push((m.kind==='call'?'Requested ':'Mapped ')+fmtRelativeTime(m._at));
+    bits.push((m.kind==='map'?'Mapped ':'Requested ')+fmtRelativeTime(m._at));
     return bits.filter(Boolean).map(esc).join(' · ');
   }
   function smCallCard(c){
@@ -3814,15 +3817,16 @@
     if (s==='new' || s==='contacted') btns += '<button class="btn btn-ghost btn-sm" data-action="sm-status" data-id="'+esc(c._id)+'" data-v="done">Call done</button>';
     if (s!=='client') btns += '<button class="btn btn-ghost btn-sm" data-action="sm-add-client" data-id="'+esc(c._id)+'">+ Add as client</button>';
     if (s==='done' || s==='client') btns += '<button class="btn btn-ghost btn-sm" data-action="sm-status" data-id="'+esc(c._id)+'" data-v="new">Reopen</button>';
-    btns += '<button class="btn btn-ghost btn-sm" data-action="sm-toggle" data-id="'+esc(c._id)+'">'+(open?'Hide map':'View map')+'</button>';
+    if (c.map) btns += '<button class="btn btn-ghost btn-sm" data-action="sm-toggle" data-id="'+esc(c._id)+'">'+(open?'Hide map':'View map')+'</button>';
     return '<div class="card sm-card">' +
-      '<div class="sm-top"><div><div class="sm-name">'+esc(ct.name||'Unnamed')+(c.restaurant?' · '+esc(c.restaurant):'')+'</div>' +
+      '<div class="sm-top"><div><div class="sm-name">'+esc(ct.name||'Unnamed')+(smBiz(c)?' · '+esc(smBiz(c)):'')+'</div>' +
         '<div class="histmeta" style="margin-top:2px;">'+smMeta(c)+'</div></div>' +
         '<span class="sm-status st-'+esc(s)+'">'+esc(SM_STATUS[s]||s)+'</span></div>' +
-      '<div class="sm-when'+(due?' due':'')+'">📅 '+esc(smWhenLabel(c))+(due && ct.date<todayStr?' · overdue':'')+'</div>' +
+      (ct.date ? '<div class="sm-when'+(due?' due':'')+'">📅 '+esc(smWhenLabel(c))+(due && ct.date<todayStr?' · overdue':'')+'</div>' : '') +
+      (ct.email ? '<div class="sm-head">✉️ <a href="mailto:'+esc(ct.email)+'">'+esc(ct.email)+'</a></div>' : '') +
       '<div class="sm-head">'+esc(c.headline||'')+'</div>' + smRiskHtml(c) +
       smPillsHtml(c) +
-      (ct.note ? '<div class="sm-head" style="color:var(--ink);">💬 '+esc(ct.note)+'</div>' : '') +
+      ((ct.note||ct.message) ? '<div class="sm-head" style="color:var(--ink);">💬 '+esc(ct.note||ct.message)+'</div>' : '') +
       '<div class="sm-btns">'+btns+'</div>' +
       (open ? smMapHtml(c) : '') +
     '</div>';
@@ -3843,7 +3847,7 @@
     state.systemMaps.forEach(function(m){ if (m.kind==='map' && !called[m.mapId] && (!latest[m.mapId] || latest[m.mapId]._at < m._at)) latest[m.mapId] = m; });
     var maps = Object.keys(latest).map(function(k){ return latest[k]; }).sort(function(a,b){ return b._at-a._at; });
     var openCalls = calls.filter(smOpen).sort(function(a,b){
-      var ak = (a.contact.date||'9999')+smSlotStart(a), bk = (b.contact.date||'9999')+smSlotStart(b);
+      var ak = (a.contact.date||smDayOf(a._at))+smSlotStart(a), bk = (b.contact.date||smDayOf(b._at))+smSlotStart(b);
       return ak<bk?-1:(ak>bk?1:0);
     });
     var closedCalls = calls.filter(function(c){ return !smOpen(c); }).sort(function(a,b){ return b._at-a._at; });
@@ -3863,7 +3867,7 @@
     return '<main>' +
       '<div class="eyebrow">System Map</div>' +
       '<h1 style="font-size:26px;margin-top:6px;margin-bottom:6px;">Call Requests</h1>' +
-      '<div class="helper" style="margin-bottom:14px;">Snapshot Call bookings from the public System Map, with the map each owner filled in.</div>' +
+      '<div class="helper" style="margin-bottom:14px;">Snapshot Call bookings from the System Map (with each owner\'s map) and inquiries from your website.</div>' +
       '<div class="tabs">' +
         '<button class="tab '+(tab==='calls'?'on':'')+'" data-action="maps-tab" data-tab="calls">📞 Calls<span class="tabcount">'+openCalls.length+'</span></button>' +
         '<button class="tab '+(tab==='maps'?'on':'')+'" data-action="maps-tab" data-tab="maps">🗺️ Maps only<span class="tabcount">'+maps.length+'</span></button>' +
@@ -3945,7 +3949,8 @@
     smCalls().forEach(function(c){
       var ct = c.contact, s = c.status||'new';
       if (!smOpen(c)) return;
-      var who = (ct.name||'Someone')+(c.restaurant?' ('+c.restaurant+')':'');
+      var who = (ct.name||'Someone')+(smBiz(c)?' ('+smBiz(c)+')':'');
+      if (c.kind==='inquiry'){ if (s==='new') alerts.push({ tone:'good', icon:'✉️', text: who+' sent an inquiry from your website', action:'go-maps' }); return; }
       if (ct.date && ct.date<todayStr) alerts.push({ tone:'bad', icon:'📞', text: who+' — Snapshot Call was due '+fmtDateShort(new Date(ct.date+'T00:00:00').getTime())+', '+(s==='new'?'not contacted yet':'not marked done'), action:'go-maps' });
       else if (ct.date===todayStr) alerts.push({ tone:'warn', icon:'📞', text: who+' — Snapshot Call today, '+(ct.slot||''), action:'go-maps' });
       else if (s==='new') alerts.push({ tone:'good', icon:'📞', text: who+' booked a Snapshot Call for '+smWhenLabel(c), action:'go-maps' });
@@ -4531,7 +4536,7 @@
       var smC = state.systemMaps.filter(function(m){ return m._id===t.dataset.id; })[0];
       if (!smC || !fsDb) return;
       var smCt = smC.contact || {};
-      var smP = { id: uid(), name: smC.restaurant||'', location: smC.city||'', address:'', category: smC.format==='qsr' ? 'qsr' : (smC.format==='dinein' ? 'dinein' : ''), auditId:null,
+      var smP = { id: uid(), name: smBiz(smC), location: smC.city||smCt.location||'', address:'', category: smC.format==='qsr' ? 'qsr' : (smC.format==='dinein' ? 'dinein' : ''), auditId:null,
         plannedAuditDate:'', checkinNote:'', proposed:'', priceMin:'', priceMax:'', converted:false, convertedAt:null,
         declined:false, declinedAt:null, followUpDate: smCt.date||'', finalPrice:'', timeline:'', createdAt: Date.now(),
         servicesOffered:'', pricingType:'', proposalStatus:'', proposalMeetingDate:'', auditsPerMonth:'',
