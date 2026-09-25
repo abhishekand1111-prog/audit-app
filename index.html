@@ -397,6 +397,15 @@
   .tabs-auto .tab{flex:1 1 auto; padding-left:8px; padding-right:8px; text-overflow:clip;}
   .tabs-auto .tabcount{margin-left:4px; padding:1px 5px;}
   .tab .tabcount.bad{background:var(--bad); color:#fff;}
+  .tabs-scroll{overflow-x:auto; scrollbar-width:none; -webkit-overflow-scrolling:touch;}
+  .tabs-scroll::-webkit-scrollbar{display:none;}
+  .tabs-scroll .tab{flex:1 0 auto; overflow:visible; text-overflow:clip; padding-left:7px; padding-right:7px; font-size:12.5px;}
+  .tabs-scroll .tabcount{margin-left:4px; padding:1px 5px;}
+  .seg{display:flex; flex-wrap:wrap; gap:6px; margin:0 0 14px;}
+  .seg button{border:1px solid var(--line-strong); background:var(--surface); color:var(--ink-600); border-radius:20px; padding:7px 13px; font-size:12.5px; font-weight:700; font-family:var(--font-b);}
+  .seg button.on{background:var(--ink); color:var(--paper); border-color:var(--ink);}
+  .dayalert{display:flex; align-items:center; gap:8px; width:100%; text-align:left; padding:12px 14px; margin-bottom:18px; border:1px solid var(--bad); background:var(--bad-soft); color:var(--bad); font-size:13.5px; font-family:var(--font-b); cursor:pointer;}
+  .dayalert b{color:var(--bad);}
   .cgbody .weekrow{margin:10px 0 0; box-shadow:none; background:var(--surface-2);}
   .cghead{width:100%; display:flex; align-items:center; justify-content:space-between; gap:10px; text-align:left; border:none; background:none; color:var(--ink); padding:14px 16px;}
   .cghead .cgtitle{font-weight:800; min-width:0;}
@@ -685,6 +694,8 @@
     actionsShowDone: false,
     viewingAuditId: null,
     summaryReturnView: 'setup',
+    dayTab: 'today',
+    prospectsTab: 'pipeline',
     systemMaps: [],
     mapsError: '',
     mapsTab: 'calls',
@@ -709,6 +720,8 @@
     if (n.actionsTab) state.actionsTab = n.actionsTab;
     if (n.historyTab) state.historyTab = n.historyTab;
     if (n.weekTab) state.weekTab = n.weekTab;
+    if (n.dayTab) state.dayTab = n.dayTab;
+    if (n.prospectsTab) state.prospectsTab = n.prospectsTab;
     if (n.contentCoverageTab) state.contentCoverageTab = n.contentCoverageTab;
     state.view = n.view;
     navScrollY = Number(n.scrollY) || 0;
@@ -718,6 +731,7 @@
     saveJSON(LS_NAV, { view:state.view, activeProspectId:state.activeProspectId, activeContentId:state.activeContentId,
       viewingAuditId:state.viewingAuditId, summaryReturnView:state.summaryReturnView, editorTab:state.editorTab,
       actionsTab:state.actionsTab, historyTab:state.historyTab, weekTab:state.weekTab, contentCoverageTab:state.contentCoverageTab,
+      dayTab:state.dayTab, prospectsTab:state.prospectsTab,
       scrollY: Math.round(window.pageYOffset || 0) });
   }
   var navTimer = null;
@@ -1235,6 +1249,12 @@
   function render(){
     if (!state.authReady){ app.innerHTML = '<div class="authwrap"><div class="authloading">Loading…</div></div>'; return; }
     if (!state.authUser){ app.innerHTML = renderAuthGate(); return; }
+    // Week Ahead and Actions now live inside The Day; Call Requests inside Clients.
+    if (state.view==='week'){ state.view = 'time'; state.dayTab = state.weekTab==='overdue' ? 'overdue' : (state.weekTab==='today' ? 'today' : 'week'); }
+    else if (state.view==='actions'){ state.view = 'time'; state.dayTab = 'actions'; }
+    else if (state.view==='maps'){ state.view = 'prospects'; state.activeProspectId = null; state.prospectsTab = 'calls'; }
+    if (state.summaryReturnView==='week' || state.summaryReturnView==='actions') state.summaryReturnView = 'time';
+    if (state.summaryReturnView==='maps') state.summaryReturnView = 'prospects';
     var v = state.view;
     var html = '';
     if (v==='setup') html = renderSetup();
@@ -1250,8 +1270,12 @@
     else if (v==='dashboard') html = renderDashboard();
     else if (v==='week') html = renderWeekView();
     else if (v==='time') html = renderTimeView();
-    else if (v==='maps') html = renderSystemMaps();
     app.innerHTML = topbar() + html;
+    var onTabs = app.querySelectorAll('.tabs-scroll .tab.on');
+    for (var oti=0; oti<onTabs.length; oti++){
+      var tb = onTabs[oti], bar = tb.parentNode;
+      if (tb.offsetLeft+tb.offsetWidth > bar.scrollLeft+bar.clientWidth || tb.offsetLeft < bar.scrollLeft) bar.scrollLeft = tb.offsetLeft - 8;
+    }
     saveNav();
     if (navScrollY){ var ny = navScrollY; navScrollY = 0; window.scrollTo(0, ny); }
     var lookupTAs = app.querySelectorAll('.lookuptext, .edtext, .inqtext');
@@ -1276,7 +1300,6 @@
   function topbar(){
     var draftActive = !!state.draft;
     var lockAttr = draftActive?'disabled title="Finish or discard the current audit first"':'';
-    var openActions = state.correctiveActions.filter(function(a){ return !a.done; }).length;
     function item(view, action, label, extra){
       return '<button class="sidebarbtn '+(state.view===view?'active':'')+'" data-action="'+action+'" '+lockAttr+'><span>'+label+'</span>'+(extra?'<span class="count">'+extra+'</span>':'')+'</button>';
     }
@@ -1291,15 +1314,15 @@
       '<nav class="sidebar '+(state.sidebarOpen?'open':'')+'">' +
         '<div class="sidebar-brand">'+logoImg()+'<span class="name">Diagnosis Room</span></div>' +
         item('dashboard','go-dashboard','Dashboard') +
-        item('time','go-time','The Day', (function(){ var ow=openWorkday(); if(!ow) return ''; var ak=workdayActiveAway(ow); return ak?awayCatOf(ak).icon:'🟢'; })()) +
-        item('week','go-week','Week Ahead', (function(){ var n=weekGroups(7).count; return n?String(n):''; })()) +
+        item('time','go-time','The Day', (function(){
+          var ow=openWorkday(), ak=ow?workdayActiveAway(ow):null, c=dayCounts(), n=c.today+c.overdue;
+          return [ow ? (ak?awayCatOf(ak).icon:'🟢') : '', n ? String(n) : ''].filter(Boolean).join(' ');
+        })()) +
         item('setup','go-setup','New Audit') +
         item('editor','go-editor','Checklist') +
-        item('prospects','go-prospects','Clients') +
-        item('maps','go-maps','Call Requests', (function(){ var n=smCalls().filter(function(c){ return (c.status||'new')==='new'; }).length; return n?String(n):''; })()) +
+        item('prospects','go-prospects','Clients', (function(){ var n=smNewCount(); return n?String(n):''; })()) +
         item('content','go-content','Content', state.contentIdeas.length?String(state.contentIdeas.length):'') +
         item('lookup','go-lookup','Lookup', (function(){ var n=state.lookups.filter(function(l){ return !l.done; }).length; return n?String(n):''; })()) +
-        item('actions','go-actions','Actions', openActions?String(openActions):'') +
         item('pricing','go-pricing','Settings') +
       '</nav>';
   }
@@ -2511,7 +2534,7 @@
 
     return '<main>' +
       '<div style="display:flex; justify-content:space-between; align-items:flex-end; gap:10px;">' +
-        '<div><div class="eyebrow">Sales Pipeline &amp; Audit History</div><h1 style="font-size:26px;margin-top:6px;">Clients</h1></div>' +
+        '<div><div class="eyebrow">Calls, Pipeline &amp; Audit History</div><h1 style="font-size:26px;margin-top:6px;">Clients</h1></div>' +
         '<button class="btn btn-primary btn-sm" style="flex:none;" data-action="add-prospect">+ Add Client</button>' +
       '</div>' +
       (state.prospects.length || state.history.length ? (
@@ -2520,12 +2543,13 @@
           (state.history.length ? '<button class="btn btn-ghost btn-sm" style="flex:1;" data-action="export-csv">Export Audit CSV</button>' : '') +
         '</div>'
       ) : '') +
-      '<div class="tabs" style="margin-top:14px;">' +
+      '<div class="tabs tabs-scroll" style="margin-top:14px;">' +
+        '<button class="tab '+(pTab==='calls'?'on':'')+'" data-action="prospects-tab" data-tab="calls">Calls'+(function(){ var n = smNewCount(); return '<span class="tabcount'+(n?' bad':'')+'">'+n+'</span>'; })()+'</button>' +
         '<button class="tab '+(pTab==='pipeline'?'on':'')+'" data-action="prospects-tab" data-tab="pipeline">Pipeline</button>' +
         '<button class="tab '+(pTab==='clients'?'on':'')+'" data-action="prospects-tab" data-tab="clients">Clients</button>' +
         '<button class="tab '+(pTab==='daily'?'on':'')+'" data-action="prospects-tab" data-tab="daily">Daily Activity</button>' +
       '</div>' +
-      (pTab==='daily' ? renderProspectsDaily() : (
+      (pTab==='calls' ? renderCallRequestsBody() : pTab==='daily' ? renderProspectsDaily() : (
       (locs.length || cats.length ? (
         '<div style="display:flex; gap:12px; flex-wrap:wrap; margin:14px 0;">' +
           (locs.length ? '<div class="field" style="flex:1; min-width:150px; margin-bottom:0;"><label>Location</label><select data-prospect-filter="location"><option value="all">All locations</option>'+locs.map(function(l){ return '<option value="'+esc(l)+'" '+(fl===l?'selected':'')+'>'+esc(l)+'</option>'; }).join('')+'</select></div>' : '') +
@@ -3677,16 +3701,63 @@
       renderEntriesLog(w) +
     '</div>';
   }
+  // The Day = check-in + today's agenda, the 7-day planner, overdue items, corrective actions / re-audits, and the time log.
+  function dayCounts(){
+    var g = weekGroups(7);
+    return { g:g, today:g.days[0].items.length, week:g.count, overdue:g.overdue.length,
+      actions: state.correctiveActions.filter(function(a){ return !a.done; }).length + computeDueList().filter(function(x){ return x.dueAt<=Date.now(); }).length };
+  }
   function renderTimeView(){
+    var c = dayCounts(), g = c.g;
+    var tab = ['today','week','overdue','actions','time'].indexOf(state.dayTab)>=0 ? state.dayTab : 'today';
+    var tabs = [
+      { key:'today',   label:'Today',   n:c.today },
+      { key:'week',    label:'Week',    n:c.week },
+      { key:'overdue', label:'Overdue', n:c.overdue, bad:true },
+      { key:'actions', label:'Actions', n:c.actions }
+    ];
+    var body;
+    if (tab==='today') body = renderDayToday(g);
+    else if (tab==='week'){
+      var firstBusy = g.days.filter(function(d){ return d.items.length; })[0];
+      body = '<div class="helper" style="margin:0 0 12px;">Follow-ups, audits, re-audits, meetings, fixes and shoots for the next 7 days. Tap a day to open it.</div>' +
+        g.days.map(function(day){
+          return weekGroupHtml('week|'+day.date, weekDayLabel(day), day.items, { dateLabel: day.offset<2 ? fmtDateShort(new Date(day.date+'T00:00:00').getTime()) : '', defOpen: day===firstBusy });
+        }).join('') +
+        (g.count===0 ? '<div class="helper" style="margin:4px 0 20px;">Nothing scheduled in the next 7 days.</div>' : '');
+    }
+    else if (tab==='overdue'){
+      body = g.overdue.length
+        ? g.overdue.map(function(e){ return weekRowHtml(e, true); }).join('')
+        : '<div class="empty"><div class="big">✅</div>Nothing overdue — you\'re all caught up.</div>';
+    }
+    else if (tab==='actions'){
+      var at = state.actionsTab==='schedule' ? 'schedule' : 'corrective';
+      body = '<div class="seg">' +
+          '<button class="'+(at==='corrective'?'on':'')+'" data-action="actions-tab" data-tab="corrective">🛠️ Corrective actions</button>' +
+          '<button class="'+(at==='schedule'?'on':'')+'" data-action="actions-tab" data-tab="schedule">🗓️ Re-audit due</button>' +
+        '</div>' +
+        (at==='schedule' ? renderDueList() : renderCorrectiveList());
+    }
+    else body = renderDayTimeLog();
+    var todayLabel = new Date().toLocaleDateString(undefined,{weekday:'long', month:'short', day:'numeric'});
+    return '<main>' +
+      '<div class="eyebrow">'+esc(todayLabel)+'</div>' +
+      '<h1 style="font-size:26px;margin-top:6px;margin-bottom:14px;">The Day</h1>' +
+      '<div class="tabs tabs-scroll">' +
+        tabs.map(function(t){
+          return '<button class="tab '+(tab===t.key?'on':'')+'" data-action="day-tab" data-tab="'+t.key+'">'+t.label+(t.n===null ? '' : '<span class="tabcount'+(t.bad && t.n ? ' bad' : '')+'">'+t.n+'</span>')+'</button>';
+        }).join('') +
+      '</div>' +
+      body +
+    '</main>';
+  }
+  function renderDayToday(g){
     var w = openWorkday();
     var active = w ? workdayActiveAway(w) : null;
-    var past = state.workdays.filter(function(x){ return x.checkOutAt; }).slice(0, 14);
-    return '<main>' +
-      '<div class="eyebrow">The Day</div>' +
-      '<h1 style="font-size:26px;margin-top:6px;margin-bottom:6px;">Check-in &amp; Away Time</h1>' +
-      '<div class="helper" style="margin-bottom:16px;">Track your working day here. If you forget to end a break, drive or outing — or forget to check out — the timer just keeps running until you do. Nothing resets, and the split below always reflects where the day actually went.</div>' +
-      (w ? renderWorkdayCard(w, true) : '<div class="empty" style="padding:26px 14px;margin-bottom:16px;"><div class="big">⏱️</div>Not checked in yet today.</div>') +
-      '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:28px;">' +
+    var items = g.days[0].items;
+    return (w ? renderWorkdayCard(w, true) : '<div class="empty" style="padding:22px 14px;margin-bottom:14px;"><div class="big">⏱️</div>Not checked in yet today.</div>') +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px;">' +
         (!w
           ? '<button class="btn btn-primary" style="flex:1;" data-action="check-in">✅ Check in</button>'
           : (active
@@ -3695,7 +3766,20 @@
             ) +
             '<button class="btn btn-ghost" style="flex:1 1 100%;" data-action="check-out">🚪 Check out</button>'
         ) +
+        '<button class="btn btn-text btn-sm" style="flex:1 1 100%;" data-action="day-tab" data-tab="time">⏱️ Time log — last 7 days &amp; past days →</button>' +
       '</div>' +
+      (g.overdue.length ? '<button type="button" class="card dayalert" data-action="day-tab" data-tab="overdue">⚠️ <b>'+g.overdue.length+' overdue</b> from earlier days <span style="margin-left:auto;">View →</span></button>' : '') +
+      sh('📋','Today\'s agenda') +
+      (items.length
+        ? items.map(function(e){ return weekRowHtml(e, false); }).join('')
+        : '<div class="empty" style="padding:20px 14px;"><div class="big">📅</div>Nothing scheduled for today.</div>') +
+      '<button class="btn btn-ghost btn-sm" style="width:100%;margin:6px 0 20px;" data-action="day-tab" data-tab="week">See the next 7 days ('+g.count+') →</button>';
+  }
+  function renderDayTimeLog(){
+    var past = state.workdays.filter(function(x){ return x.checkOutAt; }).slice(0, 14);
+    return '<button class="btn btn-text btn-sm" style="margin:-4px 0 10px;" data-action="day-tab" data-tab="today">← Back to today</button>' +
+      '<h2 style="font-size:19px;margin-bottom:6px;">Time log</h2>' +
+      '<div class="helper" style="margin-bottom:16px;">If you forget to end a break, drive or outing — or forget to check out — the timer keeps running until you do. Nothing resets, so the split always reflects where the day actually went.</div>' +
       renderWeekTimeSummary() +
       (past.length ? (
         sh('📅','Past days') +
@@ -3711,8 +3795,7 @@
             '</div>';
           }).join('') +
         '</div>'
-      ) : '') +
-    '</main>';
+      ) : '<div class="empty" style="padding:20px 14px;"><div class="big">🕘</div>No finished days yet.</div>');
   }
   // Rolling 7-day (today + 6 previous) totals, so a bad break/drive habit shows up before it becomes a pattern.
   function renderWeekTimeSummary(){
@@ -3840,7 +3923,8 @@
       (open ? smMapHtml(m) : '') +
     '</div>';
   }
-  function renderSystemMaps(){
+  // Call requests now live as a tab inside Clients.
+  function renderCallRequestsBody(){
     var calls = smCalls();
     var called = {}; calls.forEach(function(c){ called[c.mapId] = true; });
     var latest = {};
@@ -3864,16 +3948,13 @@
       body = maps.length ? '<div class="helper" style="margin-bottom:10px;">Owners who finished a map but didn\'t book a call. Anonymous unless they typed a name.</div><div class="cardstack">'+maps.map(smMapCard).join('')+'</div>'
         : '<div class="empty" style="padding:22px 14px;"><div class="big">🗺️</div>No maps without a call yet.</div>';
     }
-    return '<main>' +
-      '<div class="eyebrow">System Map</div>' +
-      '<h1 style="font-size:26px;margin-top:6px;margin-bottom:6px;">Call Requests</h1>' +
-      '<div class="helper" style="margin-bottom:14px;">Snapshot Call bookings from the System Map (with each owner\'s map) and inquiries from your website.</div>' +
-      '<div class="tabs">' +
-        '<button class="tab '+(tab==='calls'?'on':'')+'" data-action="maps-tab" data-tab="calls">📞 Calls<span class="tabcount">'+openCalls.length+'</span></button>' +
-        '<button class="tab '+(tab==='maps'?'on':'')+'" data-action="maps-tab" data-tab="maps">🗺️ Maps only<span class="tabcount">'+maps.length+'</span></button>' +
-      '</div>' + body +
-    '</main>';
+    return '<div class="helper" style="margin-bottom:12px;">Snapshot Call bookings from the System Map (with each owner\'s map) and inquiries from your website.</div>' +
+      '<div class="seg">' +
+        '<button class="'+(tab==='calls'?'on':'')+'" data-action="maps-tab" data-tab="calls">📞 Calls · '+openCalls.length+'</button>' +
+        '<button class="'+(tab==='maps'?'on':'')+'" data-action="maps-tab" data-tab="maps">🗺️ Maps only · '+maps.length+'</button>' +
+      '</div>' + body;
   }
+  function smNewCount(){ return smCalls().filter(function(c){ return (c.status||'new')==='new'; }).length; }
 
   function renderLookup(){
     function sortFn(a,b){ return (b.createdAt||0)-(a.createdAt||0); }
@@ -4513,17 +4594,18 @@
     else if (action==='toggle-sidebar'){ state.sidebarOpen = !state.sidebarOpen; render(); }
     else if (action==='close-sidebar'){ state.sidebarOpen = false; render(); }
     else if (action==='go-dashboard'){ if(!state.draft){ state.view='dashboard'; render(); } }
-    else if (action==='go-week'){ if(!state.draft){ state.weekTab = null; state.view='week'; window.scrollTo(0,0); render(); } }
-    else if (action==='go-time'){ if(!state.draft){ state.view='time'; window.scrollTo(0,0); render(); } }
+    else if (action==='go-week'){ if(!state.draft){ state.dayTab = 'week'; state.view='time'; window.scrollTo(0,0); render(); } }
+    else if (action==='go-time'){ if(!state.draft){ state.dayTab = 'today'; state.view='time'; window.scrollTo(0,0); render(); } }
+    else if (action==='day-tab'){ state.dayTab = t.dataset.tab; window.scrollTo(0,0); render(); }
     else if (action==='week-tab'){ state.weekTab = t.dataset.tab; render(); }
     else if (action==='dash-lookup-tab'){ state.dashLookupTab = t.dataset.tab; render(); }
     else if (action==='go-setup'){ if(!state.draft) { state.view='setup'; render(); } }
     else if (action==='go-editor'){ if(!state.draft){ state.view='editor'; render(); } }
     else if (action==='go-pricing'){ if(!state.draft){ state.view='pricing'; render(); } }
-    else if (action==='go-actions'){ if(!state.draft){ if (t.dataset.tab) state.actionsTab = t.dataset.tab; state.view='actions'; render(); } }
+    else if (action==='go-actions'){ if(!state.draft){ if (t.dataset.tab) state.actionsTab = t.dataset.tab; state.dayTab = 'actions'; state.view='time'; window.scrollTo(0,0); render(); } }
     else if (action==='go-prospects'){ if(!state.draft){ state.activeProspectId=null; state.view='prospects'; render(); } }
     else if (action==='go-lookup'){ if(!state.draft){ state.view='lookup'; render(); } }
-    else if (action==='go-maps'){ if(!state.draft){ state.view='maps'; window.scrollTo(0,0); render(); } }
+    else if (action==='go-maps'){ if(!state.draft){ state.activeProspectId = null; state.prospectsTab = 'calls'; state.view='prospects'; window.scrollTo(0,0); render(); } }
     else if (action==='maps-tab'){ state.mapsTab = t.dataset.tab; render(); }
     else if (action==='sm-toggle'){ state.mapsOpen[t.dataset.id] = !state.mapsOpen[t.dataset.id]; render(); }
     else if (action==='sm-status'){
