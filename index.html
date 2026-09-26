@@ -414,6 +414,10 @@
   .pcard-missing{margin-top:8px; font-size:12px; font-weight:600; color:var(--accent-ink); background:var(--accent-soft); border-radius:var(--r-s); padding:5px 8px;}
   .pcard-foot{display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:10px; flex-wrap:wrap;}
   .pcard-foot .contactrow{display:flex; gap:6px; flex-wrap:wrap;}
+  .sm-tap{cursor:pointer; transition:border-color .15s;}
+  .sm-tap:hover{border-color:var(--line-strong);}
+  .sm-detail .v{font-family:var(--font-b); font-weight:600; font-size:14px; min-width:0; overflow-wrap:anywhere;}
+  .sm-detail a{color:var(--accent-ink); text-decoration:none;}
   .cgbody .weekrow{margin:10px 0 0; box-shadow:none; background:var(--surface-2);}
   .cghead{width:100%; display:flex; align-items:center; justify-content:space-between; gap:10px; text-align:left; border:none; background:none; color:var(--ink); padding:14px 16px;}
   .cghead .cgtitle{font-weight:800; min-width:0;}
@@ -704,6 +708,7 @@
     summaryReturnView: 'setup',
     dayTab: 'today',
     prospectsTab: 'pipeline',
+    activeCallId: null,
     systemMaps: [],
     mapsError: '',
     mapsTab: 'calls',
@@ -2499,6 +2504,11 @@
 
   function renderProspects(){
     if (state.activeProspectId) return renderProspectDetail();
+    if (state.activeCallId){
+      var openCall = state.systemMaps.filter(function(m){ return m._id===state.activeCallId; })[0];
+      if (openCall) return renderCallDetail(openCall);
+      if (state.systemMaps.length) state.activeCallId = null;
+    }
     var pTab = state.prospectsTab || 'pipeline';
     var locs = [], cats = [];
     state.prospects.forEach(function(p){
@@ -3915,8 +3925,7 @@
     if (s==='new' || s==='contacted') btns += '<button class="btn btn-ghost btn-sm" data-action="sm-status" data-id="'+esc(c._id)+'" data-v="done">Call done</button>';
     if (s!=='client') btns += '<button class="btn btn-ghost btn-sm" data-action="sm-add-client" data-id="'+esc(c._id)+'">+ Add as client</button>';
     if (s==='done' || s==='client') btns += '<button class="btn btn-ghost btn-sm" data-action="sm-status" data-id="'+esc(c._id)+'" data-v="new">Reopen</button>';
-    if (c.map) btns += '<button class="btn btn-ghost btn-sm" data-action="sm-toggle" data-id="'+esc(c._id)+'">'+(open?'Hide map':'View map')+'</button>';
-    return '<div class="card sm-card">' +
+    return '<div class="card sm-card sm-tap" data-action="sm-open" data-id="'+esc(c._id)+'">' +
       '<div class="sm-top"><div><div class="sm-name">'+esc(ct.name||'Unnamed')+(smBiz(c)?' · '+esc(smBiz(c)):'')+'</div>' +
         '<div class="histmeta" style="margin-top:2px;">'+smMeta(c)+'</div></div>' +
         '<span class="sm-status st-'+esc(s)+'">'+esc(SM_STATUS[s]||s)+'</span></div>' +
@@ -3925,18 +3934,58 @@
       '<div class="sm-head">'+esc(c.headline||'')+'</div>' + smRiskHtml(c) +
       smPillsHtml(c) +
       ((ct.note||ct.message) ? '<div class="sm-head" style="color:var(--ink);">💬 '+esc(ct.note||ct.message)+'</div>' : '') +
-      '<div class="sm-btns">'+btns+'</div>' +
-      (open ? smMapHtml(c) : '') +
+      '<div class="sm-btns">'+btns+'<span class="furow-open" style="margin-left:auto;align-self:center;">Details ›</span></div>' +
     '</div>';
   }
   function smMapCard(m){
-    var open = !!state.mapsOpen[m._id];
-    return '<div class="card sm-card">' +
-      '<div class="sm-top"><div><div class="sm-name">'+esc(m.restaurant||'Anonymous')+'</div><div class="histmeta" style="margin-top:2px;">'+smMeta(m)+'</div></div></div>' +
+    return '<div class="card sm-card sm-tap" data-action="sm-open" data-id="'+esc(m._id)+'">' +
+      '<div class="sm-top"><div><div class="sm-name">'+esc(m.restaurant||'Anonymous')+'</div><div class="histmeta" style="margin-top:2px;">'+smMeta(m)+'</div></div><span class="furow-open">Details ›</span></div>' +
       '<div class="sm-head">'+esc(m.headline||'')+'</div>' + smRiskHtml(m) + smPillsHtml(m) +
-      '<div class="sm-btns"><button class="btn btn-ghost btn-sm" data-action="sm-toggle" data-id="'+esc(m._id)+'">'+(open?'Hide map':'View map')+'</button></div>' +
-      (open ? smMapHtml(m) : '') +
     '</div>';
+  }
+  // Full page for one call request / website inquiry / map.
+  function renderCallDetail(c){
+    var s = c.status||'new', ct = c.contact||{}, isMap = c.kind==='map', todayStr = todayISO();
+    var due = smOpen(c) && ct.date && ct.date<=todayStr;
+    var btns = '';
+    if (!isMap){
+      btns = contactButtons({ contactMobile: ct.phone, contactName: ct.name });
+      if (s==='new') btns += '<button class="btn btn-ghost btn-sm" data-action="sm-status" data-id="'+esc(c._id)+'" data-v="contacted">Mark contacted</button>';
+      if (s==='new' || s==='contacted') btns += '<button class="btn btn-ghost btn-sm" data-action="sm-status" data-id="'+esc(c._id)+'" data-v="done">Call done</button>';
+      if (s!=='client') btns += '<button class="btn btn-ghost btn-sm" data-action="sm-add-client" data-id="'+esc(c._id)+'">+ Add as client</button>';
+      if (s==='done' || s==='client') btns += '<button class="btn btn-ghost btn-sm" data-action="sm-status" data-id="'+esc(c._id)+'" data-v="new">Reopen</button>';
+    }
+    function row(k, v){ return v ? '<div class="sumrow"><span class="k">'+k+'</span><span class="v" style="text-align:right;">'+v+'</span></div>' : ''; }
+    var title = isMap ? (c.restaurant||'Anonymous map') : (ct.name||'Unnamed');
+    var kindLabel = c.kind==='inquiry' ? 'Website inquiry' : (isMap ? 'System Map · no call booked' : 'Snapshot Call request');
+    return '<main>' +
+      '<button class="backrow" data-action="sm-back">← Back to calls</button>' +
+      '<div class="eyebrow">'+esc(kindLabel)+'</div>' +
+      '<div class="sm-top" style="margin-top:6px;"><h1 style="font-size:24px;">'+esc(title)+'</h1>'+(isMap ? '' : '<span class="sm-status st-'+esc(s)+'">'+esc(SM_STATUS[s]||s)+'</span>')+'</div>' +
+      '<div class="histmeta" style="margin-top:4px;">'+smMeta(c)+'</div>' +
+      (ct.date ? '<div class="sm-when'+(due?' due':'')+'" style="margin-top:12px;">📅 '+esc(smWhenLabel(c))+(due && ct.date<todayStr?' · overdue':'')+'</div>' : '') +
+      (!isMap ? (
+        sh('👤','Contact') +
+        '<div class="card sm-detail" style="padding:4px 16px;margin-bottom:12px;">' +
+          row('Name', esc(ct.name||'')) +
+          row('Mobile', ct.phone ? '<a href="tel:+91'+esc(ct.phone)+'">'+esc(ct.phone)+'</a>' : '') +
+          row('Business', esc(smBiz(c))) +
+          row('Location', esc(c.city || ct.location || '')) +
+          row('Email', ct.email ? '<a href="mailto:'+esc(ct.email)+'">'+esc(ct.email)+'</a>' : '') +
+          row('Format', esc(SM_FORMAT[c.format]||'')) +
+          row('Received', esc(fmtDateShort(c._at))+' · '+esc(new Date(c._at).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}))) +
+        '</div>' +
+        ((ct.note||ct.message) ? '<div class="card" style="padding:12px 16px;margin-bottom:12px;"><div class="histmeta" style="margin-bottom:4px;">Message</div>'+esc(ct.note||ct.message)+'</div>' : '') +
+        '<div class="sm-btns" style="margin:4px 0 20px;">'+btns+'</div>'
+      ) : '') +
+      (c.map || c.headline ? (
+        sh('🗺️', isMap ? 'Their System Map' : 'Their System Map') +
+        '<div class="card sm-card" style="margin-bottom:20px;">' +
+          '<div class="sm-head" style="margin-top:0;color:var(--ink);font-weight:600;">'+esc(c.headline||'')+'</div>' +
+          smRiskHtml(c) + smPillsHtml(c) + smMapHtml(c) +
+        '</div>'
+      ) : '') +
+    '</main>';
   }
   // Call requests now live as a tab inside Clients.
   function renderCallRequestsBody(){
@@ -4046,10 +4095,10 @@
       var ct = c.contact, s = c.status||'new';
       if (!smOpen(c)) return;
       var who = (ct.name||'Someone')+(smBiz(c)?' ('+smBiz(c)+')':'');
-      if (c.kind==='inquiry'){ if (s==='new') alerts.push({ tone:'good', icon:'✉️', text: who+' sent an inquiry from your website', action:'go-maps' }); return; }
-      if (ct.date && ct.date<todayStr) alerts.push({ tone:'bad', icon:'📞', text: who+' — Snapshot Call was due '+fmtDateShort(new Date(ct.date+'T00:00:00').getTime())+', '+(s==='new'?'not contacted yet':'not marked done'), action:'go-maps' });
-      else if (ct.date===todayStr) alerts.push({ tone:'warn', icon:'📞', text: who+' — Snapshot Call today, '+(ct.slot||''), action:'go-maps' });
-      else if (s==='new') alerts.push({ tone:'good', icon:'📞', text: who+' booked a Snapshot Call for '+smWhenLabel(c), action:'go-maps' });
+      if (c.kind==='inquiry'){ if (s==='new') alerts.push({ tone:'good', icon:'✉️', text: who+' sent an inquiry from your website', action:'sm-open', id:c._id }); return; }
+      if (ct.date && ct.date<todayStr) alerts.push({ tone:'bad', icon:'📞', text: who+' — Snapshot Call was due '+fmtDateShort(new Date(ct.date+'T00:00:00').getTime())+', '+(s==='new'?'not contacted yet':'not marked done'), action:'sm-open', id:c._id });
+      else if (ct.date===todayStr) alerts.push({ tone:'warn', icon:'📞', text: who+' — Snapshot Call today, '+(ct.slot||''), action:'sm-open', id:c._id });
+      else if (s==='new') alerts.push({ tone:'good', icon:'📞', text: who+' booked a Snapshot Call for '+smWhenLabel(c), action:'sm-open', id:c._id });
     });
     var noPrice = clientsMissingPrice();
     if (noPrice.length){
@@ -4231,6 +4280,11 @@
     });
     state.correctiveActions.forEach(function(a){
       if (!a.done && a.dueDate) add(a.dueDate, '', '🛠️', 'bad', 'Fix due: '+(a.description||'(unspecified)'), a.storeName||'', 'go-actions', '', 'corrective');
+    });
+    smCalls().forEach(function(c){
+      if (c.kind!=='call' || !smOpen(c) || !c.contact.date) return;
+      var st = smSlotStart(c);
+      add(c.contact.date, st!=='23:59' ? st : '', '☎️', 'warn', 'Snapshot Call: '+(c.contact.name||'Unnamed'), [smBiz(c), c.contact.slot, c.contact.phone].filter(Boolean).join(' · '), 'sm-open', c._id);
     });
     ev.sort(function(a, b){
       if (a.date!==b.date) return a.date<b.date ? -1 : 1;
@@ -4621,10 +4675,12 @@
     else if (action==='go-editor'){ if(!state.draft){ state.view='editor'; render(); } }
     else if (action==='go-pricing'){ if(!state.draft){ state.view='pricing'; render(); } }
     else if (action==='go-actions'){ if(!state.draft){ if (t.dataset.tab) state.actionsTab = t.dataset.tab; state.dayTab = 'actions'; state.view='time'; window.scrollTo(0,0); render(); } }
-    else if (action==='go-prospects'){ if(!state.draft){ state.activeProspectId=null; state.view='prospects'; render(); } }
+    else if (action==='go-prospects'){ if(!state.draft){ state.activeProspectId=null; state.activeCallId=null; state.view='prospects'; render(); } }
     else if (action==='go-lookup'){ if(!state.draft){ state.view='lookup'; render(); } }
     else if (action==='go-maps'){ if(!state.draft){ state.activeProspectId = null; state.prospectsTab = 'calls'; state.view='prospects'; window.scrollTo(0,0); render(); } }
     else if (action==='maps-tab'){ state.mapsTab = t.dataset.tab; render(); }
+    else if (action==='sm-open'){ if(!state.draft){ state.activeCallId = t.dataset.id; state.activeProspectId = null; state.prospectsTab = 'calls'; state.view = 'prospects'; state.sidebarOpen = false; window.scrollTo(0,0); render(); } }
+    else if (action==='sm-back'){ state.activeCallId = null; render(); }
     else if (action==='sm-toggle'){ state.mapsOpen[t.dataset.id] = !state.mapsOpen[t.dataset.id]; render(); }
     else if (action==='sm-status'){
       if (!fsDb) return;
@@ -4643,7 +4699,7 @@
         contactName: smCt.name||'', contactDesignation:'', contactMobile: smCt.phone||'', systemMapId: smC._id };
       state.prospects.push(smP); persistProspects();
       fsDb.collection('systemMaps').doc(smC._id).update({ status:'client', statusAt:Date.now(), prospectId:smP.id }).catch(function(){});
-      state.activeProspectId = smP.id; state.view = 'prospects'; window.scrollTo(0,0); render();
+      state.activeProspectId = smP.id; state.activeCallId = null; state.view = 'prospects'; window.scrollTo(0,0); render();
     }
     else if (action==='go-search'){ if(!state.draft){ state.view='search'; render(); } }
     else if (action==='go-content'){ if(!state.draft){ state.activeContentId=null; state.view='content'; render(); } }
@@ -5146,7 +5202,7 @@
     }
     else if (action==='toggle-show-done'){ state.actionsShowDone = !state.actionsShowDone; render(); }
     else if (action==='actions-tab'){ state.actionsTab = t.dataset.tab; render(); }
-    else if (action==='prospects-tab'){ state.prospectsTab = t.dataset.tab; render(); }
+    else if (action==='prospects-tab'){ state.prospectsTab = t.dataset.tab; state.activeCallId = null; render(); }
     else if (action==='export-csv'){
       var csv = buildHistoryCSV();
       downloadCSV(csv, 'diagnosis-room-audits-'+todayISO()+'.csv');
