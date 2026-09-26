@@ -406,6 +406,14 @@
   .seg button.on{background:var(--ink); color:var(--paper); border-color:var(--ink);}
   .dayalert{display:flex; align-items:center; gap:8px; width:100%; text-align:left; padding:12px 14px; margin-bottom:18px; border:1px solid var(--bad); background:var(--bad-soft); color:var(--bad); font-size:13.5px; font-family:var(--font-b); cursor:pointer;}
   .dayalert b{color:var(--bad);}
+  .furow{padding:10px 8px 6px; margin:0 -8px; border-top:1px solid var(--line); border-radius:var(--r-s); cursor:pointer; transition:background .15s;}
+  .furow:hover, .furow:active{background:var(--surface-2);}
+  .furow-open{font-size:12px; font-weight:700; color:var(--accent-ink); white-space:nowrap;}
+  .pcard-name{font-weight:700; font-size:15.5px; margin:8px 0 2px;}
+  .pcard .histmeta{margin-top:3px;}
+  .pcard-missing{margin-top:8px; font-size:12px; font-weight:600; color:var(--accent-ink); background:var(--accent-soft); border-radius:var(--r-s); padding:5px 8px;}
+  .pcard-foot{display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:10px; flex-wrap:wrap;}
+  .pcard-foot .contactrow{display:flex; gap:6px; flex-wrap:wrap;}
   .cgbody .weekrow{margin:10px 0 0; box-shadow:none; background:var(--surface-2);}
   .cghead{width:100%; display:flex; align-items:center; justify-content:space-between; gap:10px; text-align:left; border:none; background:none; color:var(--ink); padding:14px 16px;}
   .cghead .cgtitle{font-weight:800; min-width:0;}
@@ -2587,15 +2595,22 @@
         pipelineList.map(function(p){
           var st = prospectStatus(p);
           var priceStr = (p.priceMin||p.priceMax) ? (state.pricing.currency||'')+(p.priceMin||'0')+'–'+(state.pricing.currency||'')+(p.priceMax||'0') : '';
-          var revealName = p.declined || !!p.plannedAuditDate;
           var stColor = { good:'var(--good)', bad:'var(--bad)', warn:'var(--accent)' }[st.tone] || 'var(--line)';
-          return '<div class="card histcard" style="border-left:3px solid '+stColor+';" data-action="open-prospect" data-id="'+p.id+'">' +
+          var nextFu = openFollowUps(p)[0];
+          var missing = prospectProblems(p);
+          var who = [p.contactName, p.contactDesignation].filter(function(x){ return (x||'').trim(); }).map(esc).join(' · ');
+          var btns = contactButtons(p);
+          return '<div class="card histcard pcard" style="border-left:3px solid '+stColor+';" data-action="open-prospect" data-id="'+p.id+'">' +
             '<div class="histtop"><span><span class="badge">'+esc(prospectCategoryLabel(p))+'</span>'+serviceBadgeHtml(p)+'</span><span class="pill '+st.tone+'">'+st.label+'</span></div>' +
-            '<div style="font-weight:700;margin-top:8px;'+(p.declined?'text-decoration:line-through;color:var(--ink-400);':'')+'">'+(revealName ? esc(p.name||'Unnamed client') : '🔒 Hidden until converted')+'</div>' +
-            '<div class="histmeta">'+esc(p.location||'—')+(p.address?' · '+esc(p.address):'')+'</div>' +
-            (priceStr || p.timeline ? '<div class="histmeta">'+priceStr+(priceStr && p.timeline?' · ':'')+(p.timeline?esc(p.timeline):'')+'</div>' : '') +
-            (!p.declined && p.plannedAuditDate ? '<div class="histmeta">Audit day: '+fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime())+plannedTimeSuffix(p)+'</div>' : '') +
-            (p.declined && p.followUpDate ? '<div class="histmeta">Follow up: '+fmtDateShort(new Date(p.followUpDate+'T00:00:00').getTime())+'</div>' : '') +
+            '<div class="pcard-name" style="'+(p.declined?'text-decoration:line-through;color:var(--ink-400);':'')+'">'+esc(p.name||'Unnamed client')+'</div>' +
+            '<div class="histmeta">📍 '+esc(p.location||'No location')+(p.address?' · '+esc(p.address):'')+'</div>' +
+            (who || p.contactMobile ? '<div class="histmeta">👤 '+(who||'Contact')+(p.contactMobile?' · '+esc(p.contactMobile):'')+'</div>' : '') +
+            (priceStr || p.timeline ? '<div class="histmeta">💰 '+priceStr+(priceStr && p.timeline?' · ':'')+(p.timeline?esc(p.timeline):'')+'</div>' : '') +
+            (!p.declined && p.plannedAuditDate ? '<div class="histmeta">⭐ Audit day: '+fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime())+plannedTimeSuffix(p)+'</div>' : '') +
+            (nextFu ? '<div class="histmeta">📞 Next follow-up: '+esc(fmtFollowUpWhen(nextFu))+(nextFu.note?' — '+esc(nextFu.note):'')+'</div>'
+              : (p.declined && p.followUpDate ? '<div class="histmeta">📞 Follow up: '+fmtDateShort(new Date(p.followUpDate+'T00:00:00').getTime())+'</div>' : '')) +
+            (missing.length ? '<div class="pcard-missing">Missing: '+esc(missing.join(', '))+'</div>' : '') +
+            '<div class="pcard-foot">'+(btns ? '<span class="contactrow">'+btns+'</span>' : '<span></span>')+'<span class="furow-open">Open ›</span></div>' +
           '</div>';
         }).join('')
       )
@@ -2930,10 +2945,10 @@
         '</div>' +
         (shown.length ? shown.map(function(x){
           var tn = followUpTone(x.f);
-          return '<div style="padding:10px 0 4px;border-top:1px solid var(--line);">' +
+          return '<div class="furow" data-action="goto-prospect" data-id="'+x.p.id+'" role="button" tabindex="0">' +
             '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;">' +
-              '<button type="button" class="btn btn-text btn-sm" style="padding:0;font-weight:700;text-align:left;" data-action="goto-prospect" data-id="'+x.p.id+'">'+esc(x.p.name||'Unnamed client')+'</button>' +
-              '<span class="pill '+tn.tone+'">'+tn.label+'</span>' +
+              '<span style="font-weight:700;">'+esc(x.p.name||'Unnamed client')+'</span>' +
+              '<span style="display:flex;align-items:center;gap:8px;flex:none;"><span class="pill '+tn.tone+'">'+tn.label+'</span><span class="furow-open">Open ›</span></span>' +
             '</div>' +
             '<div class="histmeta">'+esc(clientStageLabel(x.p))+' · '+esc(fmtFollowUpWhen(x.f))+'</div>' +
             (x.f.note ? '<div style="font-size:13.5px;margin-top:2px;">'+esc(x.f.note)+'</div>' : '') +
@@ -4566,6 +4581,9 @@
   app.addEventListener('click', function(e){
     var t = e.target.closest('[data-action]');
     if (!t) return;
+    // A plain link (Call / WhatsApp / email) inside a tappable card should only do its own job.
+    var lnk = e.target.closest('a[href]');
+    if (lnk && t.contains(lnk) && lnk!==t) return;
     var action = t.dataset.action;
     var d = state.draft;
     if (d && !d.correctiveActions) d.correctiveActions = [];
