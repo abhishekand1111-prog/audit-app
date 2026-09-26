@@ -59,7 +59,7 @@
   body{background:var(--paper); color:var(--ink); font-family:var(--font-b); margin:0;}
   h1,h2,h3{font-family:var(--font-d); font-weight:800; letter-spacing:-0.01em; text-wrap:balance; margin:0;}
   .mono{font-family:var(--font-m); font-variant-numeric:tabular-nums;}
-  button{font-family:var(--font-b); cursor:pointer;}
+  button{font-family:var(--font-b); cursor:pointer; color:inherit;}
   input,textarea{font-family:var(--font-b);}
   .shell{max-width:640px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column; background:var(--paper);}
   .authwrap{min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px 18px; background:var(--paper);}
@@ -414,7 +414,21 @@
   .pcard-missing{margin-top:8px; font-size:12px; font-weight:600; color:var(--accent-ink); background:var(--accent-soft); border-radius:var(--r-s); padding:5px 8px;}
   .pcard-foot{display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:10px; flex-wrap:wrap;}
   .pcard-foot .contactrow{display:flex; gap:6px; flex-wrap:wrap;}
+  .dayshort{display:flex; align-items:center; gap:16px; width:100%; padding:12px 16px; margin-bottom:16px; text-align:left; border:1px solid var(--line); background:var(--surface); cursor:pointer;}
+  .dayshort .ds{display:flex; flex-direction:column; line-height:1.15;}
+  .dayshort .ds b{font-family:var(--font-m); font-size:20px;}
+  .dayshort .ds span{font-size:11px; color:var(--ink-400); font-weight:600;}
+  .dayshort .ds.bad b{color:var(--bad);}
+  .dayshort .ds-go{margin-left:auto; font-size:12.5px; font-weight:700; color:var(--accent-ink); white-space:nowrap;}
+  .dashquick{display:flex; gap:10px; margin:0 0 22px;}
+  .dashquick .btn{flex:1; padding:13px 10px;}
+  .jumpbar{position:sticky; top:61px; z-index:6; display:flex; gap:6px; overflow-x:auto; scrollbar-width:none; margin:0 -18px 14px; padding:8px 18px; background:var(--paper); border-bottom:1px solid var(--line);}
+  .jumpbar::-webkit-scrollbar{display:none;}
+  .jumpbar button{flex:none; border:1px solid var(--line-strong); background:var(--surface); border-radius:20px; padding:6px 12px; font-size:12.5px; font-weight:700;}
   .sm-tap{cursor:pointer; transition:border-color .15s;}
+  .sm-clip{display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;}
+  .exportrow{display:flex; gap:8px; flex-wrap:wrap; margin:24px 0 8px; padding-top:16px; border-top:1px solid var(--line);}
+  .exportrow .btn{flex:1 1 160px;}
   .sm-tap:hover{border-color:var(--line-strong);}
   .sm-detail .v{font-family:var(--font-b); font-weight:600; font-size:14px; min-width:0; overflow-wrap:anywhere;}
   .sm-detail a{color:var(--accent-ink); text-decoration:none;}
@@ -2465,7 +2479,7 @@
     if (!p) return '';
     var cls = p.servicesOffered ? findServiceClass(p.servicesOffered) : null;
     if (cls) return '<span class="badge" style="margin-left:6px;">No. '+cls.number+' — '+esc(cls.label)+'</span>';
-    return '<span class="badge" style="margin-left:6px;color:var(--ink-400);background:var(--line);">N/A</span>';
+    return '';
   }
 
   function renderProspectsDaily(){
@@ -2550,21 +2564,22 @@
         renderTrend(sortedHist);
     }
 
+    // Exports are occasional — they sit at the bottom instead of above the tabs.
+    var exportHtml = (pTab!=='calls' && (state.prospects.length || state.history.length)) ? (
+      '<div class="exportrow">' +
+        (state.prospects.length ? '<button class="btn btn-ghost btn-sm" data-action="export-prospects-csv">⬇ Export clients CSV</button>' : '') +
+        (state.history.length ? '<button class="btn btn-ghost btn-sm" data-action="export-csv">⬇ Export audits CSV</button>' : '') +
+      '</div>'
+    ) : '';
     return '<main>' +
       '<div style="display:flex; justify-content:space-between; align-items:flex-end; gap:10px;">' +
-        '<div><div class="eyebrow">Calls, Pipeline &amp; Audit History</div><h1 style="font-size:26px;margin-top:6px;">Clients</h1></div>' +
+        '<div><div class="eyebrow">Sales</div><h1 style="font-size:26px;margin-top:6px;">Clients</h1></div>' +
         '<button class="btn btn-primary btn-sm" style="flex:none;" data-action="add-prospect">+ Add Client</button>' +
       '</div>' +
-      (state.prospects.length || state.history.length ? (
-        '<div style="display:flex; gap:8px; margin-top:12px;">' +
-          (state.prospects.length ? '<button class="btn btn-ghost btn-sm" style="flex:1;" data-action="export-prospects-csv">Export Clients CSV</button>' : '') +
-          (state.history.length ? '<button class="btn btn-ghost btn-sm" style="flex:1;" data-action="export-csv">Export Audit CSV</button>' : '') +
-        '</div>'
-      ) : '') +
       '<div class="tabs tabs-scroll" style="margin-top:14px;">' +
         '<button class="tab '+(pTab==='calls'?'on':'')+'" data-action="prospects-tab" data-tab="calls">Calls'+(function(){ var n = smNewCount(); return '<span class="tabcount'+(n?' bad':'')+'">'+n+'</span>'; })()+'</button>' +
         '<button class="tab '+(pTab==='pipeline'?'on':'')+'" data-action="prospects-tab" data-tab="pipeline">Pipeline</button>' +
-        '<button class="tab '+(pTab==='clients'?'on':'')+'" data-action="prospects-tab" data-tab="clients">Clients</button>' +
+        '<button class="tab '+(pTab==='clients'?'on':'')+'" data-action="prospects-tab" data-tab="clients">Converted</button>' +
         '<button class="tab '+(pTab==='daily'?'on':'')+'" data-action="prospects-tab" data-tab="daily">Daily Activity</button>' +
       '</div>' +
       (pTab==='calls' ? renderCallRequestsBody() : pTab==='daily' ? renderProspectsDaily() : (
@@ -2626,6 +2641,7 @@
       )
       ))
       )) +
+      exportHtml +
     '</main>';
   }
 
@@ -3158,6 +3174,10 @@
       '<div class="eyebrow">Client</div>' +
       '<h1 style="font-size:24px;margin-top:6px;margin-bottom:4px;">'+esc(p.name||'Unnamed client')+serviceBadgeHtml(p)+'</h1>' +
       (p.updatedAt ? '<div class="helper" style="margin:0 0 12px;">Updated '+fmtRelativeTime(p.updatedAt)+'</div>' : '') +
+      '<div class="jumpbar">' +
+        [['Contact','Point of Contact'],['Follow-ups','Follow-ups']].concat(audits.length ? [['Timeline','Timeline'],['Next actions','Recommended Next Actions'],['Proposal','Proposal & conversion']] : [])
+          .map(function(j){ return '<button type="button" data-action="jump" data-target="'+esc(j[1])+'">'+j[0]+'</button>'; }).join('') +
+      '</div>' +
       renderClientHealthCard(p, audits) +
       renderProgressSummary(p, audits) +
       '<div class="helper" data-prospect-hint style="margin:0 0 12px;'+(pProblems.length?'color:var(--accent-ink);':'color:var(--good);')+'">'+esc(prospectHintText(pProblems))+'</div>' +
@@ -3915,29 +3935,21 @@
     bits.push((m.kind==='map'?'Mapped ':'Requested ')+fmtRelativeTime(m._at));
     return bits.filter(Boolean).map(esc).join(' · ');
   }
+  // List card: just enough to recognise and act; everything else is on the details page.
   function smCallCard(c){
     var s = c.status||'new', ct = c.contact||{};
     var todayStr = todayISO();
     var due = smOpen(c) && ct.date && ct.date<=todayStr;
-    var open = !!state.mapsOpen[c._id];
-    var btns = contactButtons({ contactMobile: ct.phone, contactName: ct.name });
-    if (s==='new') btns += '<button class="btn btn-ghost btn-sm" data-action="sm-status" data-id="'+esc(c._id)+'" data-v="contacted">Mark contacted</button>';
-    if (s==='new' || s==='contacted') btns += '<button class="btn btn-ghost btn-sm" data-action="sm-status" data-id="'+esc(c._id)+'" data-v="done">Call done</button>';
-    if (s!=='client') btns += '<button class="btn btn-ghost btn-sm" data-action="sm-add-client" data-id="'+esc(c._id)+'">+ Add as client</button>';
-    if (s==='done' || s==='client') btns += '<button class="btn btn-ghost btn-sm" data-action="sm-status" data-id="'+esc(c._id)+'" data-v="new">Reopen</button>';
+    var summary = c.kind==='inquiry' ? (ct.message||ct.note||'') : String(c.headline||'').split(' — ')[0];
     return '<div class="card sm-card sm-tap" data-action="sm-open" data-id="'+esc(c._id)+'">' +
       '<div class="sm-top"><div><div class="sm-name">'+esc(ct.name||'Unnamed')+(smBiz(c)?' · '+esc(smBiz(c)):'')+'</div>' +
         '<div class="histmeta" style="margin-top:2px;">'+smMeta(c)+'</div></div>' +
         '<span class="sm-status st-'+esc(s)+'">'+esc(SM_STATUS[s]||s)+'</span></div>' +
       (ct.date ? '<div class="sm-when'+(due?' due':'')+'">📅 '+esc(smWhenLabel(c))+(due && ct.date<todayStr?' · overdue':'')+'</div>' : '') +
-      (ct.email ? '<div class="sm-head">✉️ <a href="mailto:'+esc(ct.email)+'">'+esc(ct.email)+'</a></div>' : '') +
-      '<div class="sm-head">'+esc(c.headline||'')+'</div>' + smRiskHtml(c) +
-      smPillsHtml(c) +
-      ((ct.note||ct.message) ? '<div class="sm-head" style="color:var(--ink);">💬 '+esc(ct.note||ct.message)+'</div>' : '') +
-      '<div class="sm-btns">'+btns+'<span class="furow-open" style="margin-left:auto;align-self:center;">Details ›</span></div>' +
+      (summary ? '<div class="sm-head sm-clip">'+(c.kind==='inquiry' ? '💬 ' : '')+esc(summary)+'</div>' : '') +
+      '<div class="sm-btns">'+contactButtons({ contactMobile: ct.phone, contactName: ct.name })+'<span class="furow-open" style="margin-left:auto;align-self:center;">Details ›</span></div>' +
     '</div>';
-  }
-  function smMapCard(m){
+  }  function smMapCard(m){
     return '<div class="card sm-card sm-tap" data-action="sm-open" data-id="'+esc(m._id)+'">' +
       '<div class="sm-top"><div><div class="sm-name">'+esc(m.restaurant||'Anonymous')+'</div><div class="histmeta" style="margin-top:2px;">'+smMeta(m)+'</div></div><span class="furow-open">Details ›</span></div>' +
       '<div class="sm-head">'+esc(m.headline||'')+'</div>' + smRiskHtml(m) + smPillsHtml(m) +
@@ -4473,79 +4485,41 @@
 
     var toneBg = { accent:'var(--accent-soft)', good:'var(--good-soft)', bad:'var(--bad-soft)' };
 
+    var newCalls = smNewCount();
+    if (greeting==='Welcome back' && newCalls) greeting = newCalls+' new call request'+(newCalls>1?'s':'');
+    var dc = dayCounts();
+    // Order: what needs doing now → quick actions → business numbers → history.
     return '<main>' +
-      renderTargetCard(monthName, revenueMonth, clientsMonth) +
-      renderRevenueHistory() +
-
       '<div class="dashhero">' +
         '<span class="datepill">📅 '+esc(todayLabel)+'</span>' +
         '<h1 style="font-size:25px;">'+esc(greeting)+'</h1>' +
       '</div>' +
-
-      renderWeekInReviewLine() +
       renderDashboardTimeCard() +
-
-      '<div class="sechead2"><span class="ic">🕘</span><h2>Today\'s Activity</h2></div>' +
-      (todayActivity.length===0 ? '<div class="helper" style="margin-bottom:20px;">Nothing logged yet today — get started below.</div>' :
-        '<div class="card" style="padding:4px 16px;margin-bottom:'+(todayActivity.length>8?'8px':'20px')+';">' +
-          todayActivityShown.map(function(ev){
-            return '<div class="actrow" data-action="'+ev.action+'"'+(ev.id?' data-id="'+ev.id+'"':'')+'>' +
-              '<span class="acticon" style="background:'+(toneBg[ev.tone]||'var(--surface-2)')+';">'+ev.icon+'</span>' +
-              '<span style="flex:1; font-size:13.5px; line-height:1.4;">'+esc(ev.text)+'</span>' +
-              '<span class="histmeta" style="white-space:nowrap;">'+new Date(ev.t).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})+'</span>' +
-            '</div>';
-          }).join('') +
-        '</div>' +
-        (todayActivity.length>8 ? '<div class="helper" style="margin-bottom:20px;">+'+(todayActivity.length-8)+' more today</div>' : '')
-      ) +
-
+      renderWeekInReviewLine() +
+      '<button type="button" class="card dayshort" data-action="go-time">' +
+        '<span class="ds"><b>'+dc.today+'</b><span>Today</span></span>' +
+        '<span class="ds'+(dc.overdue?' bad':'')+'"><b>'+dc.overdue+'</b><span>Overdue</span></span>' +
+        '<span class="ds"><b>'+dc.week+'</b><span>Next 7 days</span></span>' +
+        '<span class="ds-go">Open The Day ›</span>' +
+      '</button>' +
       renderAlertsBanner() +
+      '<div class="dashquick">' +
+        '<button class="btn btn-primary" data-action="go-setup">+ New audit</button>' +
+        '<button class="btn btn-ghost" data-action="go-maps">📞 Calls'+(newCalls?' ('+newCalls+' new)':'')+'</button>' +
+      '</div>' +
       renderFollowUpBoard() +
-      renderWeekPreview() +
-      '<button class="btn btn-primary" style="width:100%;padding:14px;margin-bottom:22px;" data-action="go-setup">+ Start New Audit</button>' +
-
+      renderTargetCard(monthName, revenueMonth, clientsMonth) +
       renderLoopBoard() +
       renderParamsBoard() +
 
-      '<div class="sechead2"><span class="ic" style="background:var(--bad-soft);">🛠️</span><h2>Corrective Actions — Last 7 Days</h2></div>' +
-      '<div class="statgrid" style="margin-top:0;margin-bottom:12px;">' +
+      '<div class="sechead2"><span class="ic" style="background:var(--bad-soft);">🛠️</span><h2>Corrective actions</h2></div>' +
+      '<div class="statgrid" style="margin-top:0;margin-bottom:10px;">' +
         '<div class="stattile"><div class="v">'+openActionsNow+'</div><div class="k">Open</div></div>' +
         '<div class="stattile'+(overdueActions?' t-bad':'')+'"><div class="v">'+overdueActions+'</div><div class="k">Overdue</div></div>' +
         '<div class="stattile t-good"><div class="v">'+actionsResolvedWeek+'</div><div class="k">Resolved (7d)</div></div>' +
         '<div class="stattile"><div class="v">'+resolutionPct+'%</div><div class="k">Resolved All-time</div></div>' +
       '</div>' +
-      (topOpenActions.length===0 ? '<div class="helper" style="margin-bottom:20px;">No open corrective actions.</div>' :
-        '<div style="margin-bottom:'+(openActionsNow>topOpenActions.length?'8px':'20px')+';">' +
-          topOpenActions.map(function(a){
-            var overdue = a.dueDate && a.dueDate<todayStr;
-            return '<div class="card histcard">' +
-              '<div class="histtop"><span class="badge">'+esc(a.storeName||'Unnamed store')+'</span>'+(a.dueDate ? '<span class="pill '+(overdue?'bad':'warn')+'">'+(overdue?'Overdue':fmtDateShort(new Date(a.dueDate+'T00:00:00').getTime()))+'</span>' : '')+'</div>' +
-              '<div style="font-weight:700;margin-top:8px;">'+esc(a.description||'(unspecified)')+'</div>' +
-              '<button type="button" class="btn btn-ghost btn-sm" style="margin-top:8px;" data-action="resolve-action" data-id="'+a.id+'">Mark done</button>' +
-            '</div>';
-          }).join('') +
-        '</div>' +
-        (openActionsNow>topOpenActions.length ? '<button class="btn btn-ghost btn-sm" style="margin-bottom:20px;" data-action="go-actions">View all '+openActionsNow+' open actions →</button>' : '')
-      ) +
-
-      '<div class="sechead2"><span class="ic">🔎</span><h2>Lookups &amp; Tasks</h2></div>' +
-      '<div class="tabs">' +
-        [['task','Tasks',openTasks.length],['lookup','Lookups',openLooks.length]].map(function(t){
-          return '<button class="tab '+(lkTab===t[0]?'on':'')+'" data-action="dash-lookup-tab" data-tab="'+t[0]+'">'+t[1]+'<span class="tabcount">'+t[2]+'</span></button>';
-        }).join('') +
-      '</div>' +
-      (lkOpen.length===0
-        ? '<div class="helper" style="margin-bottom:20px;">'+(lkAll.length===0 ? 'No '+(lkTab==='task'?'tasks':'lookups')+' logged yet.' : 'Everything\'s cleared — nice work.')+'</div>'
-        : (
-          '<div class="card" style="padding:4px 16px;margin-bottom:8px;">' +
-            lkOpen.slice(0,5).map(function(l){
-              return '<div class="sumrow" data-action="go-lookup" style="cursor:pointer;"><span class="k">'+(lkTab==='task'?'☐':'🔍')+' '+esc(l.text||'(untitled)')+'</span></div>';
-            }).join('') +
-          '</div>' +
-          '<div class="helper" style="margin:0 0 8px;">'+(lkAll.length-lkOpen.length)+' completed</div>' +
-          '<button class="btn btn-ghost btn-sm" style="margin-bottom:20px;" data-action="go-lookup">View all '+lkOpen.length+' open →</button>'
-        )
-      ) +
+      '<button class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:22px;" data-action="go-actions">Open actions in The Day →</button>' +
 
       sparkHtml +
     '</main>';
@@ -4681,6 +4655,10 @@
     else if (action==='maps-tab'){ state.mapsTab = t.dataset.tab; render(); }
     else if (action==='sm-open'){ if(!state.draft){ state.activeCallId = t.dataset.id; state.activeProspectId = null; state.prospectsTab = 'calls'; state.view = 'prospects'; state.sidebarOpen = false; window.scrollTo(0,0); render(); } }
     else if (action==='sm-back'){ state.activeCallId = null; render(); }
+    else if (action==='jump'){
+      var jh = [].filter.call(app.querySelectorAll('main .sechead2 h2'), function(h){ return h.textContent===t.dataset.target; })[0];
+      if (jh) window.scrollTo({ top: jh.getBoundingClientRect().top + window.pageYOffset - 124, behavior:'smooth' });
+    }
     else if (action==='sm-toggle'){ state.mapsOpen[t.dataset.id] = !state.mapsOpen[t.dataset.id]; render(); }
     else if (action==='sm-status'){
       if (!fsDb) return;
