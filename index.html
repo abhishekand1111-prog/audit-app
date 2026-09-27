@@ -1381,12 +1381,16 @@
     return problems.length ? 'Still needed to complete this client: '+problems.join(', ')+'.' : '✓ All required details are filled in.';
   }
   // One-tap call / WhatsApp links for a client's saved mobile number (Indian numbers, +91).
-  function contactButtons(p){
+  // opt.msg overrides the WhatsApp opening line; opt.touch (a call-request id) marks that request contacted when tapped.
+  function contactButtons(p, opt){
     if (!p || !isValidMobile(p.contactMobile)) return '';
+    opt = opt || {};
     var n = normalizeMobile(p.contactMobile);
     var first = String(p.contactName||'').trim().split(/\s+/)[0];
-    return '<a class="btn btn-ghost btn-sm" href="tel:+91'+n+'">📞 Call</a>' +
-      '<a class="btn btn-ghost btn-sm" href="https://wa.me/91'+n+(first ? '?text='+encodeURIComponent('Hi '+first+', ') : '')+'" target="_blank" rel="noopener">💬 WhatsApp</a>';
+    var msg = opt.msg || (first ? 'Hi '+first+', ' : '');
+    var touch = opt.touch ? ' data-sm-touch="'+esc(opt.touch)+'"' : '';
+    return '<a class="btn btn-ghost btn-sm" href="tel:+91'+n+'"'+touch+'>📞 Call</a>' +
+      '<a class="btn btn-ghost btn-sm" href="https://wa.me/91'+n+(msg ? '?text='+encodeURIComponent(msg) : '')+'" target="_blank" rel="noopener"'+touch+'>💬 WhatsApp</a>';
   }
   function updateProspectGate(p){
     var hint = app.querySelector('[data-prospect-hint]');
@@ -3935,6 +3939,41 @@
     bits.push((m.kind==='map'?'Mapped ':'Requested ')+fmtRelativeTime(m._at));
     return bits.filter(Boolean).map(esc).join(' · ');
   }
+  // Call / WhatsApp for a request, with an opening line that says why you're getting in touch.
+  function smContactButtons(c){
+    var ct = c.contact||{};
+    var first = String(ct.name||'').trim().split(/\s+/)[0];
+    var hi = 'Hi'+(first ? ' '+first : '')+', ';
+    var msg = c.kind==='inquiry'
+      ? hi+'thanks for getting in touch with Diagnosis Room'+(smBiz(c) ? ' about '+smBiz(c) : '')+'. '
+      : hi+'this is about the Snapshot Call you booked with Diagnosis Room'+(ct.date ? ' for '+smWhenLabel(c) : '')+'. ';
+    return contactButtons({ contactMobile: ct.phone, contactName: ct.name }, { msg: msg, touch: smOpen(c) && (c.status||'new')==='new' ? c._id : '' });
+  }
+  // Downloads an .ics file so the Snapshot Call lands in the phone's calendar with a reminder.
+  function smIcs(c){
+    var ct = c.contact||{};
+    if (!ct.date) return;
+    var ds = ct.date.replace(/-/g,'');
+    var times = String(ct.slot||'').match(/\d{1,2}:\d{2}/g) || [];
+    function t(x){ var p = x.split(':'); return ds+'T'+p[0].padStart(2,'0')+p[1]+'00'; }
+    var nd = new Date(ct.date+'T00:00:00'); nd.setDate(nd.getDate()+1);
+    var ndS = nd.getFullYear()+String(nd.getMonth()+1).padStart(2,'0')+String(nd.getDate()).padStart(2,'0');
+    var start = times[0] ? 'DTSTART:'+t(times[0]) : 'DTSTART;VALUE=DATE:'+ds;
+    var end = times[1] ? 'DTEND:'+t(times[1]) : (times[0] ? 'DTEND:'+t(times[0]).slice(0,9)+String(Math.min(23, +times[0].split(':')[0]+1)).padStart(2,'0')+times[0].split(':')[1]+'00' : 'DTEND;VALUE=DATE:'+ndS);
+    function icsEsc(v){ return String(v||'').replace(/\\/g,'\\\\').replace(/[,;]/g, function(m){ return '\\'+m; }).replace(/\n/g,'\\n'); }
+    var title = 'Snapshot Call: '+(ct.name||'')+(smBiz(c) ? ' ('+smBiz(c)+')' : '');
+    var desc = ['Phone: '+(ct.phone||''), 'Slot: '+(ct.slot||''), c.headline||''].filter(Boolean).join('\n');
+    var ics = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Diagnosis Room//EN','BEGIN:VEVENT',
+      'UID:'+c._id+'@diagnosisroom','DTSTAMP:'+new Date().toISOString().replace(/[-:]/g,'').split('.')[0]+'Z',
+      start, end, 'SUMMARY:'+icsEsc(title), 'DESCRIPTION:'+icsEsc(desc),
+      'BEGIN:VALARM','TRIGGER:-PT30M','ACTION:DISPLAY','DESCRIPTION:'+icsEsc(title),'END:VALARM',
+      'END:VEVENT','END:VCALENDAR'].join('\r\n');
+    var url = URL.createObjectURL(new Blob([ics], { type:'text/calendar' }));
+    var a = document.createElement('a');
+    a.href = url; a.download = 'snapshot-call-'+(ct.name||'call').replace(/[^a-z0-9]+/gi,'-').toLowerCase()+'.ics';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  }
   // List card: just enough to recognise and act; everything else is on the details page.
   function smCallCard(c){
     var s = c.status||'new', ct = c.contact||{};
@@ -3947,7 +3986,7 @@
         '<span class="sm-status st-'+esc(s)+'">'+esc(SM_STATUS[s]||s)+'</span></div>' +
       (ct.date ? '<div class="sm-when'+(due?' due':'')+'">📅 '+esc(smWhenLabel(c))+(due && ct.date<todayStr?' · overdue':'')+'</div>' : '') +
       (summary ? '<div class="sm-head sm-clip">'+(c.kind==='inquiry' ? '💬 ' : '')+esc(summary)+'</div>' : '') +
-      '<div class="sm-btns">'+contactButtons({ contactMobile: ct.phone, contactName: ct.name })+'<span class="furow-open" style="margin-left:auto;align-self:center;">Details ›</span></div>' +
+      '<div class="sm-btns">'+smContactButtons(c)+'<span class="furow-open" style="margin-left:auto;align-self:center;">Details ›</span></div>' +
     '</div>';
   }  function smMapCard(m){
     return '<div class="card sm-card sm-tap" data-action="sm-open" data-id="'+esc(m._id)+'">' +
@@ -3961,7 +4000,8 @@
     var due = smOpen(c) && ct.date && ct.date<=todayStr;
     var btns = '';
     if (!isMap){
-      btns = contactButtons({ contactMobile: ct.phone, contactName: ct.name });
+      btns = smContactButtons(c);
+      if (c.kind==='call' && ct.date && smOpen(c)) btns += '<button class="btn btn-ghost btn-sm" data-action="sm-ics" data-id="'+esc(c._id)+'">📅 Add to calendar</button>';
       if (s==='new') btns += '<button class="btn btn-ghost btn-sm" data-action="sm-status" data-id="'+esc(c._id)+'" data-v="contacted">Mark contacted</button>';
       if (s==='new' || s==='contacted') btns += '<button class="btn btn-ghost btn-sm" data-action="sm-status" data-id="'+esc(c._id)+'" data-v="done">Call done</button>';
       if (s!=='client') btns += '<button class="btn btn-ghost btn-sm" data-action="sm-add-client" data-id="'+esc(c._id)+'">+ Add as client</button>';
@@ -4137,13 +4177,19 @@
     var alerts = computeAlerts();
     if (!alerts.length) return '';
     var toneColor = { bad:'var(--bad)', warn:'var(--accent)', good:'var(--good)' };
-    return '<div class="card" style="border:1.5px solid var(--bad); background:var(--bad-soft); margin-bottom:18px; padding:12px 14px;">' +
+    // Most urgent first; only the top few unless expanded, so the dashboard stays short.
+    var rank = { bad:0, warn:1, good:2 };
+    alerts = alerts.map(function(a, i){ a._i = i; return a; }).sort(function(a, b){ return (rank[a.tone]-rank[b.tone]) || (a._i-b._i); });
+    var LIMIT = 3, shown = state.alertsAll ? alerts : alerts.slice(0, LIMIT);
+    var anyBad = alerts.some(function(a){ return a.tone==='bad'; });
+    return '<div class="card" style="border:1.5px solid '+(anyBad?'var(--bad)':'var(--accent)')+'; background:'+(anyBad?'var(--bad-soft)':'var(--accent-soft)')+'; margin-bottom:18px; padding:12px 14px;">' +
       '<div style="font-weight:700; margin-bottom:6px;">🔔 '+alerts.length+' alert'+(alerts.length>1?'s':'')+' today</div>' +
-      alerts.map(function(a){
+      shown.map(function(a){
         return '<div data-action="'+a.action+'"'+(a.id?' data-id="'+a.id+'"':'')+(a.tab?' data-tab="'+a.tab+'"':'')+' style="display:flex; align-items:flex-start; gap:8px; padding:6px 0; cursor:pointer; border-left:3px solid '+toneColor[a.tone]+'; padding-left:8px; margin-top:4px;">' +
-          '<span>'+a.icon+'</span><span style="flex:1; font-size:13.5px; line-height:1.4;">'+esc(a.text)+'</span>' +
+          '<span>'+a.icon+'</span><span style="flex:1; font-size:13.5px; line-height:1.4;">'+esc(a.text)+'</span><span style="color:var(--ink-400); font-size:15px; align-self:center;">›</span>' +
         '</div>';
       }).join('') +
+      (alerts.length>LIMIT ? '<button type="button" class="btn btn-text btn-sm" style="padding:8px 0 0; width:100%;" data-action="alerts-toggle">'+(state.alertsAll ? 'Show fewer' : 'Show all '+alerts.length+' alerts')+'</button>' : '') +
     '</div>';
   }
 
@@ -4404,26 +4450,12 @@
     var todayStartD = new Date(); todayStartD.setHours(0,0,0,0);
     var todayStartMs = todayStartD.getTime();
 
-    var auditsToday = state.history.filter(function(h){ return h.finishedAt>=todayStartMs; });
-    var avgScoreToday = auditsToday.length ? Math.round(auditsToday.reduce(function(n,h){ return n+h.completionPct; },0)/auditsToday.length) : null;
-    var revenueToday = state.prospects.filter(function(p){ return p.converted && !p.declined && (p.convertedAt||0)>=todayStartMs; })
-      .reduce(function(n,p){ return n+clientPriceOf(p); },0);
-    var prospectsAddedToday = state.prospects.filter(function(p){ return (p.createdAt||0)>=todayStartMs; }).length;
-    var prospectsConvertedToday = state.prospects.filter(function(p){ return p.converted && (p.convertedAt||0)>=todayStartMs; }).length;
-    var actionsResolvedToday = state.correctiveActions.filter(function(a){ return a.done && (a.resolvedAt||0)>=todayStartMs; }).length;
-    var contentPostedToday = state.contentIdeas.filter(function(c){ return c.posted && (c.postedAt||0)>=todayStartMs; }).length;
-    var todayActivity = buildTodayActivity(todayStartMs);
-
-    var auditsWeek = state.history.filter(function(h){ return h.finishedAt>=weekAgo; });
-    var avgScore = auditsWeek.length ? Math.round(auditsWeek.reduce(function(n,h){ return n+h.completionPct; },0)/auditsWeek.length) : null;
-
     var nowD = new Date(now);
     var monthStartMs = new Date(nowD.getFullYear(), nowD.getMonth(), 1).getTime();
     var monthName = nowD.toLocaleDateString(undefined,{month:'long', year:'numeric'});
     var revenueMonth = clientRevenueForMonth(nowD.getFullYear(), nowD.getMonth());
     var clientsMonth = state.prospects.filter(function(p){ return p.converted && (p.convertedAt||0)>=monthStartMs; }).length;
 
-    var actionsOpenedWeek = state.correctiveActions.filter(function(a){ return (a.createdAt||0)>=weekAgo; }).length;
     var actionsResolvedWeek = state.correctiveActions.filter(function(a){ return a.done && (a.resolvedAt||0)>=weekAgo; }).length;
     var openActionsNow = state.correctiveActions.filter(function(a){ return !a.done; }).length;
     var todayStr = todayISO();
@@ -4433,19 +4465,9 @@
     var dueSoon = due.filter(function(x){ return x.dueAt<=weekAhead; });
     var overdueDue = due.filter(function(x){ return x.dueAt<now; }).length;
 
-    var topOpenActions = state.correctiveActions.filter(function(a){ return !a.done; }).sort(function(a,b){
-      var aOver = !!(a.dueDate && a.dueDate<todayStr), bOver = !!(b.dueDate && b.dueDate<todayStr);
-      if (aOver!==bOver) return aOver?-1:1;
-      var ad = a.dueDate||'9999-99-99', bd = b.dueDate||'9999-99-99';
-      if (ad!==bd) return ad<bd?-1:1;
-      return (b.createdAt||0)-(a.createdAt||0);
-    }).slice(0,5);
-
     var totalActionsAll = state.correctiveActions.length;
     var resolvedTotal = state.correctiveActions.filter(function(a){ return a.done; }).length;
     var resolutionPct = totalActionsAll ? Math.round(resolvedTotal/totalActionsAll*100) : 0;
-
-    var overdueDuePct = due.length ? Math.round(overdueDue/due.length*100) : 0;
 
     var scoreHistory = state.history.slice().sort(function(a,b){ return a.finishedAt-b.finishedAt; }).slice(-10);
     var sparkHtml = '';
@@ -4467,27 +4489,19 @@
       '</div>';
     }
 
-    var lkSort = function(a,b){ return (b.createdAt||0)-(a.createdAt||0); };
-    var openTasks = state.lookups.filter(function(l){ return lookupGroup(l)==='task' && !l.done; }).sort(lkSort);
-    var openLooks = state.lookups.filter(function(l){ return lookupGroup(l)==='lookup' && !l.done; }).sort(lkSort);
-    var lkTab = state.dashLookupTab || (openTasks.length>=openLooks.length ? 'task' : 'lookup');
-    var lkAll = state.lookups.filter(function(l){ return lookupGroup(l)===lkTab; });
-    var lkOpen = lkTab==='task' ? openTasks : openLooks;
-
-    var greeting = 'Welcome back';
-    if (overdueDue>0) greeting = overdueDue+' re-audit'+(overdueDue>1?'s':'')+' overdue';
+    var newCalls = smNewCount();
+    var dc = dayCounts();
+    // Headline = the single most urgent thing, in the same order the day should be worked.
+    var greeting = 'All clear — nothing urgent today';
+    if (dc.overdue>0) greeting = dc.overdue+' overdue — clear '+(dc.overdue>1?'these':'this')+' first';
+    else if (newCalls) greeting = newCalls+' new call request'+(newCalls>1?'s':'')+' to answer';
+    else if (dc.today>0) greeting = dc.today+' thing'+(dc.today>1?'s':'')+' on your plate today';
+    else if (overdueDue>0) greeting = overdueDue+' re-audit'+(overdueDue>1?'s':'')+' overdue';
     else if (dueSoon.length>0) greeting = dueSoon.length+' re-audit'+(dueSoon.length>1?'s':'')+' due this week';
     else if (overdueActions>0) greeting = overdueActions+' corrective action'+(overdueActions>1?'s':'')+' overdue';
     else if (openActionsNow>0) greeting = openActionsNow+' open issue'+(openActionsNow>1?'s':'')+' to resolve';
-
-    var todayLabel = new Date().toLocaleDateString(undefined,{weekday:'long', month:'short', day:'numeric'});
-    var todayActivityShown = todayActivity.slice(0,8);
-
-    var toneBg = { accent:'var(--accent-soft)', good:'var(--good-soft)', bad:'var(--bad-soft)' };
-
-    var newCalls = smNewCount();
-    if (greeting==='Welcome back' && newCalls) greeting = newCalls+' new call request'+(newCalls>1?'s':'');
-    var dc = dayCounts();
+    var hr = new Date().getHours();
+    var todayLabel = (hr<12 ? 'Good morning' : (hr<17 ? 'Good afternoon' : 'Good evening'))+' · '+new Date().toLocaleDateString(undefined,{weekday:'long', month:'short', day:'numeric'});
     // Order: what needs doing now → quick actions → business numbers → history.
     return '<main>' +
       '<div class="dashhero">' +
@@ -4607,6 +4621,13 @@
 
   // ---------- event delegation ----------
   app.addEventListener('click', function(e){
+    // Calling or WhatsApp-ing a new call request counts as contacting it.
+    var smTouch = e.target.closest('[data-sm-touch]');
+    if (smTouch && fsDb){
+      var smTid = smTouch.getAttribute('data-sm-touch');
+      var smTc = state.systemMaps.filter(function(m){ return m._id===smTid; })[0];
+      if (smTc && (smTc.status||'new')==='new') fsDb.collection('systemMaps').doc(smTid).update({ status:'contacted', statusAt:Date.now() }).catch(function(){});
+    }
     var t = e.target.closest('[data-action]');
     if (!t) return;
     // A plain link (Call / WhatsApp / email) inside a tappable card should only do its own job.
@@ -4655,6 +4676,8 @@
     else if (action==='maps-tab'){ state.mapsTab = t.dataset.tab; render(); }
     else if (action==='sm-open'){ if(!state.draft){ state.activeCallId = t.dataset.id; state.activeProspectId = null; state.prospectsTab = 'calls'; state.view = 'prospects'; state.sidebarOpen = false; window.scrollTo(0,0); render(); } }
     else if (action==='sm-back'){ state.activeCallId = null; render(); }
+    else if (action==='sm-ics'){ var icsC = state.systemMaps.filter(function(m){ return m._id===t.dataset.id; })[0]; if (icsC) smIcs(icsC); }
+    else if (action==='alerts-toggle'){ state.alertsAll = !state.alertsAll; render(); }
     else if (action==='jump'){
       var jh = [].filter.call(app.querySelectorAll('main .sechead2 h2'), function(h){ return h.textContent===t.dataset.target; })[0];
       if (jh) window.scrollTo({ top: jh.getBoundingClientRect().top + window.pageYOffset - 124, behavior:'smooth' });
