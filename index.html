@@ -427,6 +427,13 @@
   .jumpbar button{flex:none; border:1px solid var(--line-strong); background:var(--surface); border-radius:20px; padding:6px 12px; font-size:12.5px; font-weight:700;}
   .sm-tap{cursor:pointer; transition:border-color .15s;}
   .sm-clip{display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;}
+  .smfunnel{ padding:12px 14px; margin-bottom:14px; }
+  .smf-row{ display:flex; align-items:flex-start; gap:4px; }
+  .smf-step{ flex:1; min-width:0; display:flex; flex-direction:column; }
+  .smf-step b{ font-size:20px; font-weight:800; line-height:1.1; }
+  .smf-step span{ font-size:11.5px; color:var(--ink-600); margin-top:2px; }
+  .smf-step i{ font-style:normal; font-size:11px; color:var(--ink-400); margin-top:1px; }
+  .smf-arrow{ color:var(--ink-400); font-size:18px; line-height:1.4; }
   .exportrow{display:flex; gap:8px; flex-wrap:wrap; margin:24px 0 8px; padding-top:16px; border-top:1px solid var(--line);}
   .exportrow .btn{flex:1 1 160px;}
   .sm-tap:hover{border-color:var(--line-strong);}
@@ -724,6 +731,7 @@
     prospectsTab: 'pipeline',
     activeCallId: null,
     systemMaps: [],
+    smStats: {},
     mapsError: '',
     mapsTab: 'calls',
     mapsOpen: {}
@@ -953,11 +961,24 @@
     });
     fsUnsubs.push(unsub);
   }
+  // Website funnel: one smStats doc per day ({visit,start,finish,book}), last 30 days. Silent if the rule isn't published yet.
+  function fsWatchSmStats(){
+    var d = new Date(); d.setDate(d.getDate()-29);
+    var from = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    var unsub = fsDb.collection('smStats').where(firebase.firestore.FieldPath.documentId(), '>=', from).onSnapshot(function(snap){
+      var m = {};
+      snap.forEach(function(doc){ m[doc.id] = doc.data(); });
+      state.smStats = m;
+      if (!isTypingInApp()) render();
+    }, function(){ state.smStats = {}; });
+    fsUnsubs.push(unsub);
+  }
   function attachFirestoreSync(){
     fsDb = firebase.firestore();
     fsStartRecordSync();
     fsWatchDoc('config', true);
     fsWatchSystemMaps();
+    fsWatchSmStats();
     var unsubSync = fsDb.onSnapshotsInSync(function(){
       state.syncPending = false;
       if (isTypingInApp()) return;
@@ -970,6 +991,7 @@
     fsUnsubs = [];
     fsDb = null;
     state.systemMaps = [];
+    state.smStats = {};
     RECORD_SETS.forEach(function(rs){ clearTimeout(rs.retry); rs.ready = false; rs.busy = false; rs.synced = {}; });
   }
 
@@ -4064,11 +4086,22 @@
       body = maps.length ? '<div class="helper" style="margin-bottom:10px;">Owners who finished a map but didn\'t book a call. Anonymous unless they typed a name.</div><div class="cardstack">'+maps.map(smMapCard).join('')+'</div>'
         : '<div class="empty" style="padding:22px 14px;"><div class="big">🗺️</div>No maps without a call yet.</div>';
     }
-    return '<div class="helper" style="margin-bottom:12px;">Snapshot Call bookings from the System Map (with each owner\'s map) and inquiries from your website.</div>' +
+    return smFunnelHtml() + '<div class="helper" style="margin-bottom:12px;">Snapshot Call bookings from the System Map (with each owner\'s map) and inquiries from your website.</div>' +
       '<div class="seg">' +
         '<button class="'+(tab==='calls'?'on':'')+'" data-action="maps-tab" data-tab="calls">📞 Calls · '+openCalls.length+'</button>' +
         '<button class="'+(tab==='maps'?'on':'')+'" data-action="maps-tab" data-tab="maps">🗺️ Maps only · '+maps.length+'</button>' +
       '</div>' + body;
+  }
+  // How many website visitors open the check, start it, finish it and book, over the last 30 days.
+  function smFunnelHtml(){
+    var t = { visit:0, start:0, finish:0, book:0 };
+    Object.keys(state.smStats||{}).forEach(function(k){ var v = state.smStats[k]||{}; Object.keys(t).forEach(function(f){ t[f] += (+v[f]||0); }); });
+    if (!t.visit && !t.start) return '';
+    function pct(a, b){ return b ? Math.round(a/b*100)+'%' : '–'; }
+    var steps = [ ['Visited', t.visit, ''], ['Started', t.start, pct(t.start, t.visit)], ['Finished', t.finish, pct(t.finish, t.start)], ['Booked', t.book, pct(t.book, t.finish)] ];
+    return '<div class="card smfunnel"><div class="histmeta" style="margin-bottom:8px;">Website · last 30 days</div><div class="smf-row">' +
+      steps.map(function(s, i){ return (i ? '<span class="smf-arrow">›</span>' : '')+'<div class="smf-step"><b>'+s[1]+'</b><span>'+s[0]+'</span>'+(s[2] ? '<i>'+s[2]+'</i>' : '')+'</div>'; }).join('') +
+    '</div></div>';
   }
   function smNewCount(){ return smCalls().filter(function(c){ return (c.status||'new')==='new'; }).length; }
 
