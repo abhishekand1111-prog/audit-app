@@ -4059,6 +4059,7 @@
           smRiskHtml(c) + smPillsHtml(c) + smMapHtml(c) +
         '</div>'
       ) : '') +
+      '<button class="btn btn-text btn-sm" style="color:var(--bad);margin:4px 0 24px;" data-action="sm-delete" data-id="'+esc(c._id)+'">🗑️ Delete this entry</button>' +
     '</main>';
   }
   // Call requests now live as a tab inside Clients.
@@ -4087,6 +4088,7 @@
         : '<div class="empty" style="padding:22px 14px;"><div class="big">🗺️</div>No maps without a call yet.</div>';
     }
     return smFunnelHtml() + '<div class="helper" style="margin-bottom:12px;">Snapshot Call bookings from the System Map (with each owner\'s map) and inquiries from your website.</div>' +
+      (smTestEntries().length ? '<div class="card" style="padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:10px;"><span class="histmeta">'+smTestEntries().length+' test entr'+(smTestEntries().length>1?'ies':'y')+' found</span><button class="btn btn-ghost btn-sm" data-action="sm-cleanup">Remove test entries</button></div>' : '') +
       '<div class="seg">' +
         '<button class="'+(tab==='calls'?'on':'')+'" data-action="maps-tab" data-tab="calls">📞 Calls · '+openCalls.length+'</button>' +
         '<button class="'+(tab==='maps'?'on':'')+'" data-action="maps-tab" data-tab="maps">🗺️ Maps only · '+maps.length+'</button>' +
@@ -4102,6 +4104,10 @@
     return '<div class="card smfunnel"><div class="histmeta" style="margin-bottom:8px;">Website · last 30 days</div><div class="smf-row">' +
       steps.map(function(s, i){ return (i ? '<span class="smf-arrow">›</span>' : '')+'<div class="smf-step"><b>'+s[1]+'</b><span>'+s[0]+'</span>'+(s[2] ? '<i>'+s[2]+'</i>' : '')+'</div>'; }).join('') +
     '</div></div>';
+  }
+  // Entries made while testing the website (name contains "test", or the dummy number 9999999999).
+  function smTestEntries(){
+    return state.systemMaps.filter(function(m){ var ct = m.contact||{}; return /\btest\b/i.test(ct.name||'') || /\btest\b/i.test(ct.business||'') || ct.phone==='9999999999'; });
   }
   function smNewCount(){ return smCalls().filter(function(c){ return (c.status||'new')==='new'; }).length; }
 
@@ -4716,6 +4722,18 @@
       if (jh) window.scrollTo({ top: jh.getBoundingClientRect().top + window.pageYOffset - 124, behavior:'smooth' });
     }
     else if (action==='sm-toggle'){ state.mapsOpen[t.dataset.id] = !state.mapsOpen[t.dataset.id]; render(); }
+    else if (action==='sm-delete'){
+      if (!fsDb || !confirm('Delete this entry for good? This can\'t be undone.')) return;
+      var delId = t.dataset.id;
+      fsDb.collection('systemMaps').doc(delId).delete().then(function(){ state.activeCallId = null; render(); })
+        .catch(function(err){ alert('Could not delete ('+((err&&err.code)||'error')+').'); });
+    }
+    else if (action==='sm-cleanup'){
+      var tests = smTestEntries();
+      if (!fsDb || !tests.length || !confirm('Delete '+tests.length+' test entr'+(tests.length>1?'ies':'y')+' ('+tests.map(function(m){ return (m.contact&&m.contact.name)||'unnamed'; }).join(', ')+')? This can\'t be undone.')) return;
+      Promise.all(tests.map(function(m){ return fsDb.collection('systemMaps').doc(m._id).delete(); }))
+        .catch(function(err){ alert('Could not delete some entries ('+((err&&err.code)||'error')+').'); });
+    }
     else if (action==='sm-status'){
       if (!fsDb) return;
       t.disabled = true;
