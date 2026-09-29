@@ -804,17 +804,26 @@
     if (state.syncError && RECORD_SETS.every(function(rs){ return rs.ready; })){ state.syncError = ''; if (!isTypingInApp()) render(); }
   }
   function syncFail(err){
-    state.syncPending = false;
     state.syncError = (err && err.code) ? String(err.code) : 'error';
+    if (!isTypingInApp()) render();
+  }
+  // Writes are counted individually so the "Syncing" pill clears as soon as THIS write lands,
+  // instead of waiting for onSnapshotsInSync (which only fires once every listener in the app is caught up).
+  var pendingWriteCount = 0;
+  function beginWrite(){ pendingWriteCount++; state.syncPending = true; }
+  function writeDone(err){
+    if (pendingWriteCount>0) pendingWriteCount--;
+    if (pendingWriteCount===0) state.syncPending = false;
+    if (err) syncFail(err); else syncOk();
     if (!isTypingInApp()) render();
   }
   function fsSyncConfig(fieldName, value){
     if (!fsDb || !state.authUser) return;
     var obj = {};
     try{ obj[fieldName] = JSON.parse(JSON.stringify(value)); }catch(e){ obj[fieldName] = value; }
-    state.syncPending = true;
-    try{ fsUserDataDoc('config').set(obj, {merge:true}).then(syncOk, syncFail); }
-    catch(e){ syncFail(e); }
+    beginWrite();
+    try{ fsUserDataDoc('config').set(obj, {merge:true}).then(function(){ writeDone(); }, writeDone); }
+    catch(e){ writeDone(e); }
   }
 
   // Every list that grows is stored one document per record (data/<prefix><id>), so nothing shares a 1 MB ceiling.
@@ -854,14 +863,14 @@
     });
     Object.keys(rs.synced).forEach(function(id){ if (!seen[id]) ops.push({ id:id, json:null }); });
     if (!ops.length) return;
-    state.syncPending = true;
     for (var i=0; i<ops.length; i+=400){
       var batch = fsDb.batch();
       ops.slice(i, i+400).forEach(function(op){
         if (op.json!==null){ batch.set(fsRecDoc(rs, op.id), JSON.parse(op.json)); rs.synced[op.id] = op.json; }
         else { batch.delete(fsRecDoc(rs, op.id)); delete rs.synced[op.id]; }
       });
-      batch.commit().then(syncOk, syncFail);
+      beginWrite();
+      batch.commit().then(function(){ writeDone(); }, writeDone);
     }
   }
   function fsWatchRecords(rs){
