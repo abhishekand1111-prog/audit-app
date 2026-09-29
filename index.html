@@ -427,6 +427,25 @@
   .jumpbar button{flex:none; border:1px solid var(--line-strong); background:var(--surface); border-radius:20px; padding:6px 12px; font-size:12.5px; font-weight:700;}
   .sm-tap{cursor:pointer; transition:border-color .15s;}
   .sm-clip{display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;}
+  .smprep{ padding:14px 16px; margin-bottom:14px; }
+  .smp-row{ display:flex; gap:10px; padding:6px 0; border-bottom:1px solid var(--line); font-size:14px; line-height:1.45; }
+  .smp-k{ flex:none; width:96px; color:var(--ink-600); font-size:12.5px; padding-top:1px; }
+  .smp-sub{ font-size:12.5px; color:var(--ink-600); margin:12px 0 4px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
+  .smp-gap{ padding:8px 0; border-bottom:1px solid var(--line); }
+  .smp-gap:last-of-type{ border-bottom:none; }
+  .smp-gt{ display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:14.5px; }
+  .smp-st{ font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+  .smp-st.st-missing{ background:var(--bad-soft); color:var(--bad); }
+  .smp-st.st-person{ background:var(--accent-soft); color:var(--accent); }
+  .smp-ans{ font-size:13px; color:var(--ink-600); margin-top:3px; }
+  .smp-ask{ font-size:13.5px; margin-top:4px; font-weight:600; }
+  .smp-next{ margin-top:10px; padding:10px 12px; border-radius:10px; background:var(--good-soft); font-size:13.5px; line-height:1.45; }
+  .smnotes{ padding:14px 16px; margin-bottom:20px; }
+  .smn-out{ display:flex; flex-wrap:wrap; gap:6px; }
+  .chipbtn{ border:1px solid var(--line); background:none; border-radius:999px; padding:7px 12px; font-size:13px; font-weight:600; }
+  .chipbtn.on{ background:var(--ink); color:var(--paper, #fff); border-color:var(--ink); }
+  .smn-text{ width:100%; margin-top:12px; min-height:96px; }
+  .smn-foot{ display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:8px; }
   .smfunnel{ padding:12px 14px; margin-bottom:14px; }
   .smf-row{ display:flex; align-items:flex-start; gap:4px; }
   .smf-step{ flex:1; min-width:0; display:flex; flex-direction:column; }
@@ -3958,6 +3977,7 @@
     if (m.city || (m.contact && m.contact.location)) bits.push(m.city || m.contact.location);
     if (m.chef) bits.push('Chef: '+m.chef);
     if (m.manager) bits.push('Manager: '+m.manager);
+    if (m.outcome && SM_OUTCOME[m.outcome]) bits.push('Outcome: '+SM_OUTCOME[m.outcome]);
     bits.push((m.kind==='map'?'Mapped ':'Requested ')+fmtRelativeTime(m._at));
     return bits.filter(Boolean).map(esc).join(' · ');
   }
@@ -4016,6 +4036,89 @@
       '<div class="sm-head">'+esc(m.headline||'')+'</div>' + smRiskHtml(m) + smPillsHtml(m) +
     '</div>';
   }
+  // ---- Call prep + call notes (built from the owner's System Map) ----
+  // % of monthly sales typically lost when an area is missing / runs on one person — keep in step with LEAK on the website.
+  var SM_LEAK = {
+    purchase:[[1,2],[0.5,1]], control:[[0.5,1.5],[0.25,0.75]], wastage:[[1,2],[0.5,1]],
+    prep:[[0.5,1],[0.25,0.5]], portions:[[1,2],[0.5,1]], foodcost:[[0.5,1],[0.25,0.5]],
+    counter:[[0.25,0.75],[0.1,0.4]], speed:[[0.5,1],[0.25,0.5]], cash:[[1,2],[0.5,1]],
+    hiring:[[0.25,0.75],[0.1,0.4]], staffcontrol:[[0.5,1],[0.25,0.5]],
+    payout:[[0.5,1.5],[0.25,0.75]], dcontrol:[[0.25,0.75],[0.1,0.4]]
+  };
+  var SM_LEAK_DEFAULT = [[0.5,1.5],[0.25,0.75]];
+  // One question to ask on the call for each area, to get the owner talking about the gap.
+  var SM_PROBE = {
+    purchase:'Who places orders today, and who sees the bill before it\'s paid?',
+    control:'When did you last count stock, and did it match what you expected?',
+    wastage:'Roughly how much gets thrown away on a bad day? Does anyone write it down?',
+    prep:'How often do you run out of something mid-service, or throw prep away at close?',
+    portions:'If two cooks make the same dish, would both plates weigh the same?',
+    foodcost:'What do you think your food cost % is, and what should it be?',
+    counter:'What\'s the first thing that goes wrong when you\'re 80% full?',
+    speed:'On a busy night, how long does an order take from order to bill? How do you know?',
+    cash:'Who closes the cash at night, and how is it checked against the POS?',
+    hiring:'Who left most recently, and how did you find out they were going?',
+    staffcontrol:'How do you decide how many people are on shift tomorrow?',
+    payout:'What share of each delivery order do you actually keep after commission and discounts?',
+    dcontrol:'Who can change prices or switch your store offline on the apps?'
+  };
+  var SM_OUTCOME = { interested:'Interested', later:'Follow up later', notfit:'Not a fit', client:'Became client' };
+  var SM_PERSON = { chef:'the head chef', manager:'the manager', owner:'the owner' };
+  // Unsaved note text per request, so a re-render (e.g. tapping an outcome) never wipes what was typed.
+  var SM_NOTE_DRAFT = {};
+  app.addEventListener('input', function(e){
+    var ta = e.target; if (!ta.classList || !ta.classList.contains('smn-text')) return;
+    SM_NOTE_DRAFT[ta.id.replace('smNotes_','')] = ta.value;
+  });
+
+  function smPrepHtml(c){
+    var map = c.map || [];
+    if (!map.length) return '';
+    var lo = 0, hi = 0;
+    map.forEach(function(a){
+      var L = SM_LEAK[a.id] || SM_LEAK_DEFAULT;
+      if (a.status==='missing'){ lo += L[0][0]; hi += L[0][1]; }
+      else if (a.status==='person'){ lo += L[1][0]; hi += L[1][1]; }
+    });
+    var rank = { missing:0, person:1 };
+    var gaps = map.filter(function(a){ return a.status!=='system'; })
+      .sort(function(a, b){ return (rank[a.status]-rank[b.status]) || ((SM_LEAK[b.id]||SM_LEAK_DEFAULT)[0][1] - (SM_LEAK[a.id]||SM_LEAK_DEFAULT)[0][1]); })
+      .slice(0, 3);
+    var n = c.counts || {};
+    var kp = c.keyPerson || {};
+    var kpNames = (kp.areas||[]).map(function(id){ var m = map.filter(function(a){ return a.id===id; })[0]; return m ? m.name : id; });
+    function r1(x){ return Math.round(x*10)/10; }
+    var top = gaps[0];
+    return sh('🧭','Call prep') +
+      '<div class="card smprep">' +
+        '<div class="smp-row"><span class="smp-k">Where they are</span><span>Level '+(c.level||'?')+' of 3 · '+(n.system||0)+' of '+map.length+' areas on a system'+(n.missing ? ' · '+n.missing+' missing' : '')+'</span></div>' +
+        (kp.person ? '<div class="smp-row"><span class="smp-k">Key person</span><span>'+(kpNames.length ? esc(kpNames.length+(kpNames.length>1?' areas slip':' area slips')+' if '+SM_PERSON[kp.person]+' is away: '+kpNames.join(', ')) : esc('Nothing slips if '+SM_PERSON[kp.person]+' is away (their view)'))+'</span></div>' : '') +
+        (hi ? '<div class="smp-row"><span class="smp-k">Likely leak</span><span><b>'+r1(lo)+'–'+r1(hi)+'% of monthly sales</b> · at ₹10 lakh/month that\'s ₹'+Math.round(lo*10000).toLocaleString('en-IN')+'–₹'+Math.round(hi*10000).toLocaleString('en-IN')+'</span></div>' : '') +
+        (c.risk ? '<div class="smp-row"><span class="smp-k">Biggest risk</span><span>'+esc(c.risk)+'</span></div>' : '') +
+        (gaps.length ? '<div class="smp-sub">Talk about</div>' + gaps.map(function(a, i){
+          var ans = a.subs && a.subs[0] && a.subs[0].answer;
+          return '<div class="smp-gap"><div class="smp-gt"><b>'+(i+1)+'. '+esc(a.name)+'</b><span class="smp-st st-'+esc(a.status)+'">'+(a.status==='missing'?'Missing':'On a person')+'</span></div>' +
+            (ans ? '<div class="smp-ans">They said: "'+esc(ans)+'"</div>' : '') +
+            '<div class="smp-ask">Ask: '+esc(SM_PROBE[a.id] || ('Walk me through how '+String(a.name).toLowerCase()+' works on a busy day.'))+'</div></div>';
+        }).join('') : '<div class="smp-sub">No gaps on their map. Ask how they keep it holding, and where it slipped last.</div>') +
+        (top ? '<div class="smp-next"><b>Next step:</b> offer a floor audit, starting with '+esc(top.name.toLowerCase())+' — it\'s their biggest gap and the easiest win to show.</div>' : '') +
+      '</div>';
+  }
+
+  function smNotesHtml(c){
+    var oc = c.outcome || '';
+    var at = c.notesAt ? 'Saved '+fmtDateShort(c.notesAt)+' · '+new Date(c.notesAt).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}) : 'Not saved yet';
+    return sh('📝','Call notes') +
+      '<div class="card smnotes">' +
+        '<div class="histmeta" style="margin-bottom:8px;">Outcome</div>' +
+        '<div class="smn-out">'+Object.keys(SM_OUTCOME).map(function(k){
+          return '<button type="button" class="chipbtn'+(oc===k?' on':'')+'" data-action="sm-outcome" data-id="'+esc(c._id)+'" data-v="'+k+'">'+esc(SM_OUTCOME[k])+'</button>';
+        }).join('')+'</div>' +
+        (oc==='client' && (c.status||'new')!=='client' ? '<button class="btn btn-ghost btn-sm" style="margin-top:10px;" data-action="sm-add-client" data-id="'+esc(c._id)+'">+ Add as client now</button>' : '') +
+        '<textarea class="edtext smn-text" id="smNotes_'+esc(c._id)+'" rows="4" maxlength="3000" placeholder="What did they say? Pain points, numbers, objections, what to send them…">'+esc(SM_NOTE_DRAFT[c._id]!=null ? SM_NOTE_DRAFT[c._id] : (c.notes||''))+'</textarea>' +
+        '<div class="smn-foot"><span class="histmeta" id="smNotesAt_'+esc(c._id)+'">'+esc(at)+'</span><button class="btn btn-primary btn-sm" data-action="sm-notes-save" data-id="'+esc(c._id)+'">Save notes</button></div>' +
+      '</div>';
+  }
   // Full page for one call request / website inquiry / map.
   function renderCallDetail(c){
     var s = c.status||'new', ct = c.contact||{}, isMap = c.kind==='map', todayStr = todayISO();
@@ -4038,6 +4141,7 @@
       '<div class="sm-top" style="margin-top:6px;"><h1 style="font-size:24px;">'+esc(title)+'</h1>'+(isMap ? '' : '<span class="sm-status st-'+esc(s)+'">'+esc(SM_STATUS[s]||s)+'</span>')+'</div>' +
       '<div class="histmeta" style="margin-top:4px;">'+smMeta(c)+'</div>' +
       (ct.date ? '<div class="sm-when'+(due?' due':'')+'" style="margin-top:12px;">📅 '+esc(smWhenLabel(c))+(due && ct.date<todayStr?' · overdue':'')+'</div>' : '') +
+      smPrepHtml(c) +
       (!isMap ? (
         sh('👤','Contact') +
         '<div class="card sm-detail" style="padding:4px 16px;margin-bottom:12px;">' +
@@ -4050,7 +4154,8 @@
           row('Received', esc(fmtDateShort(c._at))+' · '+esc(new Date(c._at).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}))) +
         '</div>' +
         ((ct.note||ct.message) ? '<div class="card" style="padding:12px 16px;margin-bottom:12px;"><div class="histmeta" style="margin-bottom:4px;">Message</div>'+esc(ct.note||ct.message)+'</div>' : '') +
-        '<div class="sm-btns" style="margin:4px 0 20px;">'+btns+'</div>'
+        '<div class="sm-btns" style="margin:4px 0 20px;">'+btns+'</div>' +
+        smNotesHtml(c)
       ) : '') +
       (c.map || c.headline ? (
         sh('🗺️', isMap ? 'Their System Map' : 'Their System Map') +
@@ -4715,6 +4820,22 @@
     else if (action==='maps-tab'){ state.mapsTab = t.dataset.tab; render(); }
     else if (action==='sm-open'){ if(!state.draft){ state.activeCallId = t.dataset.id; state.activeProspectId = null; state.prospectsTab = 'calls'; state.view = 'prospects'; state.sidebarOpen = false; window.scrollTo(0,0); render(); } }
     else if (action==='sm-back'){ state.activeCallId = null; render(); }
+    else if (action==='sm-outcome'){
+      if (!fsDb) return;
+      var ocC = state.systemMaps.filter(function(m){ return m._id===t.dataset.id; })[0];
+      var ocV = ocC && ocC.outcome===t.dataset.v ? '' : t.dataset.v;
+      fsDb.collection('systemMaps').doc(t.dataset.id).update({ outcome:ocV, outcomeAt:Date.now() })
+        .catch(function(err){ alert('Could not save the outcome ('+((err&&err.code)||'error')+'). Publish the latest Firebase rules first.'); });
+    }
+    else if (action==='sm-notes-save'){
+      if (!fsDb) return;
+      var nta = document.getElementById('smNotes_'+t.dataset.id);
+      if (!nta) return;
+      t.disabled = true; t.textContent = 'Saving…';
+      fsDb.collection('systemMaps').doc(t.dataset.id).update({ notes:nta.value.slice(0,3000), notesAt:Date.now() })
+        .then(function(){ delete SM_NOTE_DRAFT[t.dataset.id]; nta.blur(); render(); })
+        .catch(function(err){ t.disabled = false; t.textContent = 'Save notes'; alert('Could not save notes ('+((err&&err.code)||'error')+'). Publish the latest Firebase rules first.'); });
+    }
     else if (action==='sm-ics'){ var icsC = state.systemMaps.filter(function(m){ return m._id===t.dataset.id; })[0]; if (icsC) smIcs(icsC); }
     else if (action==='alerts-toggle'){ state.alertsAll = !state.alertsAll; render(); }
     else if (action==='jump'){
