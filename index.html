@@ -582,7 +582,7 @@
   var LS_LK = 'diagnosisroom_lookups_v1';
   var LS_RO = 'diagnosisroom_reaudit_overrides_v1';
   var LS_CI = 'diagnosisroom_content_v1';
-  var LS_SVC = 'diagnosisroom_serviceclasses_v1';
+  var LS_SVCS = 'diagnosisroom_services_v1';
   var LS_DL = 'diagnosisroom_deliverables_v1';
   var LS_RD = 'diagnosisroom_readings_v1';
   var LS_WD = 'diagnosisroom_workdays_v1';
@@ -614,10 +614,58 @@
     { id:'zomato', name:'Zomato / Swiggy rating', unit:'★', better:'higher' },
     { id:'fulfilment', name:'Fulfilment cycle time', unit:'min', better:'lower' }
   ];
-  var DEFAULT_SERVICE_CLASSES = [
-    { id:'s1', number:1, label:'Audit Only' },
-    { id:'s2', number:2, label:'Audit + Training' },
-    { id:'s3', number:3, label:'Monthly Retainer' }
+  // ---------- services catalog: the sellable packages, each with its own price shape, visit cadence and tracking method ----------
+  var TRACKING_METHODS = [
+    { key:'paper', label:'Paper-based', icon:'📝' },
+    { key:'sheets', label:'Google Forms + Sheets', icon:'📊' },
+    { key:'app', label:'Custom App', icon:'📱' },
+    { key:'n/a', label:'No tracking', icon:'—' }
+  ];
+  var VISIT_INTERVALS = [
+    { key:'weekly', label:'Weekly visit', days:7 },
+    { key:'monthly', label:'Monthly visit', days:30 },
+    { key:'per-visit', label:'Per visit (one-off)', days:0 },
+    { key:'none', label:'No recurring visit', days:0 }
+  ];
+  function trackingMethodOf(key){ return TRACKING_METHODS.filter(function(t){ return t.key===key; })[0] || TRACKING_METHODS[3]; }
+  function visitIntervalOf(key){ return VISIT_INTERVALS.filter(function(v){ return v.key===key; })[0] || VISIT_INTERVALS[3]; }
+  var DEFAULT_SERVICES = [
+    { id:'svc_delivery', name:'Delivery Management + Menu Engineering', category:'Delivery & Menu', trackingMethod:'sheets', visitInterval:'weekly',
+      oneTimeMin:120000, oneTimeMax:200000, retainerMin:50000, retainerMax:75000, retainerMinMonths:3,
+      priceNote:'Dine-in one-time ₹1.5–2L, retainer ₹60–75K/mo. QSR/Cloud Kitchen one-time ₹1.2–1.6L, retainer ₹50–65K/mo. Includes a live aggregator dashboard (Sheets + Looker Studio) tracking sales, ratings, discount leakage and top/bottom items. Excludes 18% GST.' },
+    { id:'svc_inventory', name:'Inventory & Wastage Control', category:'Inventory', trackingMethod:'sheets', visitInterval:'weekly',
+      oneTimeMin:100000, oneTimeMax:175000, retainerMin:50000, retainerMax:70000, retainerMinMonths:3,
+      priceNote:'Dine-in one-time ₹1.25–1.75L, retainer ₹60–70K/mo. QSR one-time ₹1–1.5L, retainer ₹50–60K/mo. Digital stock count & wastage log (Forms + Sheets); can upgrade to the Control OS app tier. Excludes 18% GST.' },
+    { id:'svc_sop', name:'Kitchen SOP & Recipe Standardisation + Tracking App', category:'Kitchen SOP', trackingMethod:'app', visitInterval:'none',
+      oneTimeMin:200000, oneTimeMax:300000, retainerMin:10000, retainerMax:15000, retainerMinMonths:0,
+      priceNote:'Full package (SOPs + recipe cards + tracking app): Dine-in ₹2–3L, QSR ₹1.75–2.75L, plus ₹10–15K/mo hosting & maintenance. SOPs/recipes alone: Dine-in ₹1.25–1.75L, QSR ₹1–1.5L. App alone: ₹75K–1.5L setup + ₹10–15K/mo. Staff log prep, portions and checklists; owner gets a live dashboard and deviation alerts. Excludes 18% GST.' },
+    { id:'svc_controlos_a', name:'Control OS — Tier A: Paper-based', category:'Control OS', trackingMethod:'paper', visitInterval:'monthly',
+      oneTimeMin:400000, oneTimeMax:500000, retainerMin:125000, retainerMax:125000, retainerMinMonths:6,
+      priceNote:'Printed registers, checklists and formats — you digitise and analyse them each month. Not the cheapest tier on purpose: paper means late insight and more of your own time. Scale down ~20–25% for QSR/cloud kitchens. Excludes 18% GST.' },
+    { id:'svc_controlos_b', name:'Control OS — Tier B: Google Forms + Sheets', category:'Control OS', trackingMethod:'sheets', visitInterval:'monthly',
+      oneTimeMin:500000, oneTimeMax:650000, retainerMin:100000, retainerMax:115000, retainerMinMonths:6,
+      priceNote:'Staff enter data through forms, feeding an auto-updating dashboard. Scale down ~20–25% for QSR/cloud kitchens. Excludes 18% GST.' },
+    { id:'svc_controlos_c', name:'Control OS — Tier C: Custom App', category:'Control OS', trackingMethod:'app', visitInterval:'monthly',
+      oneTimeMin:750000, oneTimeMax:1000000, retainerMin:125000, retainerMax:150000, retainerMinMonths:6,
+      priceNote:'Live daily data entry, owner dashboard on phone, alerts, and a monthly auto-generated report. Retainer includes hosting & maintenance. Scale down ~20–25% for QSR/cloud kitchens. Excludes 18% GST.' },
+    { id:'svc_multi_sheets', name:'Multi-Outlet Control — Sheets-based', category:'Multi-Outlet / Franchise', trackingMethod:'sheets', visitInterval:'monthly',
+      oneTimeMin:700000, oneTimeMax:1000000, retainerMin:150000, retainerMax:250000, retainerMinMonths:0,
+      priceNote:'For smaller chains, up to about 5 outlets. Per additional outlet: ₹60–90K one-time. Excludes 18% GST.' },
+    { id:'svc_multi_app', name:'Multi-Outlet Control — Custom App', category:'Multi-Outlet / Franchise', trackingMethod:'app', visitInterval:'monthly',
+      oneTimeMin:1000000, oneTimeMax:1500000, retainerMin:200000, retainerMax:400000, retainerMinMonths:0,
+      priceNote:'Central dashboard, outlet ranking and franchisee scorecards. Per additional outlet: ₹75K–1.25L one-time. Essential once head office needs live cross-outlet visibility. Excludes 18% GST.' },
+    { id:'svc_preopening', name:'Pre-Opening Blueprint', category:'Pre-Opening', trackingMethod:'sheets', visitInterval:'none',
+      oneTimeMin:300000, oneTimeMax:600000, retainerMin:0, retainerMax:0, retainerMinMonths:0,
+      priceNote:'Dine-in ₹3–6L, QSR ₹2–4L. Includes a tracking system set up from day one (Sheets or app form). Excludes 18% GST.' },
+    { id:'svc_franchise_audit', name:'Franchise Health Audit', category:'Franchise Audit', trackingMethod:'app', visitInterval:'per-visit',
+      oneTimeMin:35000, oneTimeMax:45000, retainerMin:0, retainerMax:0, retainerMinMonths:0,
+      priceNote:'Per outlet, per visit. Digital audit scorecard with photo evidence per outlet. Excludes 18% GST.' },
+    { id:'svc_perf_linked', name:'Performance-Linked Model', category:'Performance-Linked', trackingMethod:'n/a', visitInterval:'monthly',
+      oneTimeMin:0, oneTimeMax:0, retainerMin:50000, retainerMax:50000, retainerMinMonths:0,
+      priceNote:'₹50K/mo base + 15–20% of verified monthly savings. Excludes 18% GST.' },
+    { id:'svc_open_diagnosis', name:'Open Diagnosis', category:'Open Diagnosis', trackingMethod:'n/a', visitInterval:'none',
+      oneTimeMin:0, oneTimeMax:0, retainerMin:0, retainerMax:0, retainerMinMonths:0,
+      priceNote:'Complimentary 2–3 day audit, by selection.' }
   ];
 
   var DEFAULT_TEMPLATES = {
@@ -712,7 +760,7 @@
     pricing: loadJSON(LS_P, null) || JSON.parse(JSON.stringify(DEFAULT_PRICING)),
     correctiveActions: loadJSON(LS_A, []),
     schedule: loadJSON(LS_SCHED, null) || JSON.parse(JSON.stringify(DEFAULT_SCHEDULE)),
-    serviceClasses: loadJSON(LS_SVC, null) || JSON.parse(JSON.stringify(DEFAULT_SERVICE_CLASSES)),
+    services: loadJSON(LS_SVCS, null) || JSON.parse(JSON.stringify(DEFAULT_SERVICES)),
     deliverables: loadJSON(LS_DL, null) || JSON.parse(JSON.stringify(DEFAULT_DELIVERABLES)),
     paramLibrary: loadJSON(LS_PL, null) || JSON.parse(JSON.stringify(DEFAULT_PARAM_LIBRARY)),
     readings: loadJSON(LS_RD, []),
@@ -757,7 +805,7 @@
   };
   // Remember where the user was, so a refresh or reopening the app lands on the same page.
   var LS_NAV = 'diagnosisroom_nav_v1';
-  var NAV_VIEWS = ['dashboard','week','editor','pricing','actions','prospects','lookup','content','search','summary','time','maps'];
+  var NAV_VIEWS = ['dashboard','week','editor','pricing','actions','prospects','lookup','content','search','summary','time','maps','services'];
   var navScrollY = 0;
   (function restoreNav(){
     var n = loadJSON(LS_NAV, null);
@@ -949,7 +997,7 @@
           if (data.templates) state.templates = data.templates;
           if (data.pricing) state.pricing = data.pricing;
           if (data.schedule) state.schedule = data.schedule;
-          if (data.serviceClasses) state.serviceClasses = data.serviceClasses;
+          if (data.services) state.services = data.services;
           if (data.deliverables) state.deliverables = data.deliverables;
           if (data.paramLibrary) state.paramLibrary = data.paramLibrary;
           if (data.targets) state.targets = data.targets;
@@ -959,7 +1007,7 @@
         }
       } else {
         if (isConfig){
-          try{ ref.set(JSON.parse(JSON.stringify({ templates: state.templates, pricing: state.pricing, schedule: state.schedule, serviceClasses: state.serviceClasses, deliverables: state.deliverables, paramLibrary: state.paramLibrary, targets: state.targets, reauditOverrides: state.reauditOverrides }))).catch(function(){}); }catch(e){}
+          try{ ref.set(JSON.parse(JSON.stringify({ templates: state.templates, pricing: state.pricing, schedule: state.schedule, services: state.services, deliverables: state.deliverables, paramLibrary: state.paramLibrary, targets: state.targets, reauditOverrides: state.reauditOverrides }))).catch(function(){}); }catch(e){}
         } else {
           ref.set({ list: state[name] || [] }).catch(function(){});
         }
@@ -1029,7 +1077,7 @@
   function persistTargets(){ saveJSON(LS_TG, state.targets); fsSyncConfig('targets', state.targets); }
   function persistActions(){ saveJSON(LS_A, state.correctiveActions); fsSyncRecords(RS.correctiveActions); }
   function persistSchedule(){ saveJSON(LS_SCHED, state.schedule); fsSyncConfig('schedule', state.schedule); }
-  function persistServiceClasses(){ saveJSON(LS_SVC, state.serviceClasses); fsSyncConfig('serviceClasses', state.serviceClasses); }
+  function persistServices(){ saveJSON(LS_SVCS, state.services); fsSyncConfig('services', state.services); }
   function persistDeliverables(){ saveJSON(LS_DL, state.deliverables); fsSyncConfig('deliverables', state.deliverables); }
   function persistParamLibrary(){ saveJSON(LS_PL, state.paramLibrary); fsSyncConfig('paramLibrary', state.paramLibrary); }
   function persistReadings(){ saveJSON(LS_RD, state.readings); fsSyncRecords(RS.readings); }
@@ -1347,6 +1395,7 @@
     else if (v==='dashboard') html = renderDashboard();
     else if (v==='week') html = renderWeekView();
     else if (v==='time') html = renderTimeView();
+    else if (v==='services') html = renderServicesView();
     app.innerHTML = topbar() + html;
     var onTabs = app.querySelectorAll('.tabs-scroll .tab.on');
     for (var oti=0; oti<onTabs.length; oti++){
@@ -1400,6 +1449,7 @@
         item('prospects','go-prospects','Clients', (function(){ var n=smNewCount(); return n?String(n):''; })()) +
         item('content','go-content','Content', state.contentIdeas.length?String(state.contentIdeas.length):'') +
         item('lookup','go-lookup','Lookup', (function(){ var n=state.lookups.filter(function(l){ return !l.done; }).length; return n?String(n):''; })()) +
+        item('services','go-services','Services', state.services.length?String(state.services.length):'') +
         item('pricing','go-pricing','Settings') +
       '</nav>';
   }
@@ -2129,8 +2179,8 @@
     var rows = [cols.join(',')];
     state.prospects.slice().sort(function(a,b){ return (b.createdAt||0)-(a.createdAt||0); }).forEach(function(p){
       var st = prospectStatus(p);
-      var cls = p.servicesOffered ? findServiceClass(p.servicesOffered) : null;
-      var svcStr = cls ? ('No. '+cls.number+' — '+cls.label) : 'N/A';
+      var cls = p.servicesOffered ? findService(p.servicesOffered) : null;
+      var svcStr = cls ? cls.name : 'N/A';
       var row = [p.name||'', p.location||'', prospectCategoryLabel(p), st.label, svcStr, p.contactName||'', p.contactMobile||'', p.auditId?'Yes':'No', p.converted?'Yes':'No', p.pricingType==='retainer'?'Monthly retainer':(p.pricingType==='onetime'?'One-time':''), p.finalPrice||'', p.followUpDate||''];
       rows.push(row.map(csvEscape).join(','));
     });
@@ -2146,7 +2196,7 @@
       pricing: state.pricing,
       correctiveActions: state.correctiveActions,
       schedule: state.schedule,
-      serviceClasses: state.serviceClasses,
+      services: state.services,
       deliverables: state.deliverables,
       paramLibrary: state.paramLibrary,
       readings: state.readings,
@@ -2161,7 +2211,7 @@
 
   function applyBackupData(data){
     if (!data || typeof data!=='object') return false;
-    var known = ['templates','history','pricing','correctiveActions','schedule','serviceClasses','deliverables','paramLibrary','readings','prospects','lookups','contentIdeas','reauditOverrides','targets','workdays'];
+    var known = ['templates','history','pricing','correctiveActions','schedule','services','deliverables','paramLibrary','readings','prospects','lookups','contentIdeas','reauditOverrides','targets','workdays'];
     var found = known.some(function(k){ return data[k]!==undefined; });
     if (!found) return false;
     if (data.templates) state.templates = data.templates;
@@ -2169,7 +2219,7 @@
     if (data.pricing) state.pricing = data.pricing;
     if (data.correctiveActions) state.correctiveActions = data.correctiveActions;
     if (data.schedule) state.schedule = data.schedule;
-    if (data.serviceClasses) state.serviceClasses = data.serviceClasses;
+    if (data.services) state.services = data.services;
     if (data.deliverables) state.deliverables = data.deliverables;
     if (data.paramLibrary) state.paramLibrary = data.paramLibrary;
     if (data.readings) state.readings = data.readings;
@@ -2180,7 +2230,7 @@
     if (data.reauditOverrides) state.reauditOverrides = data.reauditOverrides;
     if (data.targets) state.targets = data.targets;
     persistTemplates(); persistHistory(); persistPricing(); persistActions(); persistSchedule();
-    persistServiceClasses(); persistDeliverables(); persistParamLibrary(); persistReadings(); persistProspects(); persistLookups(); persistContentIdeas(); persistReauditOverrides(); persistTargets(); persistWorkdays();
+    persistServices(); persistDeliverables(); persistParamLibrary(); persistReadings(); persistProspects(); persistLookups(); persistContentIdeas(); persistReauditOverrides(); persistTargets(); persistWorkdays();
     return true;
   }
 
@@ -2253,7 +2303,7 @@
   function fmtKB(b){ return b>=1048576 ? (b/1048576).toFixed(2)+' MB' : Math.max(1, Math.round(b/1024))+' KB'; }
   function storageTone(pct){ return pct>=90 ? 'bad' : (pct>=70 ? 'warn' : 'good'); }
   function storageReport(withRecords){
-    var cfgBytes = jsonBytes({ templates:state.templates, pricing:state.pricing, schedule:state.schedule, serviceClasses:state.serviceClasses, deliverables:state.deliverables, paramLibrary:state.paramLibrary, targets:state.targets, reauditOverrides:state.reauditOverrides });
+    var cfgBytes = jsonBytes({ templates:state.templates, pricing:state.pricing, schedule:state.schedule, services:state.services, deliverables:state.deliverables, paramLibrary:state.paramLibrary, targets:state.targets, reauditOverrides:state.reauditOverrides });
     var rep = { rows:[ { label:'Settings & checklists', bytes:cfgBytes, n:0, unit:'', pct:cfgBytes/DOC_LIMIT_BYTES*100 } ] };
     if (withRecords){
       rep.sets = [
@@ -2322,35 +2372,9 @@
       '</div>' +
       '<div class="field" style="max-width:150px;margin-bottom:28px;"><label>Currency symbol</label><input type="text" maxlength="3" data-pricing="currency" value="'+esc(state.pricing.currency)+'"></div>' +
 
-      '<h1 style="font-size:20px;margin:0 0 4px;">Service classes</h1>' +
-      '<div class="helper" style="margin-bottom:12px;">The numbered service classes a converted client can be assigned to. Shown as a badge on client cards and in the Re-audit Due list.</div>' +
-      '<div class="card" style="padding:4px 16px;margin-bottom:12px;">' +
-        state.serviceClasses.slice().sort(function(a,b){return a.number-b.number;}).map(function(sc){
-          return '<div class="gradebandrow">' +
-            '<input type="number" min="1" data-svc-field="number" data-svc="'+sc.id+'" value="'+sc.number+'" title="Service No.">' +
-            '<input type="text" data-svc-field="label" data-svc="'+sc.id+'" value="'+esc(sc.label)+'" placeholder="Service name">' +
-            '<button class="iconbtn" data-action="svc-remove" data-svc="'+sc.id+'" title="Remove class">✕</button>' +
-          '</div>';
-        }).join('') +
-      '</div>' +
-      '<div style="display:flex;gap:8px;margin-bottom:24px;">' +
-        '<button class="btn btn-ghost btn-sm" data-action="svc-add">+ Add service class</button>' +
-        '<button class="btn btn-text btn-danger" data-action="reset-svc">Reset to defaults</button>' +
-      '</div>' +
-
-      '<h1 style="font-size:20px;margin:0 0 4px;">Solution deliverables</h1>' +
-      '<div class="helper" style="margin-bottom:12px;">What you can offer a client to build. Ticking one on a client page adds a task to your Tasks list automatically.</div>' +
-      '<div class="card" style="padding:4px 16px;margin-bottom:12px;">' +
-        state.deliverables.map(function(dl){
-          return '<div class="gradebandrow">' +
-            '<input type="text" data-dl-field="label" data-dl="'+esc(dl.id)+'" value="'+esc(dl.label)+'" placeholder="Deliverable name">' +
-            '<button class="iconbtn" data-action="dl-remove" data-dl="'+esc(dl.id)+'" title="Remove">✕</button>' +
-          '</div>';
-        }).join('') +
-      '</div>' +
-      '<div style="display:flex;gap:8px;margin-bottom:24px;">' +
-        '<button class="btn btn-ghost btn-sm" data-action="dl-add">+ Add deliverable</button>' +
-        '<button class="btn btn-text btn-danger" data-action="reset-dl">Reset to defaults</button>' +
+      '<div class="card" style="padding:14px 16px;margin-bottom:28px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">' +
+        '<div><div style="font-weight:700;">Services &amp; pricing catalog</div><div class="histmeta">Moved to its own page — packages, price ranges, visit cadence and tracking method.</div></div>' +
+        '<button class="btn btn-ghost btn-sm" data-action="go-services">Open Services →</button>' +
       '</div>' +
 
       '<h1 style="font-size:20px;margin:0 0 4px;">Parameter library</h1>' +
@@ -2372,19 +2396,54 @@
         '<button class="btn btn-text btn-danger" data-action="reset-lib">Reset to defaults</button>' +
       '</div>' +
 
-      '<h1 style="font-size:20px;margin:0 0 4px;">Re-audit schedule</h1>' +
-      '<div class="helper" style="margin-bottom:12px;">How many days after an audit a store should be re-checked. Used to build the due list under Actions.</div>' +
-      '<div class="card edsection">' +
-        '<div class="field"><label>Dine-In — re-check every (days)</label><input type="number" min="1" data-schedule="dinein.intervalDays" value="'+state.schedule.dinein.intervalDays+'"></div>' +
-        '<div class="field"><label>QSR — re-check every (days)</label><input type="number" min="1" data-schedule="qsr.intervalDays" value="'+state.schedule.qsr.intervalDays+'"></div>' +
-      '</div>' +
-
       '<h1 style="font-size:20px;margin:28px 0 4px;">Stuck-step alert</h1>' +
       '<div class="helper" style="margin-bottom:12px;">How many days a client can stay on one Engagement Loop step before the dashboard flags it for a nudge.</div>' +
       '<div class="card edsection">' +
         '<div class="field"><label>Dine-In — flag after (days)</label><input type="number" min="1" data-schedule="dinein.stuckDays" value="'+loopStuckDaysFor('dinein')+'"></div>' +
         '<div class="field"><label>QSR — flag after (days)</label><input type="number" min="1" data-schedule="qsr.stuckDays" value="'+loopStuckDaysFor('qsr')+'"></div>' +
       '</div>' +
+    '</main>';
+  }
+
+  // ---------- services catalog page ----------
+  function renderServicesView(){
+    var groups = {};
+    state.services.forEach(function(s){ (groups[s.category]=groups[s.category]||[]).push(s); });
+    var catOrder = Object.keys(groups);
+    function fieldNum(label, field, s, ph){
+      return '<div class="field" style="flex:1;min-width:90px;"><label>'+label+'</label><input type="number" min="0" data-svc-field="'+field+'" data-svc="'+s.id+'" value="'+(s[field]||0)+'" placeholder="'+(ph||'0')+'"></div>';
+    }
+    function card(s){
+      return '<div class="card" style="padding:14px 16px;margin-bottom:12px;">' +
+        '<div style="display:flex;gap:8px;align-items:flex-start;">' +
+          '<textarea rows="1" class="edtext" style="font-weight:800;font-size:15.5px;" data-svc-field="name" data-svc="'+s.id+'">'+esc(s.name)+'</textarea>' +
+          '<button class="iconbtn" data-action="service-remove" data-svc="'+s.id+'" title="Remove package">✕</button>' +
+        '</div>' +
+        '<div class="field" style="margin-top:8px;"><label>Category</label><input type="text" data-svc-field="category" data-svc="'+s.id+'" value="'+esc(s.category)+'" placeholder="e.g. Delivery & Menu"></div>' +
+        '<div class="field"><label>Tracking method</label><div class="areagrid">' +
+          TRACKING_METHODS.map(function(tm){ return '<button type="button" class="areachip '+(s.trackingMethod===tm.key?'on':'')+'" data-action="service-tracking" data-svc="'+s.id+'" data-val="'+tm.key+'">'+tm.icon+' '+tm.label+'</button>'; }).join('') +
+        '</div></div>' +
+        '<div class="field"><label>Visit cadence</label><div class="areagrid">' +
+          VISIT_INTERVALS.map(function(vi){ return '<button type="button" class="areachip '+(s.visitInterval===vi.key?'on':'')+'" data-action="service-interval" data-svc="'+s.id+'" data-val="'+vi.key+'">'+vi.label+'</button>'; }).join('') +
+        '</div>' + (visitIntervalOf(s.visitInterval).days ? '<div class="helper" style="margin-top:4px;">Assigning this package to a client — or marking its visit follow-up done — automatically schedules the next one, '+visitIntervalOf(s.visitInterval).days+' days out.</div>' : '') + '</div>' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
+          fieldNum('One-time min (₹)', 'oneTimeMin', s) + fieldNum('One-time max (₹)', 'oneTimeMax', s) +
+        '</div>' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
+          fieldNum('Retainer min (₹/mo)', 'retainerMin', s) + fieldNum('Retainer max (₹/mo)', 'retainerMax', s) + fieldNum('Min months', 'retainerMinMonths', s) +
+        '</div>' +
+        '<div class="field" style="margin-bottom:0;"><label>Notes — QSR scaling, per-outlet fees, GST, anything price-shaped that doesn\'t fit the boxes above</label><textarea data-svc-field="priceNote" data-svc="'+s.id+'" placeholder="e.g. Scale down ~20% for QSR. Excludes 18% GST.">'+esc(s.priceNote||'')+'</textarea></div>' +
+      '</div>';
+    }
+    return '<main>' +
+      '<div class="eyebrow">Settings</div>' +
+      '<h1 style="font-size:26px;margin-top:6px;margin-bottom:6px;">Services &amp; pricing catalog</h1>' +
+      '<div class="helper" style="margin-bottom:14px;">The packages you sell — price range, visit cadence and tracking method (paper, Sheets, or a custom app). Assign one to a client from their page under Post-Audit Follow-up; the visit cadence then schedules its own follow-ups.</div>' +
+      '<button class="btn btn-primary btn-sm" style="margin-bottom:16px;" data-action="service-add">+ Add package</button>' +
+      catOrder.map(function(cat){
+        return '<h2 style="font-size:14px;color:var(--ink-400);text-transform:uppercase;letter-spacing:.05em;margin:18px 0 8px;">'+esc(cat)+'</h2>' + groups[cat].map(card).join('');
+      }).join('') +
+      '<button class="btn btn-text btn-danger" style="margin-top:6px;" data-action="service-reset">Reset catalog to defaults</button>' +
     '</main>';
   }
 
@@ -2515,7 +2574,13 @@
     return state.prospects.filter(function(p){ return (p.name||'').trim().toLowerCase()===key; })[0] || null;
   }
 
-  function findServiceClass(id){ return state.serviceClasses.filter(function(s){ return s.id===id; })[0] || null; }
+  function findService(id){ return state.services.filter(function(s){ return s.id===id; })[0] || null; }
+  function servicePriceLine(s){
+    var cur = state.pricing.currency||'₹';
+    var oneTime = s.oneTimeMax ? cur+fmtCompact(s.oneTimeMin)+'–'+cur+fmtCompact(s.oneTimeMax)+' one-time' : '';
+    var retainer = s.retainerMax ? cur+fmtCompact(s.retainerMin)+'–'+cur+fmtCompact(s.retainerMax)+'/mo'+(s.retainerMinMonths?' · '+s.retainerMinMonths+'mo min':'') : '';
+    return [oneTime, retainer].filter(Boolean).join(' · ') || 'Complimentary';
+  }
 
   function prospectAudits(p){
     var key = (p.name||'').trim().toLowerCase();
@@ -2531,8 +2596,8 @@
 
   function serviceBadgeHtml(p){
     if (!p) return '';
-    var cls = p.servicesOffered ? findServiceClass(p.servicesOffered) : null;
-    if (cls) return '<span class="badge" style="margin-left:6px;">No. '+cls.number+' — '+esc(cls.label)+'</span>';
+    var svc = p.servicesOffered ? findService(p.servicesOffered) : null;
+    if (svc) return '<span class="badge" style="margin-left:6px;">'+esc(svc.name)+'</span>';
     return '';
   }
 
@@ -2957,6 +3022,15 @@
   function openFollowUps(p){
     return (p.followUps||[]).filter(function(f){ return !f.done && f.date; }).sort(function(a,b){ return followUpDueAt(a)-followUpDueAt(b); });
   }
+  // A service with a recurring visit cadence (weekly/monthly) auto-schedules its next follow-up here —
+  // both the moment it's assigned, and again each time that follow-up is marked done, so the visit cadence keeps running on its own.
+  function scheduleServiceFollowup(p, svc){
+    if (!svc) return;
+    var vi = visitIntervalOf(svc.visitInterval);
+    if (!vi.days) return;
+    p.followUps = p.followUps || [];
+    p.followUps.push({ id:uid(), date:isoDaysFromNow(vi.days), time:'', note:vi.label+' — '+svc.name, done:false, doneAt:null, createdAt:Date.now(), serviceRecurring:true, serviceId:svc.id });
+  }
   function followUpTone(f){
     if (followUpDueAt(f) < Date.now()) return { tone:'bad', label:'Overdue' };
     if (f.date===todayISO()) return { tone:'warn', label:'Today' };
@@ -3272,7 +3346,7 @@
         sh('🎯','Post-Audit Follow-up') +
         '<div class="card" style="padding:16px;margin-bottom:20px;border:1.5px solid var(--accent);background:var(--accent-soft);">' +
           '<div class="formstack" style="gap:14px;margin-bottom:0;">' +
-            '<div class="field" style="margin-bottom:0;"><label for="pServices">Class of service</label><select id="pServices" data-bind-prospect="servicesOffered"><option value="">— Not selected (N/A) —</option>'+state.serviceClasses.map(function(sc){ return '<option value="'+sc.id+'" '+(p.servicesOffered===sc.id?'selected':'')+'>No. '+sc.number+' — '+esc(sc.label)+'</option>'; }).join('')+'</select></div>' +
+            '<div class="field" style="margin-bottom:0;"><label for="pServices">Service package</label><select id="pServices" data-action="set-client-service"><option value="">— Not selected —</option>'+state.services.map(function(sc){ return '<option value="'+sc.id+'" '+(p.servicesOffered===sc.id?'selected':'')+'>'+esc(sc.name)+'</option>'; }).join('')+'</select>'+(p.servicesOffered && findService(p.servicesOffered) ? '<div class="histmeta" style="margin-top:6px;">'+esc(servicePriceLine(findService(p.servicesOffered)))+(visitIntervalOf(findService(p.servicesOffered).visitInterval).days ? ' · '+esc(visitIntervalOf(findService(p.servicesOffered).visitInterval).label)+' auto-scheduled' : '')+'</div>' : '')+'</div>' +
             '<div class="field" style="margin-bottom:0;"><label for="pPricingType">Pricing type</label><select id="pPricingType" data-action="set-pricing-type-select"><option value="">— Not set —</option><option value="onetime" '+(p.pricingType==='onetime'?'selected':'')+'>One-time</option><option value="retainer" '+(p.pricingType==='retainer'?'selected':'')+'>Monthly retainer</option></select></div>' +
             '<div class="field" style="margin-bottom:0;"><label for="pProposalStatus">Solution proposed?</label><select id="pProposalStatus" data-action="set-proposal-status-select"><option value="">— Not set —</option><option value="proposed" '+(p.proposalStatus==='proposed'?'selected':'')+'>Proposed</option><option value="not_offered" '+(p.proposalStatus==='not_offered'?'selected':'')+'>Not offered right now</option><option value="meeting_scheduled" '+(p.proposalStatus==='meeting_scheduled'?'selected':'')+'>Meeting scheduled later</option></select></div>' +
             (p.proposalStatus==='meeting_scheduled' ? '<div class="field" style="margin-bottom:0;"><label for="pMeetingDate">Date of proposal / meeting</label><input id="pMeetingDate" type="date" data-bind-prospect="proposalMeetingDate" value="'+esc(p.proposalMeetingDate||'')+'"></div>' : '') +
@@ -4822,6 +4896,7 @@
     else if (action==='go-setup'){ if(!state.draft) { state.view='setup'; render(); } }
     else if (action==='go-editor'){ if(!state.draft){ state.view='editor'; render(); } }
     else if (action==='go-pricing'){ if(!state.draft){ state.view='pricing'; render(); } }
+    else if (action==='go-services'){ if(!state.draft){ state.view='services'; render(); } }
     else if (action==='go-actions'){ if(!state.draft){ if (t.dataset.tab) state.actionsTab = t.dataset.tab; state.dayTab = 'actions'; state.view='time'; window.scrollTo(0,0); render(); } }
     else if (action==='go-prospects'){ if(!state.draft){ state.activeProspectId=null; state.activeCallId=null; state.view='prospects'; render(); } }
     else if (action==='go-lookup'){ if(!state.draft){ state.view='lookup'; render(); } }
@@ -4913,7 +4988,14 @@
     else if (action==='done-followup'){
       var dfP = findProspect(t.dataset.pid);
       var dfF = dfP && (dfP.followUps||[]).filter(function(f){ return f.id===t.dataset.fid; })[0];
-      if (dfF){ dfF.done = true; dfF.doneAt = Date.now(); dfP.updatedAt = Date.now(); persistProspects(); render(); }
+      if (dfF){
+        dfF.done = true; dfF.doneAt = Date.now(); dfP.updatedAt = Date.now();
+        if (dfF.serviceRecurring && dfP.servicesOffered===dfF.serviceId){
+          var dfSvc = findService(dfF.serviceId);
+          if (dfSvc) scheduleServiceFollowup(dfP, dfSvc);
+        }
+        persistProspects(); render();
+      }
     }
     else if (action==='delete-followup'){
       var xfP = findProspect(t.dataset.pid);
@@ -5478,20 +5560,31 @@
       var spP = findProspect(state.activeProspectId);
       if (spP){ spP.pricingType = t.dataset.val; persistProspects(); render(); }
     }
-    else if (action==='svc-add'){
-      var nextNum = state.serviceClasses.reduce(function(m,sc){ return Math.max(m,sc.number); },0)+1;
-      state.serviceClasses.push({ id: uid(), number: nextNum, label: 'New service' });
-      persistServiceClasses(); render();
+    else if (action==='service-add'){
+      var newSvc = { id: uid(), name:'New package', category:'Other', trackingMethod:'n/a', visitInterval:'none',
+        oneTimeMin:0, oneTimeMax:0, retainerMin:0, retainerMax:0, retainerMinMonths:0, priceNote:'' };
+      state.services.push(newSvc);
+      persistServices(); render();
     }
-    else if (action==='svc-remove'){
-      state.serviceClasses = state.serviceClasses.filter(function(sc){ return sc.id!==t.dataset.svc; });
-      persistServiceClasses(); render();
-    }
-    else if (action==='reset-svc'){
-      if (window.confirm('Reset service classes to defaults?')){
-        state.serviceClasses = JSON.parse(JSON.stringify(DEFAULT_SERVICE_CLASSES));
-        persistServiceClasses(); render();
+    else if (action==='service-remove'){
+      if (window.confirm('Remove this service package? Clients already assigned to it keep the name on their card, but it will no longer appear in the picker.')){
+        state.services = state.services.filter(function(s){ return s.id!==t.dataset.svc; });
+        persistServices(); render();
       }
+    }
+    else if (action==='service-reset'){
+      if (window.confirm('Reset the services catalog to the built-in defaults? Custom packages will be lost.')){
+        state.services = JSON.parse(JSON.stringify(DEFAULT_SERVICES));
+        persistServices(); render();
+      }
+    }
+    else if (action==='service-tracking'){
+      var svcT = state.services.filter(function(s){ return s.id===t.dataset.svc; })[0];
+      if (svcT){ svcT.trackingMethod = t.dataset.val; persistServices(); render(); }
+    }
+    else if (action==='service-interval'){
+      var svcI = state.services.filter(function(s){ return s.id===t.dataset.svc; })[0];
+      if (svcI){ svcI.visitInterval = t.dataset.val; persistServices(); render(); }
     }
     else if (action==='lib-add'){
       state.paramLibrary.push({ id: uid(), name:'New parameter', unit:'', better:'lower' });
@@ -5745,11 +5838,13 @@
       if (dl2){ dl2.label = el.value; persistDeliverables(); }
     }
     else if (el.dataset.svcField){
-      var sc2 = state.serviceClasses.filter(function(s){ return s.id===el.dataset.svc; })[0];
+      var sc2 = state.services.filter(function(s){ return s.id===el.dataset.svc; })[0];
       if (sc2){
-        if (el.dataset.svcField==='number'){ var svn = parseInt(el.value,10); sc2.number = isNaN(svn)?1:svn; }
+        var svcNumFields = ['oneTimeMin','oneTimeMax','retainerMin','retainerMax','retainerMinMonths'];
+        if (svcNumFields.indexOf(el.dataset.svcField)>=0){ var svn = parseFloat(el.value); sc2[el.dataset.svcField] = isNaN(svn)?0:svn; }
         else { sc2[el.dataset.svcField] = el.value; }
-        persistServiceClasses();
+        persistServices();
+        if (el.tagName==='TEXTAREA'){ el.style.height = 'auto'; el.style.height = el.scrollHeight+'px'; }
       }
     }
     else if (el.dataset.bindProspect){
@@ -5823,6 +5918,16 @@
     else if (el.dataset.action==='set-pricing-type-select'){
       var ptp = findProspect(state.activeProspectId);
       if (ptp){ ptp.pricingType = el.value; persistProspects(); }
+    }
+    else if (el.dataset.action==='set-client-service'){
+      var scsP = findProspect(state.activeProspectId);
+      if (scsP){
+        scsP.servicesOffered = el.value;
+        scsP.updatedAt = Date.now();
+        var scsSvc = el.value ? findService(el.value) : null;
+        if (scsSvc) scheduleServiceFollowup(scsP, scsSvc);
+        persistProspects(); render();
+      }
     }
     else if (el.dataset.action==='set-proposal-status-select'){
       var psp = findProspect(state.activeProspectId);
