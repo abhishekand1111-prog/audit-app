@@ -787,7 +787,7 @@
     syncError: '',
     fuDraft: null,
     searchQuery: '',
-    setup: { type:null, storeName:'', storeLocation:'', contactName:'', contactDesignation:'', contactMobile:'', auditDate: todayISO(), auditTime: nowHHMM(), selectedSections:[], menuItemCount:'', inquiry:[] },
+    setup: { type:null, storeName:'', storeLocation:'', contactName:'', contactDesignation:'', contactMobile:'', auditDate: todayISO(), auditTime: nowHHMM(), selectedSections:[], menuItemCount:'', inquiry:[], serviceId:'' },
     editorTab: 'dinein',
     historyTab: 'all',
     actionsTab: 'corrective',
@@ -1444,7 +1444,6 @@
           var ow=openWorkday(), ak=ow?workdayActiveAway(ow):null, c=dayCounts(), n=c.today+c.overdue;
           return [ow ? (ak?awayCatOf(ak).icon:'🟢') : '', n ? String(n) : ''].filter(Boolean).join(' ');
         })()) +
-        item('setup','go-setup','New Audit') +
         item('editor','go-editor','Checklist') +
         item('prospects','go-prospects','Clients', (function(){ var n=smNewCount(); return n?String(n):''; })()) +
         item('content','go-content','Content', state.contentIdeas.length?String(state.contentIdeas.length):'') +
@@ -1772,6 +1771,7 @@
         '</div>' +
         '<div class="helper" data-dayname style="margin-top:-6px;">'+esc(dayName(s.auditDate))+'</div>' +
         '<div class="field"><label for="menuItemCount">Number of menu items'+req+'</label><input id="menuItemCount" type="number" min="1" inputmode="numeric" data-bind="menuItemCount" placeholder="e.g. 42" value="'+esc(s.menuItemCount)+'"></div>' +
+        '<div class="field"><label for="setupService">Service package (optional)</label><select id="setupService" data-bind="serviceId"><option value="">— Not selected —</option>'+state.services.map(function(sc){ return '<option value="'+sc.id+'" '+(s.serviceId===sc.id?'selected':'')+'>'+esc(sc.name)+'</option>'; }).join('')+'</select>'+(s.serviceId && findService(s.serviceId) ? '<div class="histmeta" style="margin-top:6px;">'+esc(servicePriceLine(findService(s.serviceId)))+'</div>' : '')+'</div>' +
       '</div>' +
       renderInquiryEditor('setup', s.inquiry||[], inquiryAreaOptions(s.type)) +
       '<button class="btn btn-primary" style="width:100%;padding:14px;" data-action="start-audit" '+(problems.length ? 'disabled' : '')+'>Start Audit &amp; Timer</button>' +
@@ -2693,7 +2693,10 @@
     return '<main>' +
       '<div style="display:flex; justify-content:space-between; align-items:flex-end; gap:10px;">' +
         '<div><div class="eyebrow">Sales</div><h1 style="font-size:26px;margin-top:6px;">Clients</h1></div>' +
-        '<button class="btn btn-primary btn-sm" style="flex:none;" data-action="add-prospect">+ Add Client</button>' +
+        '<div style="display:flex;gap:8px;flex:none;">' +
+          '<button class="btn btn-ghost btn-sm" data-action="go-setup">+ New Audit</button>' +
+          '<button class="btn btn-primary btn-sm" data-action="add-prospect">+ Add Client</button>' +
+        '</div>' +
       '</div>' +
       '<div class="tabs tabs-scroll" style="margin-top:14px;">' +
         '<button class="tab '+(pTab==='calls'?'on':'')+'" data-action="prospects-tab" data-tab="calls">Calls'+(function(){ var n = smNewCount(); return '<span class="tabcount'+(n?' bad':'')+'">'+n+'</span>'; })()+'</button>' +
@@ -5191,6 +5194,7 @@
       state.setup.selectedSections = [];
       state.setup.menuItemCount = '';
       state.setup.inquiry = (sp.inquiry && !prospectAudits(sp).length) ? sp.inquiry.map(function(e){ return { id:e.id, area:e.area||'', problem:e.problem||'', action:e.action||'', createdAt:e.createdAt }; }) : [];
+      state.setup.serviceId = sp.servicesOffered||'';
       state.pendingProspectId = sp.id;
       state.view = 'setup'; render();
     }
@@ -5436,6 +5440,11 @@
         linkedP.nextNote = '';
         linkedP.nextData = {};
       }
+      if (linkedP && state.setup.serviceId && !linkedP.servicesOffered){
+        linkedP.servicesOffered = state.setup.serviceId;
+        scheduleServiceFollowup(linkedP, findService(state.setup.serviceId));
+      }
+      state.setup.serviceId = '';
       state.pendingProspectId = null;
       if (linkedP){
         mergeInquiryInto(linkedP, d.inquiry, rec.id);
@@ -5723,6 +5732,7 @@
     else if (el.dataset.bind === 'auditDate'){ state.setup.auditDate = el.value; var dn = app.querySelector('[data-dayname]'); if (dn) dn.textContent = dayName(el.value); }
     else if (el.dataset.bind === 'auditTime'){ state.setup.auditTime = el.value; }
     else if (el.dataset.bind === 'menuItemCount'){ state.setup.menuItemCount = el.value; }
+    else if (el.dataset.bind === 'serviceId'){ state.setup.serviceId = el.value; render(); }
     else if (el.dataset.bind === 'remark' && state.draft){ state.draft.remark = el.value; persistDraft();
       var btn = app.querySelector('[data-action="complete-audit"]');
       if (btn) btn.disabled = !el.value.trim();
