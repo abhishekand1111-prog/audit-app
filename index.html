@@ -199,6 +199,15 @@
   .naBtn{font-size:11px; font-weight:700; color:var(--ink-400); background:none; border:1px solid var(--line-strong); border-radius:20px; padding:4px 9px; flex:none; transition:background .15s, color .15s, border-color .15s;}
   .naBtn:hover:not(.on){background:var(--surface-2); color:var(--ink-600);}
   .naBtn.on{color:var(--accent-ink); border-color:var(--accent); background:var(--accent-soft);}
+  .qbtn{font-size:13px; font-weight:700; padding:9px 10px; border-radius:var(--r-s); border:1.5px solid var(--line-strong); background:transparent; color:var(--ink-600); cursor:pointer; flex:1; transition:background .15s, color .15s, border-color .15s;}
+  .qbtn.ok{color:var(--good); border-color:var(--good);}
+  .qbtn.ok:hover{background:var(--good); color:#fff;}
+  .qbtn.no:hover{background:var(--bad); border-color:var(--bad); color:#fff;}
+  .qbtn.no.on{color:var(--bad); border-color:var(--bad);}
+  .badge.svcbadge{max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-transform:none; letter-spacing:0; vertical-align:bottom;}
+  .catrow{display:flex; gap:8px; flex-wrap:wrap;}
+  .svccard .field{margin-bottom:16px;}
+  .svccard .field > label{display:block; margin-bottom:6px;}
   .field > div[style*="display:flex"] > .naBtn{flex:1 1 0; min-width:0; padding:9px 8px; font-size:13px; border-radius:10px; text-align:center;}
   .itemrow.hasanswer .naBtn.on, .item.hasanswer .naBtn.on{background:var(--surface);}
 
@@ -1850,6 +1859,7 @@
         '</div>' +
         '<div class="helper" data-mobile-err style="margin-top:-6px;color:var(--bad);">'+esc(mobileErrorText(s.contactMobile))+'</div>' +
       '</div>' +
+      '<div class="field" style="margin-bottom:16px;"><label for="setupService">Service package (optional)</label><select id="setupService" data-bind="serviceId"><option value="">— Not selected — (audit all areas)</option>'+state.services.map(function(sc){ return '<option value="'+sc.id+'" '+(s.serviceId===sc.id?'selected':'')+'>'+esc(sc.name)+'</option>'; }).join('')+'</select>'+(s.serviceId && findService(s.serviceId) ? '<div class="histmeta" style="margin-top:6px;">'+esc(servicePriceLine(findService(s.serviceId)))+'</div><div class="histmeta" style="margin-top:2px;color:var(--accent-ink);">'+esc(serviceAuditLine(findService(s.serviceId)))+(s.type ? ' — matching areas are pre-selected below' : ' — pick the audit type to pre-select them')+'</div>' : '')+'</div>' +
       '<div class="typegrid">' +
         types.map(function(t){
           var tmpl = state.templates[t];
@@ -1874,7 +1884,6 @@
         '</div>' +
         '<div class="helper" data-dayname style="margin-top:-6px;">'+esc(dayName(s.auditDate))+'</div>' +
         '<div class="field"><label for="menuItemCount">Number of menu items'+req+'</label><input id="menuItemCount" type="number" min="1" inputmode="numeric" data-bind="menuItemCount" placeholder="e.g. 42" value="'+esc(s.menuItemCount)+'"></div>' +
-        '<div class="field"><label for="setupService">Service package (optional)</label><select id="setupService" data-bind="serviceId"><option value="">— Not selected —</option>'+state.services.map(function(sc){ return '<option value="'+sc.id+'" '+(s.serviceId===sc.id?'selected':'')+'>'+esc(sc.name)+'</option>'; }).join('')+'</select>'+(s.serviceId && findService(s.serviceId) ? '<div class="histmeta" style="margin-top:6px;">'+esc(servicePriceLine(findService(s.serviceId)))+'</div><div class="histmeta" style="margin-top:2px;color:var(--accent-ink);">'+esc(serviceAuditLine(findService(s.serviceId)))+(s.type ? ' — areas below are pre-selected' : ' — pick the audit type to pre-select them')+'</div>' : '')+'</div>' +
       '</div>' +
       renderInquiryEditor('setup', s.inquiry||[], inquiryAreaOptions(s.type)) +
       '<button class="btn btn-primary" style="width:100%;padding:14px;" data-action="start-audit" '+(problems.length ? 'disabled' : '')+'>Start Audit &amp; Timer</button>' +
@@ -2421,12 +2430,13 @@
             '<button class="iconbtn" data-action="delete-section" data-sec="'+sec.id+'" title="Delete section">✕</button>' +
           '</div>' +
           sec.items.map(function(it){
-            return '<div class="itemrow '+(it.requiresInfo?'hasanswer':'')+'">' +
-              '<div class="itemrow-top">' +
-                '<textarea rows="1" class="edtext" data-action="rename-item" data-sec="'+sec.id+'" data-item="'+it.id+'">'+esc(it.text)+'</textarea>' +
-                '<button class="iconbtn" data-action="delete-item" data-sec="'+sec.id+'" data-item="'+it.id+'" title="Delete item">✕</button>' +
-              '</div>' +
-              '<div class="itemrow-sub">' +
+            var optOpen = state.editorOpenItem===it.id;
+            var tags = [];
+            if ((it.kind||'tick')==='number') tags.push('# Number'+(it.unit?' ('+it.unit+')':''));
+            if ((it.kind||'tick')==='score') tags.push('★ Score 1–5');
+            if (it.critical) tags.push('🔴 Critical');
+            if (it.requiresInfo) tags.push('📝 Needs an answer');
+            var optsHtml = '<div class="itemrow-sub">' +
                 [['tick','✓ Tick'],['number','# Number'],['score','★ Score 1–5']].map(function(k){ return '<button type="button" class="naBtn '+((it.kind||'tick')===k[0]?'on':'')+'" data-action="item-kind" data-sec="'+sec.id+'" data-item="'+it.id+'" data-val="'+k[0]+'">'+k[1]+'</button>'; }).join('') +
                 '<button type="button" class="naBtn '+(it.critical?'on':'')+'" data-action="toggle-critical" data-sec="'+sec.id+'" data-item="'+it.id+'">🔴 Critical</button>' +
                 ((it.kind||'tick')==='tick' ? '<button type="button" class="naBtn '+(it.requiresInfo?'on':'')+'" data-action="toggle-requires-info" data-sec="'+sec.id+'" data-item="'+it.id+'">📝 Requires an answer</button>' : '') +
@@ -2439,7 +2449,15 @@
                   '<input type="number" step="any" class="iteminfolabel" data-item-field="passMin" data-sec="'+sec.id+'" data-item="'+it.id+'" value="'+esc(it.passMin===undefined?'':it.passMin)+'" placeholder="OK from" style="flex:1;min-width:70px;">' +
                   '<input type="number" step="any" class="iteminfolabel" data-item-field="passMax" data-sec="'+sec.id+'" data-item="'+it.id+'" value="'+esc(it.passMax===undefined?'':it.passMax)+'" placeholder="OK up to" style="flex:1;min-width:70px;">' +
                 '</div>'
-              ) : '') +
+              ) : '');
+            return '<div class="itemrow '+(it.requiresInfo?'hasanswer':'')+'">' +
+              '<div class="itemrow-top">' +
+                '<textarea rows="1" class="edtext" data-action="rename-item" data-sec="'+sec.id+'" data-item="'+it.id+'">'+esc(it.text)+'</textarea>' +
+                '<button class="iconbtn" data-action="toggle-item-options" data-item="'+it.id+'" title="Item options" aria-expanded="'+(optOpen?'true':'false')+'" style="'+(optOpen?'color:var(--accent-ink);':'')+'">⚙</button>' +
+                '<button class="iconbtn" data-action="delete-item" data-sec="'+sec.id+'" data-item="'+it.id+'" title="Delete item">✕</button>' +
+              '</div>' +
+              (!optOpen && tags.length ? '<div class="histmeta" style="margin-top:4px;">'+esc(tags.join(' · '))+'</div>' : '') +
+              (optOpen ? optsHtml : '') +
             '</div>';
           }).join('') +
           '<div class="addrow"><textarea rows="1" class="edtext edadd" placeholder="Add a checklist item…" data-newitem-for="'+sec.id+'"></textarea><button class="btn btn-ghost btn-sm" data-action="add-item" data-sec="'+sec.id+'">Add</button></div>' +
@@ -2507,21 +2525,11 @@
   function renderPricingSettings(){
     return '<main>' +
       '<div class="eyebrow">Settings</div>' +
-      '<div class="card" style="padding:14px 16px;margin:14px 0 20px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">' +
+      '<h1 style="font-size:26px;margin-top:6px;margin-bottom:0;">Settings</h1>' +
+      '<div class="card" style="padding:14px 16px;margin:14px 0 24px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">' +
         '<div><div style="font-weight:700;">'+esc(state.authUser?state.authUser.email:'')+'</div><div class="histmeta">Signed in</div></div>' +
         '<button class="btn btn-ghost btn-sm" data-action="auth-signout">Sign out</button>' +
       '</div>' +
-      '<h1 style="font-size:26px;margin-top:6px;margin-bottom:6px;">Backup &amp; Restore</h1>' +
-      '<div class="helper" style="margin-bottom:6px;">Your data is saved to the cloud automatically. A backup file is a separate copy that you keep yourself — useful if something is deleted by mistake or you ever lose access to the account. Restore replaces everything (here and in the cloud) with the file\'s contents.</div>' +
-      '<div class="histmeta" style="margin-bottom:12px;font-weight:600;">'+(lastBackupAt() ? 'Last backup: '+fmtRelativeTime(lastBackupAt()) : 'Last backup: never')+'</div>' +
-      '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:28px;">' +
-        '<button class="btn btn-primary btn-sm" data-action="download-backup">⬇ Download backup</button>' +
-        '<button class="btn btn-ghost btn-sm" data-action="trigger-restore-backup">⬆ Restore from backup</button>' +
-        '<input type="file" accept="application/json" id="restoreBackupInput" data-action="restore-backup-file" style="display:none;">' +
-      '</div>' +
-
-      renderStorageMeter() +
-
       '<h1 style="font-size:20px;margin:0 0 4px;">Monthly Targets</h1>' +
       '<div class="helper" style="margin-bottom:14px;margin-top:6px;">Set what you\'re aiming for this month. Revenue is worked out from your clients: the price you enter when you mark a client as converted counts in the month it was converted, and a monthly retainer counts every month while that client stays active.</div>' +
       '<div style="display:flex; gap:12px; margin-bottom:6px;">' +
@@ -2559,6 +2567,17 @@
       '<div class="card edsection">' +
         templateKeys().map(function(k){ return '<div class="field"><label>'+esc(state.templates[k].label)+' — flag after (days)</label><input type="number" min="1" data-schedule="'+esc(k)+'.stuckDays" value="'+loopStuckDaysFor(k)+'"></div>'; }).join('') +
       '</div>' +
+
+      '<h1 style="font-size:20px;margin:32px 0 4px;">Backup &amp; Restore</h1>' +
+      '<div class="helper" style="margin-bottom:6px;">Your data is saved to the cloud automatically. A backup file is a separate copy that you keep yourself — useful if something is deleted by mistake or you ever lose access to the account. Restore replaces everything (here and in the cloud) with the file\'s contents.</div>' +
+      '<div class="histmeta" style="margin-bottom:12px;font-weight:600;">'+(lastBackupAt() ? 'Last backup: '+fmtRelativeTime(lastBackupAt()) : 'Last backup: never')+'</div>' +
+      '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:28px;">' +
+        '<button class="btn btn-primary btn-sm" data-action="download-backup">⬇ Download backup</button>' +
+        '<button class="btn btn-ghost btn-sm" data-action="trigger-restore-backup">⬆ Restore from backup</button>' +
+        '<input type="file" accept="application/json" id="restoreBackupInput" data-action="restore-backup-file" style="display:none;">' +
+      '</div>' +
+
+      renderStorageMeter() +
     '</main>';
   }
 
@@ -2578,7 +2597,15 @@
       return '<div class="field" style="flex:1;min-width:90px;"><label>'+label+'</label><input type="number" min="0" data-svc-field="'+field+'" data-svc="'+s.id+'" value="'+(s[field]||0)+'" placeholder="'+(ph||'0')+'"></div>';
     }
     function card(s){
-      return '<div class="card" style="padding:14px 16px;margin-bottom:12px;">' +
+      if (state.svcOpen!==s.id){
+        var vi = visitIntervalOf(s.visitInterval), tm = trackingMethodOf(s.trackingMethod);
+        return '<div class="card histcard" style="padding:14px 16px;margin-bottom:10px;cursor:pointer;" data-action="toggle-service-open" data-svc="'+s.id+'" role="button" tabindex="0">' +
+          '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;"><div style="font-weight:800;font-size:15px;line-height:1.3;">'+esc(s.name)+'</div><span class="furow-open" style="flex:none;">Edit ›</span></div>' +
+          '<div class="histmeta" style="margin-top:4px;">'+esc(servicePriceLine(s))+'</div>' +
+          '<div class="histmeta" style="margin-top:2px;">'+tm.icon+' '+esc(tm.label)+(vi.days||s.visitInterval==='per-visit' ? ' · '+esc(vi.label) : '')+' · '+((s.auditAreas||[]).length ? s.auditAreas.length+' audit area'+(s.auditAreas.length===1?'':'s') : 'all areas')+((s.metrics||[]).length ? ' · '+s.metrics.length+' metric'+(s.metrics.length===1?'':'s') : '')+'</div>' +
+        '</div>';
+      }
+      return '<div class="card svccard" style="padding:14px 16px;margin-bottom:12px;border:1.5px solid var(--accent);">' +
         '<div style="display:flex;gap:8px;align-items:flex-start;">' +
           '<textarea rows="1" class="edtext" style="font-weight:800;font-size:15.5px;" data-svc-field="name" data-svc="'+s.id+'">'+esc(s.name)+'</textarea>' +
           '<button class="iconbtn" data-action="service-remove" data-svc="'+s.id+'" title="Remove package">✕</button>' +
@@ -2603,12 +2630,13 @@
           fieldNum('Retainer min (₹/mo)', 'retainerMin', s) + fieldNum('Retainer max (₹/mo)', 'retainerMax', s) + fieldNum('Min months', 'retainerMinMonths', s) +
         '</div>' +
         '<div class="field" style="margin-bottom:0;"><label>Notes — QSR scaling, per-outlet fees, GST, anything price-shaped that doesn\'t fit the boxes above</label><textarea data-svc-field="priceNote" data-svc="'+s.id+'" placeholder="e.g. Scale down ~20% for QSR. Excludes 18% GST.">'+esc(s.priceNote||'')+'</textarea></div>' +
+        '<button type="button" class="btn btn-primary btn-sm" style="margin-top:14px;" data-action="toggle-service-open" data-svc="'+s.id+'">Done</button>' +
       '</div>';
     }
     return '<main>' +
       '<div class="eyebrow">Settings</div>' +
       '<h1 style="font-size:26px;margin-top:6px;margin-bottom:6px;">Services &amp; pricing catalog</h1>' +
-      '<div class="helper" style="margin-bottom:14px;">The packages you sell — price range, visit cadence and tracking method (paper, Sheets, or a custom app). Assign one to a client from their page under Post-Audit Follow-up; the visit cadence then schedules its own follow-ups.</div>' +
+      '<div class="helper" style="margin-bottom:14px;">The packages you sell. Tap one to edit its price, visit cadence, tracking method, the audit areas it covers and the metrics it follows. Pick a package in New Audit or on a client\'s page — the audit areas, metrics and follow-up visits then set themselves up.</div>' +
       '<button class="btn btn-primary btn-sm" style="margin-bottom:16px;" data-action="service-add">+ Add package</button>' +
       catOrder.map(function(cat){
         return '<h2 style="font-size:14px;color:var(--ink-400);text-transform:uppercase;letter-spacing:.05em;margin:18px 0 8px;">'+esc(cat)+'</h2>' + groups[cat].map(card).join('');
@@ -2832,7 +2860,7 @@
   function serviceBadgeHtml(p){
     if (!p) return '';
     var svc = p.servicesOffered ? findService(p.servicesOffered) : null;
-    if (svc) return '<span class="badge" style="margin-left:6px;">'+esc(svc.name)+'</span>';
+    if (svc) return '<span class="badge svcbadge" style="margin-left:6px;" title="'+esc(svc.name)+'">'+esc(svc.name)+'</span>';
     return '';
   }
 
@@ -2994,8 +3022,8 @@
             (missing.length ? '<div class="pcard-missing">Missing: '+esc(missing.join(', '))+'</div>' : '') +
             '<div class="pcard-foot">'+(btns ? '<span class="contactrow">'+btns+'</span>' : '<span></span>')+'<span class="furow-open">Open ›</span></div>' +
             '<div style="display:flex;gap:8px;margin-top:10px;">' +
-              '<button type="button" class="naBtn" style="flex:1;padding:8px 10px;" data-action="quick-convert" data-id="'+p.id+'">✓ Mark converted</button>' +
-              '<button type="button" class="naBtn '+(p.declined?'on':'')+'" style="flex:1;padding:8px 10px;" data-action="quick-decline" data-id="'+p.id+'">'+(p.declined?'↺ Reopen':'✗ Not converted')+'</button>' +
+              '<button type="button" class="qbtn ok" data-action="quick-convert" data-id="'+p.id+'">✓ Mark converted</button>' +
+              '<button type="button" class="qbtn no '+(p.declined?'on':'')+'" data-action="quick-decline" data-id="'+p.id+'">'+(p.declined?'↺ Reopen':'✗ Not converted')+'</button>' +
             '</div>' +
           '</div>';
         }).join('')
@@ -3596,12 +3624,10 @@
       '<div class="formstack">' +
         '<div class="field"><label for="pName">Client / store name'+req+'</label><input id="pName" data-bind-prospect="name" value="'+esc(p.name)+'" placeholder="e.g. Northside Grill"></div>' +
         (similarProspectName ? '<div class="helper" style="margin-top:-10px;color:var(--accent-ink);">Did you mean <b>'+esc(similarProspectName)+'</b>? A similar store already exists — <span style="text-decoration:underline;cursor:pointer;" data-action="use-similar-prospectname" data-name="'+esc(similarProspectName)+'">use that name</span> to avoid splitting its history.</div>' : '') +
-        '<div style="display:flex; gap:12px;">' +
-          '<div class="field" style="flex:1;"><label for="pLocation">Location'+req+'</label><input id="pLocation" data-bind-prospect="location" value="'+esc(p.location)+'" placeholder="e.g. Bandra West"></div>' +
-          '<div class="field" style="flex:1;"><label>Category'+req+'</label><div style="display:flex; gap:8px;">' +
-            templateKeys().map(function(k){ return '<button type="button" class="naBtn '+(p.category===k?'on':'')+'" data-action="set-prospect-category" data-val="'+esc(k)+'">'+esc(state.templates[k].label)+'</button>'; }).join('') +
-          '</div></div>' +
-        '</div>' +
+        '<div class="field"><label for="pLocation">Location'+req+'</label><input id="pLocation" data-bind-prospect="location" value="'+esc(p.location)+'" placeholder="e.g. Bandra West"></div>' +
+        '<div class="field"><label>Category'+req+'</label><div class="catrow">' +
+          templateKeys().map(function(k){ return '<button type="button" class="naBtn '+(p.category===k?'on':'')+'" style="padding:9px 16px;font-size:13px;" data-action="set-prospect-category" data-val="'+esc(k)+'">'+esc(state.templates[k].label)+'</button>'; }).join('') +
+        '</div></div>' +
         '<div class="field"><label for="pAddress">Address'+req+'</label><input id="pAddress" data-bind-prospect="address" value="'+esc(p.address)+'" placeholder="Full address"></div>' +
       '</div>' +
       sh('👤','Point of Contact') +
@@ -3614,12 +3640,12 @@
         '<div class="helper" data-pmobile-err style="margin-top:-6px;color:var(--bad);">'+esc(mobileErrorText(p.contactMobile))+'</div>' +
         '<div class="contactrow blockrow" data-contact-btns>'+contactButtons(p)+'</div>' +
       '</div>' +
+      renderFollowUps(p) +
       renderMeetingTimerCard(p) +
       renderInquiryEditor('client', p.inquiry||[], inquiryAreaOptions(p.category)) +
-      renderParametersCard(p) +
       renderRepeatProblems(p) +
+      renderParametersCard(p) +
       renderExtraItemsCard(p) +
-      renderFollowUps(p) +
       (audits.length ? (
         '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:6px;">' +
           '<div class="sechead2" style="margin:0;"><span class="ic">🕒</span><h2>Timeline</h2></div>' +
@@ -4176,7 +4202,7 @@
     if (tab==='today') body = renderDayToday(g);
     else if (tab==='week'){
       var firstBusy = g.days.filter(function(d){ return d.items.length; })[0];
-      body = '<div class="helper" style="margin:0 0 12px;">Follow-ups, audits, re-audits, meetings, fixes and shoots for the next 7 days. Tap a day to open it.</div>' +
+      body = '<div class="helper" style="margin:0 0 12px;">Follow-ups, audits, re-audits, meetings and fixes for the next 7 days. Tap a day to open it.</div>' +
         g.days.map(function(day){
           return weekGroupHtml('week|'+day.date, weekDayLabel(day), day.items, { dateLabel: day.offset<2 ? fmtDateShort(new Date(day.date+'T00:00:00').getTime()) : '', defOpen: day===firstBusy });
         }).join('') +
@@ -4750,8 +4776,8 @@
   // ---------- revenue history ----------
   function fmtCompact(n){
     n = Math.round(n);
-    if (n>=100000) return (Math.round(n/10000)/10)+'L';
-    if (n>=1000) return (Math.round(n/100)/10)+'k';
+    if (n>=100000) return (Math.round(n/1000)/100)+'L';
+    if (n>=1000) return (Math.round(n/10)/100)+'k';
     return String(n);
   }
   function monthRevenueHistory(count){
@@ -4906,7 +4932,7 @@
     return '<main>' +
       '<div class="eyebrow">Planner</div>' +
       '<h1 style="font-size:26px;margin-top:6px;">Week Ahead</h1>' +
-      '<div class="helper" style="margin:8px 0 14px;">Follow-ups, audits, re-audits, meetings and shoots — in time order.</div>' +
+      '<div class="helper" style="margin:8px 0 14px;">Follow-ups, audits, re-audits and meetings — in time order.</div>' +
       '<div class="tabs tabs-auto">' +
         tabs.map(function(t){
           return '<button class="tab '+(tab===t.key?'on':'')+'" data-action="week-tab" data-tab="'+t.key+'">'+t.label+'<span class="tabcount'+(t.bad && t.n ? ' bad' : '')+'">'+t.n+'</span></button>';
@@ -5875,6 +5901,7 @@
       sec4.items = sec4.items.filter(function(i){ return i.id!==t.dataset.item; });
       persistTemplates(); render();
     }
+    else if (action==='toggle-item-options'){ state.editorOpenItem = state.editorOpenItem===t.dataset.item ? null : t.dataset.item; render(); }
     else if (action==='item-kind' || action==='toggle-critical'){
       var tmplK = state.templates[state.editorTab];
       var secK = tmplK.sections.filter(function(s){return s.id===t.dataset.sec;})[0];
@@ -5949,6 +5976,7 @@
       var newSvc = { id: uid(), name:'New package', category:'Other', trackingMethod:'n/a', visitInterval:'none',
         oneTimeMin:0, oneTimeMax:0, retainerMin:0, retainerMax:0, retainerMinMonths:0, priceNote:'', auditAreas:[], metrics:[] };
       state.services.push(newSvc);
+      state.svcOpen = newSvc.id;
       persistServices(); render();
     }
     else if (action==='service-remove'){
@@ -5969,6 +5997,7 @@
       var svcT = state.services.filter(function(s){ return s.id===t.dataset.svc; })[0];
       if (svcT){ svcT.trackingMethod = t.dataset.val; persistServices(); render(); }
     }
+    else if (action==='toggle-service-open'){ state.svcOpen = state.svcOpen===t.dataset.svc ? null : t.dataset.svc; render(); }
     else if (action==='service-area-toggle'){
       var svcA = state.services.filter(function(s){ return s.id===t.dataset.svc; })[0];
       if (svcA){
