@@ -821,6 +821,7 @@
     paramEditId: null,
     syncError: '',
     fuDraft: null,
+    fuEdit: null,
     searchQuery: '',
     setup: { type:null, storeName:'', storeLocation:'', contactName:'', contactDesignation:'', contactMobile:'', auditDate: todayISO(), auditTime: nowHHMM(), selectedSections:[], menuItemCount:'', inquiry:[], serviceId:'' },
     editorTab: 'dinein',
@@ -3107,11 +3108,28 @@
         '<button type="button" class="btn btn-primary" style="width:100%;" data-action="add-followup" '+(draft.date?'':'disabled')+'>+ Add follow-up</button>' +
         (open.length ? '<div>' + open.map(function(f){
           var tn = followUpTone(f);
+          var ed = (state.fuEdit && state.fuEdit.fid===f.id) ? state.fuEdit : null;
           return '<div style="padding:12px 0;border-top:1px solid var(--line);">' +
             '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;"><span style="font-weight:700;">📅 '+esc(fmtFollowUpWhen(f))+'</span><span class="pill '+tn.tone+'">'+tn.label+'</span></div>' +
             (f.note ? '<div style="margin-top:4px;">'+esc(f.note)+'</div>' : '') +
+            (ed ? (
+              '<div style="margin-top:10px;">' +
+                '<div style="display:flex; gap:12px;">' +
+                  '<div class="field" style="flex:1;margin-bottom:8px;"><label>New date</label><input type="date" data-fu-edit-field="date" value="'+esc(ed.date)+'"></div>' +
+                  '<div class="field" style="flex:1;margin-bottom:8px;"><label>Time (optional)</label><input type="time" data-fu-edit-field="time" value="'+esc(ed.time)+'"></div>' +
+                '</div>' +
+                '<div class="fuquick">' +
+                  [['Tomorrow',1],['In 3 days',3],['Next week',7]].map(function(q){ return '<button type="button" class="naBtn" data-action="fu-edit-quick" data-days="'+q[1]+'">'+q[0]+'</button>'; }).join('') +
+                '</div>' +
+                '<div style="display:flex;gap:8px;margin-top:10px;">' +
+                  '<button type="button" class="btn btn-primary btn-sm" data-action="save-reschedule">Save new date</button>' +
+                  '<button type="button" class="btn btn-ghost btn-sm" data-action="cancel-reschedule">Cancel</button>' +
+                '</div>' +
+              '</div>'
+            ) : '') +
             '<div style="margin-top:10px;display:flex;gap:8px;align-items:center;">' +
               '<button type="button" class="btn btn-ghost btn-sm" data-action="done-followup" data-pid="'+p.id+'" data-fid="'+f.id+'">✓ Done</button>' +
+              (ed ? '' : '<button type="button" class="btn btn-ghost btn-sm" data-action="reschedule-followup" data-pid="'+p.id+'" data-fid="'+f.id+'">📅 Reschedule</button>') +
               '<button type="button" class="iconbtn" data-action="delete-followup" data-pid="'+p.id+'" data-fid="'+f.id+'" title="Delete">✕</button>' +
             '</div>' +
           '</div>';
@@ -3152,6 +3170,7 @@
             (x.f.note ? '<div style="font-size:13.5px;margin-top:2px;">'+esc(x.f.note)+'</div>' : '') +
             '<div class="contactrow" style="margin-top:6px;">' +
               '<button type="button" class="btn btn-ghost btn-sm" data-action="done-followup" data-pid="'+x.p.id+'" data-fid="'+x.f.id+'">✓ Done</button>' +
+              '<button type="button" class="btn btn-ghost btn-sm" data-action="reschedule-followup" data-pid="'+x.p.id+'" data-fid="'+x.f.id+'">📅 Reschedule</button>' +
               contactButtons(x.p) +
             '</div>' +
           '</div>';
@@ -5026,6 +5045,27 @@
         persistProspects(); render();
       }
     }
+    else if (action==='reschedule-followup'){
+      var rsP = findProspect(t.dataset.pid);
+      var rsF = rsP && (rsP.followUps||[]).filter(function(f){ return f.id===t.dataset.fid; })[0];
+      if (rsF){
+        state.fuEdit = { pid:rsP.id, fid:rsF.id, date:rsF.date||'', time:rsF.time||'' };
+        if (state.activeProspectId!==rsP.id || state.view!=='prospects'){ state.activeProspectId = rsP.id; state.activeCallId = null; state.view = 'prospects'; }
+        render();
+      }
+    }
+    else if (action==='fu-edit-quick'){
+      if (state.fuEdit){ state.fuEdit.date = isoDaysFromNow(parseInt(t.dataset.days,10)); render(); }
+    }
+    else if (action==='save-reschedule'){
+      var svP = state.fuEdit && findProspect(state.fuEdit.pid);
+      var svF = svP && (svP.followUps||[]).filter(function(f){ return f.id===state.fuEdit.fid; })[0];
+      if (svF && state.fuEdit.date){
+        svF.date = state.fuEdit.date; svF.time = state.fuEdit.time||''; svP.updatedAt = Date.now();
+        state.fuEdit = null; persistProspects(); render();
+      }
+    }
+    else if (action==='cancel-reschedule'){ state.fuEdit = null; render(); }
     else if (action==='delete-followup'){
       var xfP = findProspect(t.dataset.pid);
       if (xfP && window.confirm('Delete this follow-up?')){
@@ -5778,6 +5818,9 @@
     else if (el.dataset.bind === 'witnessName' && state.draft){ state.draft.witnessName = el.value; persistDraft(); }
     else if (el.dataset.bind === 'witnessDesignation' && state.draft){ state.draft.witnessDesignation = el.value; persistDraft(); }
     else if (el.dataset.bind === 'witnessMobile' && state.draft){ state.draft.witnessMobile = el.value; persistDraft(); }
+    else if (el.dataset.fuEditField){
+      if (state.fuEdit) state.fuEdit[el.dataset.fuEditField] = el.value;
+    }
     else if (el.dataset.fuField){
       var fuP = findProspect(state.activeProspectId);
       if (fuP){
