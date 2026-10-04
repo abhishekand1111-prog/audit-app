@@ -181,6 +181,12 @@
   .secwarn{display:inline-block; font-size:10.5px; font-weight:700; letter-spacing:.02em; color:var(--bad); background:var(--bad-soft); padding:2px 9px; border-radius:20px; margin-left:8px; vertical-align:middle;}
   .chk{width:22px; height:22px; border-radius:6px; border:1.5px solid var(--line-strong); background:var(--surface); flex:none; margin-top:1px; display:flex; align-items:center; justify-content:center; transition:background .12s, border-color .12s;}
   .chk.checked{background:var(--good); border-color:var(--good); color:#fff;}
+  .chk.fail{background:var(--bad); border-color:var(--bad); color:#fff;}
+  .scorerow{display:flex; gap:6px; margin-top:6px;}
+  .scorebtn{flex:1; padding:8px 0; border:1.5px solid var(--line); border-radius:var(--r-s); background:transparent; color:var(--ink-600); font-weight:700; cursor:pointer;}
+  .scorebtn.on{background:var(--accent); border-color:var(--accent); color:#fff;}
+  .critbadge{display:inline-block; font-size:10.5px; font-weight:800; letter-spacing:.04em; color:var(--bad); border:1px solid var(--bad); border-radius:4px; padding:1px 5px; margin-right:6px;}
+  .failblock{margin-top:8px; display:flex; flex-direction:column; gap:6px;}
   .chk.na{background:var(--surface-2); border-color:var(--line-strong); color:var(--ink-400);}
   .itemcol{flex:1; min-width:0;}
   .itemtext{font-size:14.5px; line-height:1.4; padding-top:2px; cursor:default;}
@@ -667,8 +673,34 @@
       priceNote:'₹50K/mo base + 15–20% of verified monthly savings. Excludes 18% GST.' },
     { id:'svc_open_diagnosis', name:'Open Diagnosis', category:'Open Diagnosis', trackingMethod:'n/a', visitInterval:'none',
       oneTimeMin:0, oneTimeMax:0, retainerMin:0, retainerMax:0, retainerMinMonths:0,
-      priceNote:'Complimentary 2–3 day audit, by selection.' }
+      priceNote:'Complimentary 2–3 day audit, by selection.' },
+    { id:'svc_free_audit', name:'Free Audit', category:'Free Audit', trackingMethod:'n/a', visitInterval:'none',
+      oneTimeMin:0, oneTimeMax:0, retainerMin:0, retainerMax:0, retainerMinMonths:0,
+      priceNote:'Complimentary introductory audit — no charge. Full checklist walkthrough, findings shared with the owner, then a proposal for the right package.' }
   ];
+  // Which checklist areas (matched by section name) and which metrics each package audits and tracks. Empty areas = audit everything.
+  var ALL_AREAS = ['Delivery Management','Food Safety & Storage','Cleanliness & Sanitation','Guest Experience & Service','Speed of Service'];
+  var SERVICE_AUDIT_DEFAULTS = {
+    svc_delivery:       { auditAreas:['Delivery Management','Speed of Service'], metrics:['zomato','fulfilment'] },
+    svc_inventory:      { auditAreas:['Delivery Management','Food Safety & Storage'], metrics:['inventory','wastage'] },
+    svc_sop:            { auditAreas:['Food Safety & Storage','Cleanliness & Sanitation','Speed of Service'], metrics:['wastage'] },
+    svc_controlos_a:    { auditAreas:ALL_AREAS, metrics:['inventory','wastage','fulfilment'] },
+    svc_controlos_b:    { auditAreas:ALL_AREAS, metrics:['inventory','wastage','fulfilment'] },
+    svc_controlos_c:    { auditAreas:ALL_AREAS, metrics:['inventory','wastage','fulfilment'] },
+    svc_multi_sheets:   { auditAreas:ALL_AREAS, metrics:['inventory','wastage','zomato'] },
+    svc_multi_app:      { auditAreas:ALL_AREAS, metrics:['inventory','wastage','zomato'] },
+    svc_preopening:     { auditAreas:['Delivery Management','Food Safety & Storage','Cleanliness & Sanitation'], metrics:[] },
+    svc_franchise_audit:{ auditAreas:[], metrics:[] },
+    svc_perf_linked:    { auditAreas:['Delivery Management','Food Safety & Storage'], metrics:['inventory','wastage'] },
+    svc_open_diagnosis: { auditAreas:[], metrics:[] },
+    svc_free_audit:     { auditAreas:[], metrics:[] }
+  };
+  function fillServiceAuditFields(svc){
+    var d = SERVICE_AUDIT_DEFAULTS[svc.id] || { auditAreas:[], metrics:[] };
+    if (!Array.isArray(svc.auditAreas)) svc.auditAreas = d.auditAreas.slice();
+    if (!Array.isArray(svc.metrics)) svc.metrics = d.metrics.slice();
+  }
+  DEFAULT_SERVICES.forEach(fillServiceAuditFields);
 
   var DEFAULT_TEMPLATES = {
     dinein: { label:'Dine-In', sections:[
@@ -771,6 +803,15 @@
     });
     return out;
   }
+  function ensureServiceDefaults(){
+    if (!Array.isArray(state.services)) return;
+    state.services.forEach(fillServiceAuditFields);
+    var removed = false;
+    try{ removed = !!localStorage.getItem('diagnosisroom_nofreeaudit'); }catch(e){}
+    if (!removed && !state.services.some(function(s){ return s.id==='svc_free_audit'; })){
+      state.services.push(JSON.parse(JSON.stringify(DEFAULT_SERVICES.filter(function(s){ return s.id==='svc_free_audit'; })[0])));
+    }
+  }
   function ensureHotelDefaults(){
     if (!state.templates.hotel) state.templates.hotel = seedTemplates(DEFAULT_TEMPLATES).hotel;
     if (!state.pricing.hotel) state.pricing.hotel = JSON.parse(JSON.stringify(DEFAULT_PRICING.hotel));
@@ -844,6 +885,7 @@
   var NAV_VIEWS = ['dashboard','week','editor','pricing','actions','prospects','lookup','search','summary','time','maps','services'];
   var navScrollY = 0;
   ensureHotelDefaults();
+  ensureServiceDefaults();
   (function restoreNav(){
     var n = loadJSON(LS_NAV, null);
     if (!n || NAV_VIEWS.indexOf(n.view) < 0) return;
@@ -855,7 +897,7 @@
     }
     if (n.view==='prospects' && has(state.prospects, n.activeProspectId)) state.activeProspectId = n.activeProspectId;
     if (n.view==='content' && has(state.contentIdeas, n.activeContentId)) state.activeContentId = n.activeContentId;
-    if (n.editorTab==='dinein' || n.editorTab==='qsr' || n.editorTab==='hotel') state.editorTab = n.editorTab;
+    if (n.editorTab && state.templates[n.editorTab]) state.editorTab = n.editorTab;
     if (n.actionsTab) state.actionsTab = n.actionsTab;
     if (n.historyTab) state.historyTab = n.historyTab;
     if (n.weekTab) state.weekTab = n.weekTab;
@@ -1036,6 +1078,7 @@
           if (data.schedule) state.schedule = data.schedule;
           ensureHotelDefaults();
           if (data.services) state.services = data.services;
+          ensureServiceDefaults();
           if (data.deliverables) state.deliverables = data.deliverables;
           if (data.paramLibrary) state.paramLibrary = data.paramLibrary;
           if (data.targets) state.targets = data.targets;
@@ -1348,10 +1391,31 @@
   }
 
   // ---------- build a fresh draft ----------
-  function newDraft(type, storeName, storeLocation, contactName, contactDesignation, contactMobile, auditDate, auditTime, selectedSectionIds, menuItemCount){
+  function newDraft(type, storeName, storeLocation, contactName, contactDesignation, contactMobile, auditDate, auditTime, selectedSectionIds, menuItemCount, mode){
     var tmpl = state.templates[type];
     var chosen = tmpl.sections.filter(function(s){ return selectedSectionIds.indexOf(s.id) !== -1; });
     if (!chosen.length) chosen = tmpl.sections;
+    var extras = clientExtraItems(storeName);
+    if (extras.length){
+      chosen = chosen.concat([{ id:'client-extra', name:'Client-specific checks', items: extras.map(function(x){ return { id:x.id, text:x.text }; }) }]);
+    }
+    var keepItems = null, keepSections = null;
+    if (mode==='recheck'){
+      var prevR = previousAuditForStore(storeName);
+      if (prevR){
+        keepItems = {};
+        prevR.sections.forEach(function(ps){ ps.items.forEach(function(pi){ if (pi.state!=='checked' && pi.state!=='na') keepItems[pi.id] = true; }); });
+      }
+    } else if (mode==='issues'){
+      keepItems = {}; keepSections = {};
+      openActionsForStore(storeName).forEach(function(a){ if (a.sourceItemId) keepItems[a.sourceItemId] = true; if (a.sectionId) keepSections[a.sectionId] = true; });
+    }
+    if (keepItems){
+      var narrowed = chosen.map(function(s){
+        return { id:s.id, name:s.name, items: (s.id==='client-extra' || (keepSections && keepSections[s.id])) ? s.items : s.items.filter(function(it){ return keepItems[it.id]; }) };
+      }).filter(function(s){ return s.items.length; });
+      if (narrowed.length) chosen = narrowed;
+    }
     return {
       id: uid(), type: type, storeName: storeName||'', storeLocation: storeLocation||'',
       contactName: contactName||'', contactDesignation: contactDesignation||'', contactMobile: contactMobile||'',
@@ -1363,7 +1427,8 @@
       activeSectionId: null,
       sections: chosen.map(function(s){
         return { id:s.id, name:s.name, accumMs:0, runningSince:null,
-          items: s.items.map(function(it){ return { id:it.id, text:it.text, state:'unchecked', requiresInfo:!!it.requiresInfo, infoLabel:it.infoLabel||'', value:'' }; }) };
+          items: s.items.map(function(it){ return { id:it.id, text:it.text, state:'unchecked', requiresInfo:!!it.requiresInfo, infoLabel:it.infoLabel||'', value:'',
+            kind:it.kind||'tick', unit:it.unit||'', passMin:(it.passMin===undefined?'':it.passMin), passMax:(it.passMax===undefined?'':it.passMax), critical:!!it.critical, failNote:'', failDue:'' }; }) };
       })
     };
   }
@@ -1504,7 +1569,7 @@
     var pr = [];
     if (!(p.name||'').trim()) pr.push('client / store name');
     if (!(p.location||'').trim()) pr.push('location');
-    if (p.category!=='dinein' && p.category!=='qsr' && p.category!=='hotel') pr.push('category');
+    if (!p.category || !state.templates[p.category]) pr.push('category');
     if (!(p.address||'').trim()) pr.push('address');
     if (!(p.contactName||'').trim()) pr.push('contact name');
     if (!(p.contactDesignation||'').trim()) pr.push('designation');
@@ -1656,7 +1721,7 @@
   // ---------- client trail: inquiry, solution tasks and client requests ----------
   function inquiryAreaOptions(type){
     var names = [], seen = {};
-    var kinds = (type==='dinein' || type==='qsr' || type==='hotel') ? [type] : ['dinein','qsr','hotel'];
+    var kinds = state.templates[type] ? [type] : templateKeys();
     kinds.forEach(function(k){
       ((state.templates[k]||{}).sections||[]).forEach(function(s){
         var n = (s.name||'').trim();
@@ -1769,9 +1834,10 @@
     var s = state.setup;
     var problems = setupProblems(s);
     var req = ' <span style="color:var(--bad)">*</span>';
-    var types = ['dinein','qsr','hotel'];
+    var types = templateKeys();
     var icons = { dinein:'🍽️', qsr:'⚡', hotel:'🏨' };
     var descs = { dinein:'Full-service floor & kitchen walkthrough', qsr:'Counter, drive-thru & speed-of-service', hotel:'Front desk, rooms, F&B & safety walkthrough' };
+    types.forEach(function(k){ if (!icons[k]) icons[k] = '📋'; if (!descs[k]) descs[k] = 'Custom checklist'; });
     var similarName = findSimilarStoreName(s.storeName);
     return '<main>' +
       '<div class="eyebrow">New Audit</div>' +
@@ -1797,6 +1863,7 @@
         }).join('') +
       '</div>' +
       (s.type ? renderAreaFilter(s) : '') +
+      renderAuditModeCard(s) +
       '<div class="formstack">' +
         '<div class="field"><label for="storeName">Store name'+req+'</label><input id="storeName" data-bind="storeName" placeholder="e.g. Northside Grill" value="'+esc(s.storeName)+'"></div>' +
         (similarName ? '<div class="helper" style="margin-top:-6px;color:var(--accent-ink);">Did you mean <b>'+esc(similarName)+'</b>? A similar store already exists — <span style="text-decoration:underline;cursor:pointer;" data-action="use-similar-storename" data-name="'+esc(similarName)+'">use that name</span> to keep its history together.</div>' : '') +
@@ -1807,7 +1874,7 @@
         '</div>' +
         '<div class="helper" data-dayname style="margin-top:-6px;">'+esc(dayName(s.auditDate))+'</div>' +
         '<div class="field"><label for="menuItemCount">Number of menu items'+req+'</label><input id="menuItemCount" type="number" min="1" inputmode="numeric" data-bind="menuItemCount" placeholder="e.g. 42" value="'+esc(s.menuItemCount)+'"></div>' +
-        '<div class="field"><label for="setupService">Service package (optional)</label><select id="setupService" data-bind="serviceId"><option value="">— Not selected —</option>'+state.services.map(function(sc){ return '<option value="'+sc.id+'" '+(s.serviceId===sc.id?'selected':'')+'>'+esc(sc.name)+'</option>'; }).join('')+'</select>'+(s.serviceId && findService(s.serviceId) ? '<div class="histmeta" style="margin-top:6px;">'+esc(servicePriceLine(findService(s.serviceId)))+'</div>' : '')+'</div>' +
+        '<div class="field"><label for="setupService">Service package (optional)</label><select id="setupService" data-bind="serviceId"><option value="">— Not selected —</option>'+state.services.map(function(sc){ return '<option value="'+sc.id+'" '+(s.serviceId===sc.id?'selected':'')+'>'+esc(sc.name)+'</option>'; }).join('')+'</select>'+(s.serviceId && findService(s.serviceId) ? '<div class="histmeta" style="margin-top:6px;">'+esc(servicePriceLine(findService(s.serviceId)))+'</div><div class="histmeta" style="margin-top:2px;color:var(--accent-ink);">'+esc(serviceAuditLine(findService(s.serviceId)))+(s.type ? ' — areas below are pre-selected' : ' — pick the audit type to pre-select them')+'</div>' : '')+'</div>' +
       '</div>' +
       renderInquiryEditor('setup', s.inquiry||[], inquiryAreaOptions(s.type)) +
       '<button class="btn btn-primary" style="width:100%;padding:14px;" data-action="start-audit" '+(problems.length ? 'disabled' : '')+'>Start Audit &amp; Timer</button>' +
@@ -1815,6 +1882,18 @@
     '</main>';
   }
 
+  function renderAuditModeCard(s){
+    var prev = previousAuditForStore(s.storeName);
+    if (!prev) return '';
+    var missed = 0;
+    prev.sections.forEach(function(ps){ ps.items.forEach(function(pi){ if (pi.state!=='checked' && pi.state!=='na') missed++; }); });
+    var open = openActionsForStore(s.storeName).length;
+    var mode = s.mode || 'full';
+    var opts = [['full','Full audit','Every selected area'],['recheck','Quick re-check',missed+' item'+(missed===1?'':'s')+' missed last time'],['issues','Open issues only',open+' open issue'+(open===1?'':'s')]];
+    return '<div class="field" style="margin-bottom:20px;"><label>Audit length</label><div class="areagrid">' +
+      opts.map(function(o){ return '<button type="button" class="areachip '+(mode===o[0]?'on':'')+'" data-action="set-audit-mode" data-val="'+o[0]+'">'+(mode===o[0]?'✓ ':'')+o[1]+' · '+o[2]+'</button>'; }).join('') +
+      '</div><div class="helper">Last audit for this store: '+esc(fmtAuditWhen(prev.auditDate, prev.auditTime))+' ('+prev.completionPct+'%). A shorter audit checks only what needs follow-up.</div></div>';
+  }
   function renderAreaFilter(s){
     var tmpl = state.templates[s.type];
     return '<div class="field" style="margin-bottom:20px;">' +
@@ -1902,6 +1981,7 @@
     if (d.finishedAt) return renderRemarkStep(d);
 
     var priorSet = priorFlaggedItemSet(d);
+    var repeatMap = repeatMissStreaks(d.storeName, d.id);
     var secHtml = d.sections.map(function(sec, idx){
       var active = d.activeSectionId === sec.id;
       var running = !!sec.runningSince;
@@ -1909,18 +1989,32 @@
       var secPriorCount = sec.items.filter(function(it){ return !!priorSet[it.id]; }).length;
       var secInq = inquiryForSection(d, sec);
       var itemsHtml = sec.items.map(function(it){
-        var checked = it.state==='checked', na = it.state==='na';
+        var kind = it.kind||'tick';
+        var checked = it.state==='checked', na = it.state==='na', failed = it.state==='fail';
         var flagged = !!priorSet[it.id];
+        var streak = repeatMap[it.id] || 0;
+        var chkAttrs = kind==='tick' ? 'data-action="toggle-item" data-sec="'+sec.id+'" data-item="'+it.id+'" aria-label="Toggle item"' : 'type="button" tabindex="-1" style="cursor:default;"';
+        var rangeHint = '';
+        if (kind==='number' && (it.passMin!=='' || it.passMax!=='')){
+          rangeHint = 'OK range: '+(it.passMin!==''?it.passMin:'…')+' – '+(it.passMax!==''?it.passMax:'…')+(it.unit?' '+it.unit:'');
+        }
         return '<div class="item '+(flagged?'priorflag':'')+' '+(it.requiresInfo?'hasanswer':'')+'">' +
-          '<button class="chk '+(checked?'checked':'')+' '+(na?'na':'')+'" data-action="toggle-item" data-sec="'+sec.id+'" data-item="'+it.id+'" aria-label="Toggle item">' +
-            (checked?'✓':(na?'–':'')) +
+          '<button class="chk '+(checked?'checked':'')+' '+(na?'na':'')+' '+(failed?'fail':'')+'" '+chkAttrs+'>' +
+            (checked?'✓':(na?'–':(failed?'✗':''))) +
           '</button>' +
           '<div class="itemcol">' +
-            '<div class="itemtext '+(checked?'checked':'')+' '+(na?'na':'')+'">'+(flagged?'⚠ ':'')+esc(it.text)+'</div>' +
+            '<div class="itemtext '+(checked?'checked':'')+' '+(na?'na':'')+'">'+(it.critical?'<span class="critbadge">CRITICAL</span>':'')+(flagged?'⚠ ':'')+esc(it.text)+'</div>' +
             (flagged ? '<div class="histmeta" style="color:var(--bad);">Flagged unresolved on last visit</div>' : '') +
-            (it.requiresInfo ? '<div class="answerblock"><label class="answerlabel">📝 '+esc(it.infoLabel||'Recorded answer')+'</label><input type="text" class="itemvalue" data-bind-item="value" data-sec="'+sec.id+'" data-item="'+it.id+'" placeholder="'+esc(it.infoLabel||'Enter value')+'" value="'+esc(it.value||'')+'"></div>' : '') +
+            (streak>=2 ? '<div class="histmeta" style="color:var(--bad);">🔁 Missed in the last '+streak+' audits in a row</div>' : '') +
+            (kind==='number' ? '<div class="answerblock"><label class="answerlabel">'+esc(it.infoLabel||'Reading')+(it.unit?' ('+esc(it.unit)+')':'')+(rangeHint?' · '+esc(rangeHint):'')+'</label><input type="number" step="any" inputmode="decimal" class="itemvalue" data-bind-item="numvalue" data-sec="'+sec.id+'" data-item="'+it.id+'" placeholder="Enter reading" value="'+esc(it.value||'')+'"></div>' : '') +
+            (kind==='score' ? '<div class="scorerow">'+[1,2,3,4,5].map(function(n){ return '<button type="button" class="scorebtn '+(String(it.value)===String(n)?'on':'')+'" data-action="set-score" data-sec="'+sec.id+'" data-item="'+it.id+'" data-val="'+n+'">'+n+'</button>'; }).join('')+'</div><div class="histmeta">Score 4–5 passes · 1–3 is flagged</div>' : '') +
+            (it.requiresInfo && kind==='tick' ? '<div class="answerblock"><label class="answerlabel">📝 '+esc(it.infoLabel||'Recorded answer')+'</label><input type="text" class="itemvalue" data-bind-item="value" data-sec="'+sec.id+'" data-item="'+it.id+'" placeholder="'+esc(it.infoLabel||'Enter value')+'" value="'+esc(it.value||'')+'"></div>' : '') +
+            (failed ? '<div class="failblock"><input type="text" class="itemvalue" data-bind-item="failNote" data-sec="'+sec.id+'" data-item="'+it.id+'" placeholder="What is wrong?" value="'+esc(it.failNote||'')+'"><label class="answerlabel">Fix by</label><input type="date" class="itemvalue" data-bind-item="failDue" data-sec="'+sec.id+'" data-item="'+it.id+'" value="'+esc(it.failDue||'')+'"><div class="histmeta">Becomes a corrective action when you complete the audit.</div></div>' : '') +
           '</div>' +
-          '<button class="naBtn '+(na?'on':'')+'" data-action="toggle-na" data-sec="'+sec.id+'" data-item="'+it.id+'" title="Not Available — counts against the score">N/A</button>' +
+          '<div style="display:flex;flex-direction:column;gap:4px;">' +
+            '<button class="naBtn '+(failed?'on':'')+'" data-action="toggle-fail" data-sec="'+sec.id+'" data-item="'+it.id+'" title="Mark as failed — asks what is wrong and by when it will be fixed">✗ Fail</button>' +
+            '<button class="naBtn '+(na?'on':'')+'" data-action="toggle-na" data-sec="'+sec.id+'" data-item="'+it.id+'" title="Not Available — counts against the score">N/A</button>' +
+          '</div>' +
         '</div>';
       }).join('');
       return '<div class="section '+(active?'active':'')+'">' +
@@ -1956,6 +2050,15 @@
       '<div class="footerbar"><div class="inner"><button class="btn btn-primary" data-action="finish-audit">Finish Audit</button></div></div>';
   }
 
+  function renderCriticalMisses(d){
+    var miss = [];
+    d.sections.forEach(function(s){ s.items.forEach(function(it){ if (it.critical && it.state!=='checked' && it.state!=='na') miss.push({ sec:s.name, text:it.text, failed:it.state==='fail' }); }); });
+    if (!miss.length) return '';
+    return '<div class="card" style="margin:14px 0;padding:14px 16px;border:1.5px solid var(--bad);">' +
+      '<div style="font-weight:800;color:var(--bad);margin-bottom:8px;">🔴 Critical items not passed ('+miss.length+')</div>' +
+      miss.map(function(m){ return '<div style="padding:6px 0;border-top:1px solid var(--line);font-size:13.5px;"><b>'+esc(m.sec)+'</b> — '+esc(m.text)+(m.failed?' <span class="pill bad">Failed</span>':' <span class="pill warn">Not checked</span>')+'</div>'; }).join('') +
+    '</div>';
+  }
   function renderRemarkStep(d){
     var tmpl = state.templates[d.type];
     var op = overallProgress(d);
@@ -1969,6 +2072,7 @@
       '<div class="helper" style="margin-top:4px;">'+(d.storeLocation?esc(d.storeLocation)+' · ':'')+fmtAuditWhen(d.auditDate,d.auditTime)+'</div>' +
       '<div class="helper" style="margin-top:2px;">'+tmpl.label+' · '+op.checked+'/'+op.total+' items checked ('+op.pct+'% score)'+scoreDeltaHtml(prevRec?prevRec.completionPct:null, op.pct)+' · '+fmtTime(totalMs)+' total</div>' +
       renderPriorIssuesPanel(d) +
+      renderCriticalMisses(d) +
       '<div class="statgrid">' +
         d.sections.map(function(s){ var p=sectionProgress(s); return '<div class="stattile"><div class="v">'+fmtTime(s.accumMs)+'</div><div class="k">'+esc(s.name)+'</div><div style="margin-top:5px;" class="histmeta">'+p.checked+'/'+p.total+' checked</div></div>'; }).join('') +
       '</div>' +
@@ -2094,8 +2198,10 @@
           (s.issue ? '<div style="margin:2px 0 6px;padding:8px 10px;border-radius:var(--r-s);background:var(--bad-soft);color:var(--bad);font-size:13px;">⚠ '+esc(s.issue)+'</div>' : '') +
           (s.items||[]).map(function(it){
             var tone = it.state==='checked' ? 'good' : (it.state==='na' ? 'warn' : 'bad');
-            var label = it.state==='checked' ? '✓ Checked' : (it.state==='na' ? '– N/A' : '○ Not checked');
-            return '<div class="sumrow" style="align-items:flex-start;"><span class="k">'+esc(it.text)+(it.requiresInfo ? '<div class="histmeta">'+esc(it.infoLabel||'Answer')+': '+(esc(it.value||'')||'—')+'</div>' : '')+'</span><span class="v"><span class="pill '+tone+'">'+label+'</span></span></div>';
+            var label = it.state==='checked' ? '✓ Checked' : (it.state==='na' ? '– N/A' : (it.state==='fail' ? '✗ Failed' : '○ Not checked'));
+            var extra = (it.kind==='number' && it.value!=='' && it.value!==undefined) ? '<div class="histmeta">'+esc(it.infoLabel||'Reading')+': '+esc(it.value)+(it.unit?' '+esc(it.unit):'')+'</div>'
+              : (it.kind==='score' && it.value ? '<div class="histmeta">Scored '+esc(it.value)+' / 5</div>' : '');
+            return '<div class="sumrow" style="align-items:flex-start;"><span class="k">'+(it.critical?'<span class="critbadge">CRITICAL</span>':'')+esc(it.text)+extra+(it.state==='fail' && it.failNote ? '<div class="histmeta" style="color:var(--bad);">'+esc(it.failNote)+'</div>' : '')+(it.requiresInfo ? '<div class="histmeta">'+esc(it.infoLabel||'Answer')+': '+(esc(it.value||'')||'—')+'</div>' : '')+'</span><span class="v"><span class="pill '+tone+'">'+label+'</span></span></div>';
           }).join('') +
         '</div>';
       }).join('') +
@@ -2257,6 +2363,7 @@
     if (data.schedule) state.schedule = data.schedule;
     ensureHotelDefaults();
     if (data.services) state.services = data.services;
+    ensureServiceDefaults();
     if (data.deliverables) state.deliverables = data.deliverables;
     if (data.paramLibrary) state.paramLibrary = data.paramLibrary;
     if (data.readings) state.readings = data.readings;
@@ -2304,7 +2411,7 @@
       '<div class="eyebrow">Checklist Editor</div>' +
       '<h1 style="font-size:26px;margin-top:6px;margin-bottom:14px;">Edit sections & items</h1>' +
       '<div class="tabs">' +
-        ['dinein','qsr','hotel'].map(function(t){ return '<button class="tab '+(tab===t?'on':'')+'" data-action="editor-tab" data-tab="'+t+'">'+state.templates[t].label+'</button>'; }).join('') +
+        templateKeys().map(function(t){ return '<button class="tab '+(tab===t?'on':'')+'" data-action="editor-tab" data-tab="'+t+'">'+state.templates[t].label+'</button>'; }).join('') +
       '</div>' +
       tmpl.sections.map(function(sec){
         return '<div class="card edsection">' +
@@ -2320,16 +2427,30 @@
                 '<button class="iconbtn" data-action="delete-item" data-sec="'+sec.id+'" data-item="'+it.id+'" title="Delete item">✕</button>' +
               '</div>' +
               '<div class="itemrow-sub">' +
-                '<button type="button" class="naBtn '+(it.requiresInfo?'on':'')+'" data-action="toggle-requires-info" data-sec="'+sec.id+'" data-item="'+it.id+'">📝 Requires an answer</button>' +
-                (it.requiresInfo ? '<input type="text" class="iteminfolabel" data-action="edit-info-label" data-sec="'+sec.id+'" data-item="'+it.id+'" value="'+esc(it.infoLabel||'')+'" placeholder="e.g. Fridge temp °C">' : '') +
+                [['tick','✓ Tick'],['number','# Number'],['score','★ Score 1–5']].map(function(k){ return '<button type="button" class="naBtn '+((it.kind||'tick')===k[0]?'on':'')+'" data-action="item-kind" data-sec="'+sec.id+'" data-item="'+it.id+'" data-val="'+k[0]+'">'+k[1]+'</button>'; }).join('') +
+                '<button type="button" class="naBtn '+(it.critical?'on':'')+'" data-action="toggle-critical" data-sec="'+sec.id+'" data-item="'+it.id+'">🔴 Critical</button>' +
+                ((it.kind||'tick')==='tick' ? '<button type="button" class="naBtn '+(it.requiresInfo?'on':'')+'" data-action="toggle-requires-info" data-sec="'+sec.id+'" data-item="'+it.id+'">📝 Requires an answer</button>' : '') +
+                (it.requiresInfo && (it.kind||'tick')==='tick' ? '<input type="text" class="iteminfolabel" data-action="edit-info-label" data-sec="'+sec.id+'" data-item="'+it.id+'" value="'+esc(it.infoLabel||'')+'" placeholder="e.g. Fridge temp °C">' : '') +
               '</div>' +
+              ((it.kind||'tick')==='number' ? (
+                '<div class="itemrow-sub" style="margin-top:6px;">' +
+                  '<input type="text" class="iteminfolabel" data-item-field="infoLabel" data-sec="'+sec.id+'" data-item="'+it.id+'" value="'+esc(it.infoLabel||'')+'" placeholder="Label e.g. Fridge temp" style="flex:2;min-width:110px;">' +
+                  '<input type="text" class="iteminfolabel" data-item-field="unit" data-sec="'+sec.id+'" data-item="'+it.id+'" value="'+esc(it.unit||'')+'" placeholder="Unit" style="flex:1;min-width:60px;">' +
+                  '<input type="number" step="any" class="iteminfolabel" data-item-field="passMin" data-sec="'+sec.id+'" data-item="'+it.id+'" value="'+esc(it.passMin===undefined?'':it.passMin)+'" placeholder="OK from" style="flex:1;min-width:70px;">' +
+                  '<input type="number" step="any" class="iteminfolabel" data-item-field="passMax" data-sec="'+sec.id+'" data-item="'+it.id+'" value="'+esc(it.passMax===undefined?'':it.passMax)+'" placeholder="OK up to" style="flex:1;min-width:70px;">' +
+                '</div>'
+              ) : '') +
             '</div>';
           }).join('') +
           '<div class="addrow"><textarea rows="1" class="edtext edadd" placeholder="Add a checklist item…" data-newitem-for="'+sec.id+'"></textarea><button class="btn btn-ghost btn-sm" data-action="add-item" data-sec="'+sec.id+'">Add</button></div>' +
         '</div>';
       }).join('') +
       '<div class="addrow" style="margin:14px 0 24px;"><input placeholder="New section name…" data-newsection><button class="btn btn-ghost btn-sm" data-action="add-section">Add Section</button></div>' +
-      '<button class="btn btn-text btn-danger" data-action="reset-template">Reset '+tmpl.label+' checklist to defaults</button>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+        '<button class="btn btn-ghost btn-sm" data-action="duplicate-template">⧉ Duplicate this checklist</button>' +
+        (isBuiltinTemplate(tab) ? '' : '<button class="btn btn-text btn-danger" data-action="delete-template">Delete this checklist</button>') +
+      '</div>' +
+      (isBuiltinTemplate(tab) ? '<button class="btn btn-text btn-danger" data-action="reset-template">Reset '+tmpl.label+' checklist to defaults</button>' : '') +
     '</main>';
   }
 
@@ -2436,14 +2557,19 @@
       '<h1 style="font-size:20px;margin:28px 0 4px;">Stuck-step alert</h1>' +
       '<div class="helper" style="margin-bottom:12px;">How many days a client can stay on one Engagement Loop step before the dashboard flags it for a nudge.</div>' +
       '<div class="card edsection">' +
-        '<div class="field"><label>Dine-In — flag after (days)</label><input type="number" min="1" data-schedule="dinein.stuckDays" value="'+loopStuckDaysFor('dinein')+'"></div>' +
-        '<div class="field"><label>QSR — flag after (days)</label><input type="number" min="1" data-schedule="qsr.stuckDays" value="'+loopStuckDaysFor('qsr')+'"></div>' +
-        '<div class="field"><label>Hotels — flag after (days)</label><input type="number" min="1" data-schedule="hotel.stuckDays" value="'+loopStuckDaysFor('hotel')+'"></div>' +
+        templateKeys().map(function(k){ return '<div class="field"><label>'+esc(state.templates[k].label)+' — flag after (days)</label><input type="number" min="1" data-schedule="'+esc(k)+'.stuckDays" value="'+loopStuckDaysFor(k)+'"></div>'; }).join('') +
       '</div>' +
     '</main>';
   }
 
   // ---------- services catalog page ----------
+  function allSectionNames(){
+    var out = [], seen = {};
+    Object.keys(state.templates).forEach(function(k){
+      state.templates[k].sections.forEach(function(sec){ var n = (sec.name||'').trim(); if (n && !seen[norm(n)]){ seen[norm(n)] = true; out.push(n); } });
+    });
+    return out;
+  }
   function renderServicesView(){
     var groups = {};
     state.services.forEach(function(s){ (groups[s.category]=groups[s.category]||[]).push(s); });
@@ -2464,6 +2590,12 @@
         '<div class="field"><label>Visit cadence</label><div class="areagrid">' +
           VISIT_INTERVALS.map(function(vi){ return '<button type="button" class="areachip '+(s.visitInterval===vi.key?'on':'')+'" data-action="service-interval" data-svc="'+s.id+'" data-val="'+vi.key+'">'+vi.label+'</button>'; }).join('') +
         '</div>' + (visitIntervalOf(s.visitInterval).days ? '<div class="helper" style="margin-top:4px;">Assigning this package to a client — or marking its visit follow-up done — automatically schedules the next one, '+visitIntervalOf(s.visitInterval).days+' days out.</div>' : '') + '</div>' +
+        '<div class="field"><label>Areas this package audits</label><div class="areagrid">' +
+          allSectionNames().map(function(n){ var on = (s.auditAreas||[]).map(norm).indexOf(norm(n))>=0; return '<button type="button" class="areachip '+(on?'on':'')+'" data-action="service-area-toggle" data-svc="'+s.id+'" data-name="'+esc(n)+'">'+(on?'✓ ':'')+esc(n)+'</button>'; }).join('') +
+        '</div><div class="helper" style="margin-top:4px;">'+((s.auditAreas||[]).length ? 'A New Audit for this package pre-selects just these areas.' : 'None picked — a New Audit for this package covers all areas.')+'</div></div>' +
+        '<div class="field"><label>Metrics to follow</label><div class="areagrid">' +
+          (state.paramLibrary.length ? state.paramLibrary.map(function(l){ var on = (s.metrics||[]).indexOf(l.id)>=0; return '<button type="button" class="areachip '+(on?'on':'')+'" data-action="service-metric-toggle" data-svc="'+s.id+'" data-lib="'+esc(l.id)+'">'+(on?'✓ ':'')+esc(l.name)+'</button>'; }).join('') : '<span class="helper">Add parameters in Settings → Parameter library first.</span>') +
+        '</div><div class="helper" style="margin-top:4px;">Added to the client\'s Analysis parameters when you assign this package.</div></div>' +
         '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
           fieldNum('One-time min (₹)', 'oneTimeMin', s) + fieldNum('One-time max (₹)', 'oneTimeMax', s) +
         '</div>' +
@@ -2613,6 +2745,71 @@
   }
 
   function findService(id){ return state.services.filter(function(s){ return s.id===id; })[0] || null; }
+  function norm(s){ return String(s||'').trim().toLowerCase(); }
+  function templateKeys(){
+    var base = ['dinein','qsr','hotel'].filter(function(k){ return state.templates[k]; });
+    return base.concat(Object.keys(state.templates).filter(function(k){ return base.indexOf(k)<0; }));
+  }
+  function isBuiltinTemplate(k){ return k==='dinein' || k==='qsr' || k==='hotel'; }
+  function clientExtraItems(storeName){
+    var key = norm(storeName);
+    if (!key) return [];
+    var p = state.prospects.filter(function(x){ return norm(x.name)===key; })[0];
+    return (p && p.extraItems) ? p.extraItems.filter(function(x){ return (x.text||'').trim(); }) : [];
+  }
+  function repeatMissStreaks(storeName, excludeId){
+    var key = norm(storeName), out = {}, dead = {};
+    if (!key) return out;
+    state.history.filter(function(h){ return h.id!==excludeId && norm(h.storeName)===key; })
+      .sort(function(a,b){ return b.finishedAt-a.finishedAt; })
+      .forEach(function(h){
+        (h.sections||[]).forEach(function(s){ (s.items||[]).forEach(function(it){
+          if (dead[it.id] || it.state==='na') return;
+          if (it.state==='checked'){ dead[it.id] = true; return; }
+          out[it.id] = (out[it.id]||0)+1;
+        }); });
+      });
+    return out;
+  }
+  function repeatProblemsFor(storeName){
+    var streaks = repeatMissStreaks(storeName, null), list = [], seen = {};
+    state.history.filter(function(h){ return norm(h.storeName)===norm(storeName); })
+      .sort(function(a,b){ return b.finishedAt-a.finishedAt; })
+      .forEach(function(h){
+        (h.sections||[]).forEach(function(s){ (s.items||[]).forEach(function(it){
+          if (streaks[it.id]>=2 && !seen[it.id]){ seen[it.id] = true; list.push({ text:it.text, section:s.name, streak:streaks[it.id], critical:!!it.critical }); }
+        }); });
+      });
+    return list.sort(function(a,b){ return b.streak-a.streak; });
+  }
+  function serviceSectionIds(type, svc){
+    var tmpl = state.templates[type];
+    if (!tmpl) return [];
+    var all = tmpl.sections.map(function(s){ return s.id; });
+    if (!svc || !svc.auditAreas || !svc.auditAreas.length) return all;
+    var wanted = svc.auditAreas.map(norm);
+    var hit = tmpl.sections.filter(function(s){ return wanted.indexOf(norm(s.name))>=0; }).map(function(s){ return s.id; });
+    return hit.length ? hit : all;
+  }
+  function serviceMetricNames(svc){
+    return ((svc && svc.metrics) || []).map(function(id){ var l = state.paramLibrary.filter(function(x){ return x.id===id; })[0]; return l ? l.name : null; }).filter(Boolean);
+  }
+  function serviceAuditLine(svc){
+    if (!svc) return '';
+    var areas = (svc.auditAreas && svc.auditAreas.length) ? svc.auditAreas.join(', ') : 'All areas';
+    var mets = serviceMetricNames(svc);
+    return 'Audits: '+areas+(mets.length ? ' · Tracks: '+mets.join(', ') : '');
+  }
+  function addServiceMetrics(p, svc){
+    if (!p || !svc) return;
+    p.parameters = p.parameters || [];
+    ((svc.metrics)||[]).forEach(function(id){
+      var l = state.paramLibrary.filter(function(x){ return x.id===id; })[0];
+      if (!l) return;
+      if (p.parameters.some(function(x){ return norm(x.name)===norm(l.name); })) return;
+      p.parameters.push({ id: uid(), name:l.name, unit:l.unit||'', better:l.better||'lower', target:'', createdAt: Date.now() });
+    });
+  }
   function servicePriceLine(s){
     var cur = state.pricing.currency||'₹';
     var oneTime = s.oneTimeMax ? cur+fmtCompact(s.oneTimeMin)+'–'+cur+fmtCompact(s.oneTimeMax)+' one-time' : '';
@@ -3018,7 +3215,7 @@
   }
   function loopStuckDays(p){
     var cat = p.category;
-    if (cat!=='dinein' && cat!=='qsr' && cat!=='hotel'){ var a = prospectAudits(p)[0]; cat = a ? a.type : 'dinein'; }
+    if (!state.templates[cat]){ var a = prospectAudits(p)[0]; cat = a ? a.type : 'dinein'; }
     return loopStuckDaysFor(cat);
   }
   function loopDaysOnStep(p){
@@ -3090,6 +3287,30 @@
     return p.auditId ? 'Pipeline · audited' : 'Pipeline';
   }
   function fuDraftFor(p){ return (state.fuDraft && state.fuDraft.pid===p.id) ? state.fuDraft : { pid:p.id, date:'', time:'', note:'' }; }
+  function renderRepeatProblems(p){
+    var list = repeatProblemsFor(p.name);
+    if (!list.length) return '';
+    return sh('🔁','Repeat problems') +
+      '<div class="card" style="padding:14px 16px;margin-bottom:20px;border:1.5px solid var(--bad);">' +
+        '<div class="helper" style="margin:0 0 8px;">Not passed in two or more audits in a row — worth raising with the owner.</div>' +
+        list.slice(0,8).map(function(x){
+          return '<div style="padding:8px 0;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">' +
+            '<div><div style="font-size:14px;">'+(x.critical?'<span class="critbadge">CRITICAL</span>':'')+esc(x.text)+'</div><div class="histmeta">'+esc(x.section)+'</div></div>' +
+            '<span class="pill bad" style="flex:none;">'+x.streak+' in a row</span></div>';
+        }).join('') +
+      '</div>';
+  }
+  function renderExtraItemsCard(p){
+    var items = p.extraItems || [];
+    return sh('➕','Extra audit items') +
+      '<div class="card" style="padding:14px 16px;margin-bottom:20px;">' +
+        '<div class="helper" style="margin:0 0 10px;">Checks that apply only to this client. They are added to every audit for them as a "Client-specific checks" section, without touching the master checklist.</div>' +
+        '<div class="addrow" style="margin-top:0;"><textarea rows="1" class="edtext edadd" id="extraItemInput" placeholder="e.g. Tandoor temperature logged each shift"></textarea><button type="button" class="btn btn-ghost btn-sm" data-action="add-extra-item">Add</button></div>' +
+        (items.length ? '<div style="margin-top:10px;">' + items.map(function(x){
+          return '<div class="lookuprow"><span style="flex:1;font-size:14px;line-height:1.4;">'+esc(x.text)+'</span><button class="iconbtn" data-action="remove-extra-item" data-id="'+x.id+'" title="Remove">✕</button></div>';
+        }).join('') + '</div>' : '') +
+      '</div>';
+  }
   function renderFollowUps(p){
     var draft = fuDraftFor(p);
     var open = openFollowUps(p);
@@ -3378,9 +3599,7 @@
         '<div style="display:flex; gap:12px;">' +
           '<div class="field" style="flex:1;"><label for="pLocation">Location'+req+'</label><input id="pLocation" data-bind-prospect="location" value="'+esc(p.location)+'" placeholder="e.g. Bandra West"></div>' +
           '<div class="field" style="flex:1;"><label>Category'+req+'</label><div style="display:flex; gap:8px;">' +
-            '<button type="button" class="naBtn '+(p.category==='dinein'?'on':'')+'" data-action="set-prospect-category" data-val="dinein">Dine-In</button>' +
-            '<button type="button" class="naBtn '+(p.category==='qsr'?'on':'')+'" data-action="set-prospect-category" data-val="qsr">QSR</button>' +
-            '<button type="button" class="naBtn '+(p.category==='hotel'?'on':'')+'" data-action="set-prospect-category" data-val="hotel">Hotels</button>' +
+            templateKeys().map(function(k){ return '<button type="button" class="naBtn '+(p.category===k?'on':'')+'" data-action="set-prospect-category" data-val="'+esc(k)+'">'+esc(state.templates[k].label)+'</button>'; }).join('') +
           '</div></div>' +
         '</div>' +
         '<div class="field"><label for="pAddress">Address'+req+'</label><input id="pAddress" data-bind-prospect="address" value="'+esc(p.address)+'" placeholder="Full address"></div>' +
@@ -3398,6 +3617,8 @@
       renderMeetingTimerCard(p) +
       renderInquiryEditor('client', p.inquiry||[], inquiryAreaOptions(p.category)) +
       renderParametersCard(p) +
+      renderRepeatProblems(p) +
+      renderExtraItemsCard(p) +
       renderFollowUps(p) +
       (audits.length ? (
         '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:6px;">' +
@@ -3410,7 +3631,7 @@
         sh('🎯','Post-Audit Follow-up') +
         '<div class="card" style="padding:16px;margin-bottom:20px;border:1.5px solid var(--accent);background:var(--accent-soft);">' +
           '<div class="formstack" style="gap:14px;margin-bottom:0;">' +
-            '<div class="field" style="margin-bottom:0;"><label for="pServices">Service package</label><select id="pServices" data-action="set-client-service"><option value="">— Not selected —</option>'+state.services.map(function(sc){ return '<option value="'+sc.id+'" '+(p.servicesOffered===sc.id?'selected':'')+'>'+esc(sc.name)+'</option>'; }).join('')+'</select>'+(p.servicesOffered && findService(p.servicesOffered) ? '<div class="histmeta" style="margin-top:6px;">'+esc(servicePriceLine(findService(p.servicesOffered)))+(visitIntervalOf(findService(p.servicesOffered).visitInterval).days ? ' · '+esc(visitIntervalOf(findService(p.servicesOffered).visitInterval).label)+' auto-scheduled' : '')+'</div>' : '')+'</div>' +
+            '<div class="field" style="margin-bottom:0;"><label for="pServices">Service package</label><select id="pServices" data-action="set-client-service"><option value="">— Not selected —</option>'+state.services.map(function(sc){ return '<option value="'+sc.id+'" '+(p.servicesOffered===sc.id?'selected':'')+'>'+esc(sc.name)+'</option>'; }).join('')+'</select>'+(p.servicesOffered && findService(p.servicesOffered) ? '<div class="histmeta" style="margin-top:6px;">'+esc(servicePriceLine(findService(p.servicesOffered)))+(visitIntervalOf(findService(p.servicesOffered).visitInterval).days ? ' · '+esc(visitIntervalOf(findService(p.servicesOffered).visitInterval).label)+' auto-scheduled' : '')+'</div><div class="histmeta" style="margin-top:2px;color:var(--accent-ink);">'+esc(serviceAuditLine(findService(p.servicesOffered)))+'</div>' : '')+'</div>' +
             '<div class="field" style="margin-bottom:0;"><label for="pPricingType">Pricing type</label><select id="pPricingType" data-action="set-pricing-type-select"><option value="">— Not set —</option><option value="onetime" '+(p.pricingType==='onetime'?'selected':'')+'>One-time</option><option value="retainer" '+(p.pricingType==='retainer'?'selected':'')+'>Monthly retainer</option></select></div>' +
             '<div class="field" style="margin-bottom:0;"><label for="pProposalStatus">Solution proposed?</label><select id="pProposalStatus" data-action="set-proposal-status-select"><option value="">— Not set —</option><option value="proposed" '+(p.proposalStatus==='proposed'?'selected':'')+'>Proposed</option><option value="not_offered" '+(p.proposalStatus==='not_offered'?'selected':'')+'>Not offered right now</option><option value="meeting_scheduled" '+(p.proposalStatus==='meeting_scheduled'?'selected':'')+'>Meeting scheduled later</option></select></div>' +
             (p.proposalStatus==='meeting_scheduled' ? '<div class="field" style="margin-bottom:0;"><label for="pMeetingDate">Date of proposal / meeting</label><input id="pMeetingDate" type="date" data-bind-prospect="proposalMeetingDate" value="'+esc(p.proposalMeetingDate||'')+'"></div>' : '') +
@@ -5274,7 +5495,9 @@
       state.setup.contactName = raMatch ? (raMatch.contactName||'') : '';
       state.setup.contactDesignation = raMatch ? (raMatch.contactDesignation||'') : '';
       state.setup.contactMobile = raMatch ? (raMatch.contactMobile||'') : '';
-      state.setup.selectedSections = state.templates[raType] ? state.templates[raType].sections.map(function(s){ return s.id; }) : [];
+      state.setup.serviceId = raMatch ? (raMatch.servicesOffered||'') : '';
+      state.setup.selectedSections = state.templates[raType] ? serviceSectionIds(raType, state.setup.serviceId ? findService(state.setup.serviceId) : null) : [];
+      state.setup.mode = 'full';
       state.setup.menuItemCount = '';
       state.setup.inquiry = [];
       state.pendingProspectId = raMatch ? raMatch.id : null;
@@ -5332,9 +5555,24 @@
     }
     else if (action==='pick-type'){
       state.setup.type = t.dataset.type;
-      state.setup.selectedSections = state.templates[t.dataset.type].sections.map(function(s){ return s.id; });
+      state.setup.selectedSections = serviceSectionIds(t.dataset.type, state.setup.serviceId ? findService(state.setup.serviceId) : null);
       render();
     }
+    else if (action==='add-extra-item'){
+      var eiP = findProspect(state.activeProspectId);
+      var eiIn = document.getElementById('extraItemInput');
+      var eiText = eiIn ? eiIn.value.replace(/[\r\n]+/g,' ').trim() : '';
+      if (eiP && eiText){
+        eiP.extraItems = eiP.extraItems || [];
+        eiP.extraItems.push({ id: uid(), text: eiText });
+        eiP.updatedAt = Date.now(); persistProspects(); render();
+      }
+    }
+    else if (action==='remove-extra-item'){
+      var reP = findProspect(state.activeProspectId);
+      if (reP){ reP.extraItems = (reP.extraItems||[]).filter(function(x){ return x.id!==t.dataset.id; }); reP.updatedAt = Date.now(); persistProspects(); render(); }
+    }
+    else if (action==='set-audit-mode'){ state.setup.mode = t.dataset.val; render(); }
     else if (action==='toggle-area'){
       var areaId = t.dataset.sec;
       var idx = state.setup.selectedSections.indexOf(areaId);
@@ -5343,9 +5581,10 @@
     }
     else if (action==='start-audit'){
       if (setupProblems(state.setup).length) return;
-      state.draft = newDraft(state.setup.type, state.setup.storeName, state.setup.storeLocation, state.setup.contactName, state.setup.contactDesignation, state.setup.contactMobile, state.setup.auditDate, state.setup.auditTime, state.setup.selectedSections, state.setup.menuItemCount);
+      state.draft = newDraft(state.setup.type, state.setup.storeName, state.setup.storeLocation, state.setup.contactName, state.setup.contactDesignation, state.setup.contactMobile, state.setup.auditDate, state.setup.auditTime, state.setup.selectedSections, state.setup.menuItemCount, state.setup.mode);
       state.draft.inquiry = cleanInquiry(state.setup.inquiry);
       state.setup.inquiry = [];
+      state.setup.mode = 'full';
       persistDraft();
       state.view='audit'; render();
     }
@@ -5354,6 +5593,19 @@
       var sec = d.sections.filter(function(s){return s.id===t.dataset.sec;})[0];
       var it = sec.items.filter(function(i){return i.id===t.dataset.item;})[0];
       it.state = it.state==='checked' ? 'unchecked' : 'checked';
+      persistDraft(); render();
+    }
+    else if (action==='toggle-fail'){
+      var secF = d.sections.filter(function(s){return s.id===t.dataset.sec;})[0];
+      var itF = secF.items.filter(function(i){return i.id===t.dataset.item;})[0];
+      itF.state = itF.state==='fail' ? 'unchecked' : 'fail';
+      persistDraft(); render();
+    }
+    else if (action==='set-score'){
+      var secS = d.sections.filter(function(s){return s.id===t.dataset.sec;})[0];
+      var itS = secS.items.filter(function(i){return i.id===t.dataset.item;})[0];
+      itS.value = t.dataset.val;
+      itS.state = parseInt(t.dataset.val,10) >= 4 ? 'checked' : 'fail';
       persistDraft(); render();
     }
     else if (action==='toggle-na'){
@@ -5475,6 +5727,14 @@
       if (!(d.remark||'').trim()) return;
       var rec = computeRecord(d);
       state.history.push(rec); persistHistory();
+      d.correctiveActions = d.correctiveActions || [];
+      d.sections.forEach(function(s){
+        s.items.forEach(function(it){
+          if (it.state!=='fail') return;
+          var reading = (it.kind==='number' && it.value!=='') ? ' ('+it.value+(it.unit?' '+it.unit:'')+')' : (it.kind==='score' && it.value ? ' (scored '+it.value+'/5)' : '');
+          d.correctiveActions.push({ id: uid(), description: s.name+': '+it.text+reading+((it.failNote||'').trim() ? ' — '+it.failNote.trim() : ''), dueDate: it.failDue||'', sourceItemId: it.id });
+        });
+      });
       (d.correctiveActions||[]).forEach(function(ca){
         state.correctiveActions.push({
           id: ca.id, auditId: rec.id, storeName: d.storeName, storeLocation: d.storeLocation,
@@ -5521,6 +5781,7 @@
       if (linkedP && state.setup.serviceId && !linkedP.servicesOffered){
         linkedP.servicesOffered = state.setup.serviceId;
         scheduleServiceFollowup(linkedP, findService(state.setup.serviceId));
+        addServiceMetrics(linkedP, findService(state.setup.serviceId));
       }
       state.setup.serviceId = '';
       state.pendingProspectId = null;
@@ -5586,6 +5847,7 @@
         var c = { id:uid(), text:it.text };
         if (it.requiresInfo) c.requiresInfo = true;
         if (it.infoLabel) c.infoLabel = it.infoLabel;
+        ['kind','unit','passMin','passMax','critical'].forEach(function(k){ if (it[k]!==undefined && it[k]!=='') c[k] = it[k]; });
         return c;
       }
       var srcTmpl = state.templates[state.editorTab];
@@ -5613,6 +5875,16 @@
       sec4.items = sec4.items.filter(function(i){ return i.id!==t.dataset.item; });
       persistTemplates(); render();
     }
+    else if (action==='item-kind' || action==='toggle-critical'){
+      var tmplK = state.templates[state.editorTab];
+      var secK = tmplK.sections.filter(function(s){return s.id===t.dataset.sec;})[0];
+      var itK = secK && secK.items.filter(function(i){return i.id===t.dataset.item;})[0];
+      if (itK){
+        if (action==='item-kind'){ itK.kind = t.dataset.val; if (itK.kind!=='tick') itK.requiresInfo = false; }
+        else { itK.critical = !itK.critical; }
+        persistTemplates(); render();
+      }
+    }
     else if (action==='toggle-requires-info'){
       var tmplRI = state.templates[state.editorTab];
       var secRI = tmplRI.sections.filter(function(s){return s.id===t.dataset.sec;})[0];
@@ -5636,6 +5908,32 @@
       tmpl4.sections.push({ id:uid(), name:name, items:[] });
       persistTemplates(); render();
     }
+    else if (action==='duplicate-template'){
+      var dupSrc = state.templates[state.editorTab];
+      var dupName = (window.prompt('Name for the new checklist (e.g. Cloud Kitchen):', dupSrc.label+' copy')||'').trim();
+      if (dupName){
+        var dupKey = 'c_'+uid();
+        var dupCopy = JSON.parse(JSON.stringify(dupSrc));
+        dupCopy.label = dupName;
+        dupCopy.sections.forEach(function(s){ s.items.forEach(function(it){ it.id = uid(); }); });
+        state.templates[dupKey] = dupCopy;
+        state.pricing[dupKey] = JSON.parse(JSON.stringify(state.pricing[state.editorTab] || DEFAULT_PRICING.dinein));
+        state.schedule[dupKey] = JSON.parse(JSON.stringify(state.schedule[state.editorTab] || DEFAULT_SCHEDULE.dinein));
+        state.editorTab = dupKey;
+        persistTemplates(); persistPricing(); persistSchedule(); render();
+      }
+    }
+    else if (action==='delete-template'){
+      var delKey = state.editorTab;
+      if (!isBuiltinTemplate(delKey) && window.confirm('Delete the "'+state.templates[delKey].label+'" checklist? Clients and past audits already using it keep their records, but you can no longer start new audits with it.')){
+        delete state.templates[delKey];
+        state.editorTab = 'dinein';
+        if (fsDb && state.authUser){
+          try{ var delUpd = {}; delUpd['templates.'+delKey] = firebase.firestore.FieldValue.delete(); fsUserDataDoc('config').update(delUpd); }catch(e){}
+        }
+        persistTemplates(); render();
+      }
+    }
     else if (action==='reset-template'){
       if (window.confirm('Reset the '+state.templates[state.editorTab].label+' checklist to the built-in defaults? Custom sections and items will be lost.')){
         var seeded = seedTemplates(DEFAULT_TEMPLATES);
@@ -5649,12 +5947,13 @@
     }
     else if (action==='service-add'){
       var newSvc = { id: uid(), name:'New package', category:'Other', trackingMethod:'n/a', visitInterval:'none',
-        oneTimeMin:0, oneTimeMax:0, retainerMin:0, retainerMax:0, retainerMinMonths:0, priceNote:'' };
+        oneTimeMin:0, oneTimeMax:0, retainerMin:0, retainerMax:0, retainerMinMonths:0, priceNote:'', auditAreas:[], metrics:[] };
       state.services.push(newSvc);
       persistServices(); render();
     }
     else if (action==='service-remove'){
       if (window.confirm('Remove this service package? Clients already assigned to it keep the name on their card, but it will no longer appear in the picker.')){
+        if (t.dataset.svc==='svc_free_audit'){ try{ localStorage.setItem('diagnosisroom_nofreeaudit','1'); }catch(e){} }
         state.services = state.services.filter(function(s){ return s.id!==t.dataset.svc; });
         persistServices(); render();
       }
@@ -5662,12 +5961,31 @@
     else if (action==='service-reset'){
       if (window.confirm('Reset the services catalog to the built-in defaults? Custom packages will be lost.')){
         state.services = JSON.parse(JSON.stringify(DEFAULT_SERVICES));
+        try{ localStorage.removeItem('diagnosisroom_nofreeaudit'); }catch(e){}
         persistServices(); render();
       }
     }
     else if (action==='service-tracking'){
       var svcT = state.services.filter(function(s){ return s.id===t.dataset.svc; })[0];
       if (svcT){ svcT.trackingMethod = t.dataset.val; persistServices(); render(); }
+    }
+    else if (action==='service-area-toggle'){
+      var svcA = state.services.filter(function(s){ return s.id===t.dataset.svc; })[0];
+      if (svcA){
+        svcA.auditAreas = svcA.auditAreas || [];
+        var ai = svcA.auditAreas.map(norm).indexOf(norm(t.dataset.name));
+        if (ai>=0) svcA.auditAreas.splice(ai,1); else svcA.auditAreas.push(t.dataset.name);
+        persistServices(); render();
+      }
+    }
+    else if (action==='service-metric-toggle'){
+      var svcM = state.services.filter(function(s){ return s.id===t.dataset.svc; })[0];
+      if (svcM){
+        svcM.metrics = svcM.metrics || [];
+        var mi = svcM.metrics.indexOf(t.dataset.lib);
+        if (mi>=0) svcM.metrics.splice(mi,1); else svcM.metrics.push(t.dataset.lib);
+        persistServices(); render();
+      }
     }
     else if (action==='service-interval'){
       var svcI = state.services.filter(function(s){ return s.id===t.dataset.svc; })[0];
@@ -5810,7 +6128,11 @@
     else if (el.dataset.bind === 'auditDate'){ state.setup.auditDate = el.value; var dn = app.querySelector('[data-dayname]'); if (dn) dn.textContent = dayName(el.value); }
     else if (el.dataset.bind === 'auditTime'){ state.setup.auditTime = el.value; }
     else if (el.dataset.bind === 'menuItemCount'){ state.setup.menuItemCount = el.value; }
-    else if (el.dataset.bind === 'serviceId'){ state.setup.serviceId = el.value; render(); }
+    else if (el.dataset.bind === 'serviceId'){
+      state.setup.serviceId = el.value;
+      if (state.setup.type) state.setup.selectedSections = serviceSectionIds(state.setup.type, el.value ? findService(el.value) : null);
+      render();
+    }
     else if (el.dataset.bind === 'remark' && state.draft){ state.draft.remark = el.value; persistDraft();
       var btn = app.querySelector('[data-action="complete-audit"]');
       if (btn) btn.disabled = !el.value.trim();
@@ -5859,16 +6181,22 @@
     else if (el.dataset.newitemFor){
       el.style.height = 'auto'; el.style.height = el.scrollHeight+'px';
     }
+    else if (el.dataset.itemField){
+      var tmplIF = state.templates[state.editorTab];
+      var secIF = tmplIF.sections.filter(function(s){return s.id===el.dataset.sec;})[0];
+      var itIF = secIF && secIF.items.filter(function(i){return i.id===el.dataset.item;})[0];
+      if (itIF){ itIF[el.dataset.itemField] = el.value; persistTemplates(); }
+    }
     else if (el.dataset.action === 'edit-info-label'){
       var tmplIL = state.templates[state.editorTab];
       var secIL = tmplIL.sections.filter(function(s){return s.id===el.dataset.sec;})[0];
       var itIL = secIL && secIL.items.filter(function(i){return i.id===el.dataset.item;})[0];
       if (itIL){ itIL.infoLabel = el.value; persistTemplates(); }
     }
-    else if (el.dataset.bindItem === 'value' && state.draft){
+    else if ((el.dataset.bindItem === 'value' || el.dataset.bindItem === 'failNote' || el.dataset.bindItem === 'failDue') && state.draft){
       var secV = state.draft.sections.filter(function(s){return s.id===el.dataset.sec;})[0];
       var itV = secV && secV.items.filter(function(i){return i.id===el.dataset.item;})[0];
-      if (itV){ itV.value = el.value; persistDraft(); }
+      if (itV){ itV[el.dataset.bindItem] = el.value; persistDraft(); }
     }
     else if (el.dataset.pricing){
       var path = el.dataset.pricing.split('.');
@@ -5986,6 +6314,21 @@
   app.addEventListener('change', function(e){
     var el = e.target;
     if (el.dataset.bind==='storeName'){ render(); }
+    else if (el.dataset.bindItem==='numvalue' && state.draft){
+      var nvSec = state.draft.sections.filter(function(s){ return s.id===el.dataset.sec; })[0];
+      var nvIt = nvSec && nvSec.items.filter(function(i){ return i.id===el.dataset.item; })[0];
+      if (nvIt){
+        nvIt.value = el.value;
+        if (el.value===''){ nvIt.state = 'unchecked'; }
+        else {
+          var nv = parseFloat(el.value);
+          var okMin = (nvIt.passMin===''||nvIt.passMin===undefined) || nv >= parseFloat(nvIt.passMin);
+          var okMax = (nvIt.passMax===''||nvIt.passMax===undefined) || nv <= parseFloat(nvIt.passMax);
+          nvIt.state = (okMin && okMax) ? 'checked' : 'fail';
+        }
+        persistDraft(); render();
+      }
+    }
     else if (el.dataset.reauditKey){
       var rkey = el.dataset.reauditKey;
       var rcur = splitReaudit(state.reauditOverrides[rkey]);
@@ -6016,7 +6359,7 @@
         scsP.servicesOffered = el.value;
         scsP.updatedAt = Date.now();
         var scsSvc = el.value ? findService(el.value) : null;
-        if (scsSvc) scheduleServiceFollowup(scsP, scsSvc);
+        if (scsSvc){ scheduleServiceFollowup(scsP, scsSvc); addServiceMetrics(scsP, scsSvc); }
         persistProspects(); render();
       }
     }
