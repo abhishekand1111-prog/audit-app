@@ -593,12 +593,14 @@
   var DEFAULT_PRICING = {
     currency: '₹',
     dinein: { baseFee: 1500, perSection: 300, perMenuItem: 5 },
-    qsr: { baseFee: 1000, perSection: 250, perMenuItem: 3 }
+    qsr: { baseFee: 1000, perSection: 250, perMenuItem: 3 },
+    hotel: { baseFee: 3000, perSection: 500, perMenuItem: 5 }
   };
 
   var DEFAULT_SCHEDULE = {
     dinein: { intervalDays: 30 },
-    qsr: { intervalDays: 14 }
+    qsr: { intervalDays: 14 },
+    hotel: { intervalDays: 30 }
   };
 
   var DEFAULT_DELIVERABLES = [
@@ -722,6 +724,34 @@
         'Sanitiser buckets at correct concentration on the line',
         'Bins emptied and lobby floor clear of spills'
       ]}
+    ]},
+    hotel: { label:'Hotels', sections:[
+      { id:'frontdesk', name:'Front Desk & Guest Arrival', items:[
+        'Guests greeted and checked in within 5 minutes of arrival',
+        'Lobby clean, well lit and free of clutter',
+        'Room keys, billing and ID records handled correctly',
+        'Complaints and requests logged and followed up'
+      ]},
+      { id:'rooms', name:'Rooms & Housekeeping', items:[
+        'Rooms cleaned to standard before check-in',
+        'Linen and towels fresh, stain-free and fully stocked',
+        'Bathrooms sanitised, dry and odour-free',
+        'Minibar, amenities and in-room items restocked and logged',
+        'Housekeeping trolley and chemicals stored and labelled safely'
+      ]},
+      { id:'fnb', name:'Food & Beverage', items:[
+        'Breakfast and buffet set up on time with food labelled',
+        'Hot food held at or above 63°C, cold food at or below 5°C',
+        'FIFO rotation followed in kitchen, bar and stores',
+        'Room service orders delivered within the promised time',
+        'Kitchen and restaurant cleanliness checked against checklist'
+      ]},
+      { id:'safety', name:'Safety & Maintenance', items:[
+        'Fire exits clear and fire equipment in date',
+        'Public-area and room maintenance issues logged and closed',
+        'Pest control and water-tank cleaning records current',
+        'Staff in uniform with valid health and grooming standards'
+      ]}
     ]}
   };
 
@@ -731,7 +761,7 @@
 
   function seedTemplates(t){
     var out = {};
-    ['dinein','qsr'].forEach(function(type){
+    ['dinein','qsr','hotel'].forEach(function(type){
       out[type] = { label: t[type].label, sections: t[type].sections.map(function(s){
         return { id:s.id, name:s.name, items:(s.items||[]).map(function(it){
           if (typeof it === 'string') return { id:uid(), text:it };
@@ -740,6 +770,11 @@
       })};
     });
     return out;
+  }
+  function ensureHotelDefaults(){
+    if (!state.templates.hotel) state.templates.hotel = seedTemplates(DEFAULT_TEMPLATES).hotel;
+    if (!state.pricing.hotel) state.pricing.hotel = JSON.parse(JSON.stringify(DEFAULT_PRICING.hotel));
+    if (!state.schedule.hotel) state.schedule.hotel = JSON.parse(JSON.stringify(DEFAULT_SCHEDULE.hotel));
   }
 
   function todayISO(){ var d = new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
@@ -805,8 +840,9 @@
   };
   // Remember where the user was, so a refresh or reopening the app lands on the same page.
   var LS_NAV = 'diagnosisroom_nav_v1';
-  var NAV_VIEWS = ['dashboard','week','editor','pricing','actions','prospects','lookup','content','search','summary','time','maps','services'];
+  var NAV_VIEWS = ['dashboard','week','editor','pricing','actions','prospects','lookup','search','summary','time','maps','services'];
   var navScrollY = 0;
+  ensureHotelDefaults();
   (function restoreNav(){
     var n = loadJSON(LS_NAV, null);
     if (!n || NAV_VIEWS.indexOf(n.view) < 0) return;
@@ -818,7 +854,7 @@
     }
     if (n.view==='prospects' && has(state.prospects, n.activeProspectId)) state.activeProspectId = n.activeProspectId;
     if (n.view==='content' && has(state.contentIdeas, n.activeContentId)) state.activeContentId = n.activeContentId;
-    if (n.editorTab==='dinein' || n.editorTab==='qsr') state.editorTab = n.editorTab;
+    if (n.editorTab==='dinein' || n.editorTab==='qsr' || n.editorTab==='hotel') state.editorTab = n.editorTab;
     if (n.actionsTab) state.actionsTab = n.actionsTab;
     if (n.historyTab) state.historyTab = n.historyTab;
     if (n.weekTab) state.weekTab = n.weekTab;
@@ -997,6 +1033,7 @@
           if (data.templates) state.templates = data.templates;
           if (data.pricing) state.pricing = data.pricing;
           if (data.schedule) state.schedule = data.schedule;
+          ensureHotelDefaults();
           if (data.services) state.services = data.services;
           if (data.deliverables) state.deliverables = data.deliverables;
           if (data.paramLibrary) state.paramLibrary = data.paramLibrary;
@@ -1390,7 +1427,6 @@
     else if (v==='actions') html = renderActionsView();
     else if (v==='prospects') html = renderProspects();
     else if (v==='lookup') html = renderLookup();
-    else if (v==='content') html = renderContent();
     else if (v==='search') html = renderSearch();
     else if (v==='dashboard') html = renderDashboard();
     else if (v==='week') html = renderWeekView();
@@ -1446,7 +1482,6 @@
         })()) +
         item('editor','go-editor','Checklist') +
         item('prospects','go-prospects','Clients', (function(){ var n=smNewCount(); return n?String(n):''; })()) +
-        item('content','go-content','Content', state.contentIdeas.length?String(state.contentIdeas.length):'') +
         item('lookup','go-lookup','Lookup', (function(){ var n=state.lookups.filter(function(l){ return !l.done; }).length; return n?String(n):''; })()) +
         item('services','go-services','Services', state.services.length?String(state.services.length):'') +
         item('pricing','go-pricing','Settings') +
@@ -1468,7 +1503,7 @@
     var pr = [];
     if (!(p.name||'').trim()) pr.push('client / store name');
     if (!(p.location||'').trim()) pr.push('location');
-    if (p.category!=='dinein' && p.category!=='qsr') pr.push('category');
+    if (p.category!=='dinein' && p.category!=='qsr' && p.category!=='hotel') pr.push('category');
     if (!(p.address||'').trim()) pr.push('address');
     if (!(p.contactName||'').trim()) pr.push('contact name');
     if (!(p.contactDesignation||'').trim()) pr.push('designation');
@@ -1620,7 +1655,7 @@
   // ---------- client trail: inquiry, solution tasks and client requests ----------
   function inquiryAreaOptions(type){
     var names = [], seen = {};
-    var kinds = (type==='dinein' || type==='qsr') ? [type] : ['dinein','qsr'];
+    var kinds = (type==='dinein' || type==='qsr' || type==='hotel') ? [type] : ['dinein','qsr','hotel'];
     kinds.forEach(function(k){
       ((state.templates[k]||{}).sections||[]).forEach(function(s){
         var n = (s.name||'').trim();
@@ -1733,9 +1768,9 @@
     var s = state.setup;
     var problems = setupProblems(s);
     var req = ' <span style="color:var(--bad)">*</span>';
-    var types = ['dinein','qsr'];
-    var icons = { dinein:'🍽️', qsr:'⚡' };
-    var descs = { dinein:'Full-service floor & kitchen walkthrough', qsr:'Counter, drive-thru & speed-of-service' };
+    var types = ['dinein','qsr','hotel'];
+    var icons = { dinein:'🍽️', qsr:'⚡', hotel:'🏨' };
+    var descs = { dinein:'Full-service floor & kitchen walkthrough', qsr:'Counter, drive-thru & speed-of-service', hotel:'Front desk, rooms, F&B & safety walkthrough' };
     var similarName = findSimilarStoreName(s.storeName);
     return '<main>' +
       '<div class="eyebrow">New Audit</div>' +
@@ -2219,6 +2254,7 @@
     if (data.pricing) state.pricing = data.pricing;
     if (data.correctiveActions) state.correctiveActions = data.correctiveActions;
     if (data.schedule) state.schedule = data.schedule;
+    ensureHotelDefaults();
     if (data.services) state.services = data.services;
     if (data.deliverables) state.deliverables = data.deliverables;
     if (data.paramLibrary) state.paramLibrary = data.paramLibrary;
@@ -2267,7 +2303,7 @@
       '<div class="eyebrow">Checklist Editor</div>' +
       '<h1 style="font-size:26px;margin-top:6px;margin-bottom:14px;">Edit sections & items</h1>' +
       '<div class="tabs">' +
-        ['dinein','qsr'].map(function(t){ return '<button class="tab '+(tab===t?'on':'')+'" data-action="editor-tab" data-tab="'+t+'">'+state.templates[t].label+'</button>'; }).join('') +
+        ['dinein','qsr','hotel'].map(function(t){ return '<button class="tab '+(tab===t?'on':'')+'" data-action="editor-tab" data-tab="'+t+'">'+state.templates[t].label+'</button>'; }).join('') +
       '</div>' +
       tmpl.sections.map(function(sec){
         return '<div class="card edsection">' +
@@ -2401,6 +2437,7 @@
       '<div class="card edsection">' +
         '<div class="field"><label>Dine-In — flag after (days)</label><input type="number" min="1" data-schedule="dinein.stuckDays" value="'+loopStuckDaysFor('dinein')+'"></div>' +
         '<div class="field"><label>QSR — flag after (days)</label><input type="number" min="1" data-schedule="qsr.stuckDays" value="'+loopStuckDaysFor('qsr')+'"></div>' +
+        '<div class="field"><label>Hotels — flag after (days)</label><input type="number" min="1" data-schedule="hotel.stuckDays" value="'+loopStuckDaysFor('hotel')+'"></div>' +
       '</div>' +
     '</main>';
   }
@@ -2758,6 +2795,10 @@
               : (p.declined && p.followUpDate ? '<div class="histmeta">📞 Follow up: '+fmtDateShort(new Date(p.followUpDate+'T00:00:00').getTime())+'</div>' : '')) +
             (missing.length ? '<div class="pcard-missing">Missing: '+esc(missing.join(', '))+'</div>' : '') +
             '<div class="pcard-foot">'+(btns ? '<span class="contactrow">'+btns+'</span>' : '<span></span>')+'<span class="furow-open">Open ›</span></div>' +
+            '<div style="display:flex;gap:8px;margin-top:10px;">' +
+              '<button type="button" class="naBtn" style="flex:1;padding:8px 10px;" data-action="quick-convert" data-id="'+p.id+'">✓ Mark converted</button>' +
+              '<button type="button" class="naBtn '+(p.declined?'on':'')+'" style="flex:1;padding:8px 10px;" data-action="quick-decline" data-id="'+p.id+'">'+(p.declined?'↺ Reopen':'✗ Not converted')+'</button>' +
+            '</div>' +
           '</div>';
         }).join('')
       )
@@ -2976,7 +3017,7 @@
   }
   function loopStuckDays(p){
     var cat = p.category;
-    if (cat!=='dinein' && cat!=='qsr'){ var a = prospectAudits(p)[0]; cat = a ? a.type : 'dinein'; }
+    if (cat!=='dinein' && cat!=='qsr' && cat!=='hotel'){ var a = prospectAudits(p)[0]; cat = a ? a.type : 'dinein'; }
     return loopStuckDaysFor(cat);
   }
   function loopDaysOnStep(p){
@@ -3320,6 +3361,7 @@
           '<div class="field" style="flex:1;"><label>Category'+req+'</label><div style="display:flex; gap:8px;">' +
             '<button type="button" class="naBtn '+(p.category==='dinein'?'on':'')+'" data-action="set-prospect-category" data-val="dinein">Dine-In</button>' +
             '<button type="button" class="naBtn '+(p.category==='qsr'?'on':'')+'" data-action="set-prospect-category" data-val="qsr">QSR</button>' +
+            '<button type="button" class="naBtn '+(p.category==='hotel'?'on':'')+'" data-action="set-prospect-category" data-val="hotel">Hotels</button>' +
           '</div></div>' +
         '</div>' +
         '<div class="field"><label for="pAddress">Address'+req+'</label><input id="pAddress" data-bind-prospect="address" value="'+esc(p.address)+'" placeholder="Full address"></div>' +
@@ -3790,12 +3832,10 @@
     var cutoff = last7DaysCutoff();
     var audits = state.history.filter(function(h){ return h.finishedAt>=cutoff.ms; }).length;
     var converted = state.prospects.filter(function(p){ return p.converted && (p.convertedAt||0)>=cutoff.ms; }).length;
-    var posted = state.contentIdeas.filter(function(c){ return c.posted && (c.postedAt||0)>=cutoff.ms; }).length;
     var worked = state.workdays.filter(function(w){ return w.date>=cutoff.iso; }).reduce(function(s,w){ return s+workdayWorkElapsed(w); }, 0);
     var parts = [];
     if (audits) parts.push(audits+' audit'+(audits===1?'':'s'));
     if (converted) parts.push(converted+' client'+(converted===1?'':'s')+' converted');
-    if (posted) parts.push(posted+' post'+(posted===1?'':'s'));
     if (worked) parts.push(fmtTime(worked)+' worked');
     if (!parts.length) return '';
     return '<div class="helper" style="margin:-6px 0 16px;">📈 This week: '+esc(parts.join(' · '))+'</div>';
@@ -4368,11 +4408,6 @@
         alerts.push({ tone: mOverdue?'bad':'warn', icon:'🤝', text: (p.name||'Unnamed client')+' — proposal meeting '+(mOverdue?'was due '+fmtDateShort(new Date(p.proposalMeetingDate+'T00:00:00').getTime()):'due today')+', follow up', action:'goto-prospect', id:p.id });
       }
     });
-    state.contentIdeas.forEach(function(c){
-      if (c.shootDate===todayStr){
-        alerts.push({ tone:'good', icon:'🎬', text: (c.topic||'Untitled idea')+' — shoot scheduled today', action:'goto-content', id:c.id });
-      }
-    });
     smCalls().forEach(function(c){
       var ct = c.contact, s = c.status||'new';
       if (!smOpen(c)) return;
@@ -4464,9 +4499,6 @@
     state.correctiveActions.forEach(function(a){
       if ((a.createdAt||0)>=todayStartMs) events.push({ t:a.createdAt, icon:'⚠️', tone:'bad', text:'Logged issue at '+(a.storeName||'—')+' — '+(a.description||'(unspecified)'), action:'go-actions' });
       if (a.done && (a.resolvedAt||0)>=todayStartMs) events.push({ t:a.resolvedAt, icon:'✓', tone:'good', text:'Fixed at '+(a.storeName||'—')+' — '+(a.description||'(unspecified)'), action:'go-actions' });
-    });
-    state.contentIdeas.forEach(function(c){
-      if (c.posted && (c.postedAt||0)>=todayStartMs) events.push({ t:c.postedAt, icon:'🎬', tone:'accent', text:'Posted "'+(c.topic||'Untitled idea')+'"', action:'goto-content', id:c.id });
     });
     state.lookups.forEach(function(l){
       if (l.done && (l.doneAt||0)>=todayStartMs) events.push({ t:l.doneAt, icon:'✔️', tone:'good', text:'Completed '+(l.category==='task'?'task':'lookup')+' — '+(l.text||'(untitled)'), action:'go-lookup' });
@@ -4560,11 +4592,6 @@
     });
     computeDueList().forEach(function(x){
       add(isoFromDate(new Date(x.dueAt)), x.overrideTime, '🗓️', 'accent', 'Re-audit due', (x.storeName||'Unnamed store')+(x.storeLocation?' · '+x.storeLocation:''), 'go-actions', '', 'schedule');
-    });
-    state.contentIdeas.forEach(function(c){
-      if (c.shootDate && !c.posted && !c.notScheduled){
-        add(c.shootDate, '', '🎬', 'good', 'Shoot: '+(c.topic||'Untitled idea'), (c.segment ? SEGMENT_LABELS[c.segment] : 'Content')+(c.area ? ' · '+contentAreaLabel(c) : ''), 'goto-content', c.id);
-      }
     });
     state.correctiveActions.forEach(function(a){
       if (!a.done && a.dueDate) add(a.dueDate, '', '🛠️', 'bad', 'Fix due: '+(a.description||'(unspecified)'), a.storeName||'', 'go-actions', '', 'corrective');
@@ -4962,7 +4989,6 @@
       state.activeProspectId = smP.id; state.activeCallId = null; state.view = 'prospects'; window.scrollTo(0,0); render();
     }
     else if (action==='go-search'){ if(!state.draft){ state.view='search'; render(); } }
-    else if (action==='go-content'){ if(!state.draft){ state.activeContentId=null; state.view='content'; render(); } }
     else if (action==='add-content'){
       var newC = { id: uid(), topic:'', insight:'', hook:'', context1:'', context2:'', cta:'', poll:'', segment:'', area:'', angles:[], shootDate:'', notScheduled:false, posted:false, postedAt:null, createdAt: Date.now() };
       state.contentIdeas.unshift(newC); persistContentIdeas();
@@ -5241,6 +5267,18 @@
       if (dp){
         dp.declined = !dp.declined; dp.declinedAt = dp.declined ? Date.now() : null;
         if (dp.declined){ dp.converted = false; dp.convertedAt = null; }
+        persistProspects(); render();
+      }
+    }
+    else if (action==='quick-convert'){
+      var qcP = findProspect(t.dataset.id);
+      if (qcP){ qcP.converted = true; qcP.convertedAt = Date.now(); qcP.declined = false; qcP.declinedAt = null; persistProspects(); render(); }
+    }
+    else if (action==='quick-decline'){
+      var qdP = findProspect(t.dataset.id);
+      if (qdP){
+        qdP.declined = !qdP.declined; qdP.declinedAt = qdP.declined ? Date.now() : null;
+        if (qdP.declined){ qdP.converted = false; qdP.convertedAt = null; }
         persistProspects(); render();
       }
     }
