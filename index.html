@@ -1629,7 +1629,16 @@
       ? 'To start, still needed: '+problems.join(', ')+'.'
       : 'The overall timer starts the moment you begin — tap a section below to time it individually.';
   }
+  // Re-read the typed fields from the page, so autofill / date pickers / change-only events can never leave the state stale.
+  function syncSetupFromDom(){
+    if (state.view!=='setup') return;
+    ['contactName','contactDesignation','contactMobile','storeName','storeLocation','auditDate','auditTime','menuItemCount'].forEach(function(k){
+      var el = app.querySelector('[data-bind="'+k+'"]');
+      if (el && typeof el.value==='string') state.setup[k] = el.value;
+    });
+  }
   function updateSetupGate(){
+    syncSetupFromDom();
     var problems = setupProblems(state.setup);
     var btn = app.querySelector('[data-action="start-audit"]');
     if (btn) btn.disabled = problems.length > 0;
@@ -1839,6 +1848,7 @@
       '</div>';
   }
 
+  function setupSig(name){ return (findSimilarStoreName(name)||'')+'|'+(previousAuditForStore(name) ? '1' : '0'); }
   function renderSetup(){
     var s = state.setup;
     var problems = setupProblems(s);
@@ -1848,7 +1858,7 @@
     var descs = { dinein:'Full-service floor & kitchen walkthrough', qsr:'Counter, drive-thru & speed-of-service', hotel:'Front desk, rooms, F&B & safety walkthrough' };
     types.forEach(function(k){ if (!icons[k]) icons[k] = '📋'; if (!descs[k]) descs[k] = 'Custom checklist'; });
     var similarName = findSimilarStoreName(s.storeName);
-    return '<main>' +
+    return '<main data-setupsig="'+esc(setupSig(s.storeName))+'">' +
       '<div class="eyebrow">New Audit</div>' +
       '<h1 style="font-size:26px;margin-top:6px;">Start a floor check</h1>' +
       '<div class="formstack" style="margin-top:16px;margin-bottom:8px;">' +
@@ -3423,7 +3433,7 @@
     var all = [];
     state.prospects.forEach(function(p){ openFollowUps(p).forEach(function(f){ all.push({ p:p, f:f, due:followUpDueAt(f) }); }); });
     if (!all.length){
-      return sh('📞','Follow-ups') + '<div class="helper" style="margin-bottom:20px;">No follow-ups scheduled. Open any client and add one under Follow-ups.</div>';
+      return '';
     }
     all.sort(function(a,b){ return a.due-b.due; });
     var overdue = all.filter(function(x){ return x.due < now; });
@@ -3473,6 +3483,20 @@
       else kind = st.improving ? 'improving' : 'flat';
     }
     return { st:st, kind:kind, age:age };
+  }
+  function renderRecentAudits(){
+    var recent = state.history.slice().sort(function(a,b){ return (b.finishedAt||0)-(a.finishedAt||0); }).slice(0, 5);
+    if (!recent.length) return '';
+    return sh('🧾','Recent audits') +
+      '<div class="card" style="padding:6px 16px;margin-bottom:20px;">' +
+        recent.map(function(h, i){
+          var pct = h.completionPct||0;
+          return '<div data-action="view-audit" data-id="'+h.id+'" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;cursor:pointer;'+(i?'border-top:1px solid var(--line);':'')+'">' +
+            '<div style="min-width:0;"><div style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(h.storeName||'Unnamed store')+'</div><div class="histmeta">'+esc(fmtAuditWhen(h.auditDate,h.auditTime))+'</div></div>' +
+            '<span class="pill '+(pct>=80?'good':'warn')+'">'+pct+'%</span>' +
+          '</div>';
+        }).join('') +
+      '</div>';
   }
   function renderParamsBoard(){
     var rows = [];
@@ -4773,6 +4797,7 @@
     var revenueMonth = rev.total;
     var t = state.targets || {revenue:0, clients:0};
     var hasTarget = (t.revenue>0) || (t.clients>0);
+    if (!hasTarget) return '';
     return '<div class="card" id="dashTargetCard" style="padding:16px; margin-bottom:20px; border:1.5px solid var(--accent); background:var(--accent-soft);">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:'+(hasTarget?'10px':'0')+';">' +
         '<div style="font-weight:800;font-size:15px;">🎯 '+esc(monthName)+' Target</div>' +
@@ -5065,12 +5090,13 @@
       '</div>' +
       renderDashboardTimeCard() +
       renderWeekInReviewLine() +
+      ((dc.today || dc.overdue || dc.week) ?
       '<button type="button" class="card dayshort" data-action="go-time">' +
         '<span class="ds"><b>'+dc.today+'</b><span>Today</span></span>' +
         '<span class="ds'+(dc.overdue?' bad':'')+'"><b>'+dc.overdue+'</b><span>Overdue</span></span>' +
         '<span class="ds"><b>'+dc.week+'</b><span>Next 7 days</span></span>' +
         '<span class="ds-go">Open The Day ›</span>' +
-      '</button>' +
+      '</button>' : '') +
       renderAlertsBanner() +
       '<div class="dashquick">' +
         '<button class="btn btn-primary" data-action="go-setup">+ New audit</button>' +
@@ -5080,7 +5106,8 @@
       renderTargetCard(monthName, revenueMonth, clientsMonth) +
       renderLoopBoard() +
       renderParamsBoard() +
-
+      renderRecentAudits() +
+      (totalActionsAll ?
       '<div class="sechead2"><span class="ic" style="background:var(--bad-soft);">🛠️</span><h2>Corrective actions</h2></div>' +
       '<div class="statgrid" style="margin-top:0;margin-bottom:10px;">' +
         '<div class="stattile"><div class="v">'+openActionsNow+'</div><div class="k">Open</div></div>' +
@@ -5088,7 +5115,7 @@
         '<div class="stattile t-good"><div class="v">'+actionsResolvedWeek+'</div><div class="k">Resolved (7d)</div></div>' +
         '<div class="stattile"><div class="v">'+resolutionPct+'%</div><div class="k">Resolved All-time</div></div>' +
       '</div>' +
-      '<button class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:22px;" data-action="go-actions">Open actions in The Day →</button>' +
+      '<button class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:22px;" data-action="go-actions">Open actions in The Day →</button>' : '') +
 
       sparkHtml +
     '</main>';
@@ -5638,7 +5665,8 @@
       render();
     }
     else if (action==='start-audit'){
-      if (setupProblems(state.setup).length) return;
+      syncSetupFromDom();
+      if (setupProblems(state.setup).length){ updateSetupGate(); return; }
       state.draft = newDraft(state.setup.type, state.setup.storeName, state.setup.storeLocation, state.setup.contactName, state.setup.contactDesignation, state.setup.contactMobile, state.setup.auditDate, state.setup.auditTime, state.setup.selectedSections, state.setup.menuItemCount, state.setup.mode);
       state.draft.inquiry = cleanInquiry(state.setup.inquiry);
       var startSvc = state.setup.serviceId ? findService(state.setup.serviceId) : null;
@@ -6390,9 +6418,17 @@
     if (state.view==='setup') updateSetupGate();
   });
 
+  app.addEventListener('focusout', function(){ if (state.view==='setup') updateSetupGate(); });
+
   app.addEventListener('change', function(e){
     var el = e.target;
-    if (el.dataset.bind==='storeName'){ render(); }
+    if (state.view==='setup' && el.dataset.bind && el.dataset.bind!=='storeName' && el.dataset.bind!=='serviceId'){ updateSetupGate(); }
+    if (el.dataset.bind==='storeName'){
+      // Only redraw when the suggestion / audit-length card would actually change, so a tap on Start is never swallowed by a re-render.
+      syncSetupFromDom();
+      var mainEl = app.querySelector('main[data-setupsig]');
+      if (!mainEl || mainEl.getAttribute('data-setupsig') !== setupSig(el.value)) render(); else updateSetupGate();
+    }
     else if (el.dataset.bindItem==='numvalue' && state.draft){
       var nvSec = state.draft.sections.filter(function(s){ return s.id===el.dataset.sec; })[0];
       var nvIt = nvSec && nvSec.items.filter(function(i){ return i.id===el.dataset.item; })[0];
