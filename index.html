@@ -1984,6 +1984,21 @@
     '</div>';
   }
 
+  function renderAuditMetrics(d){
+    if (!d.metrics || !d.metrics.length) return '';
+    var svc = d.serviceId ? findService(d.serviceId) : null;
+    return '<div class="card" style="margin-bottom:14px;padding:14px 16px;border:1.5px solid var(--accent);">' +
+      '<div style="font-weight:700;margin-bottom:4px;">📈 Metrics to record'+(svc?' — '+esc(svc.name):'')+'</div>' +
+      '<div class="helper" style="margin:0 0 10px;">Enter the current figure for each. They are saved as readings on this client when you complete the audit.</div>' +
+      d.metrics.map(function(m, i){
+        var last = lastReadingFor(d.storeName, m.name);
+        return '<div class="field" style="margin-bottom:10px;"><label for="met-'+i+'">'+esc(m.name)+(m.unit?' ('+esc(m.unit)+')':'')+'</label>' +
+          '<input id="met-'+i+'" type="number" step="any" inputmode="decimal" data-bind-metric="'+i+'" placeholder="Current value" value="'+esc(m.value)+'">' +
+          (last ? '<div class="histmeta" style="margin-top:4px;">Last reading: '+esc(last.value)+(m.unit?' '+esc(m.unit):'')+' on '+esc(fmtDateShort(new Date(last.date+'T00:00:00').getTime()))+'</div>' : '') +
+        '</div>';
+      }).join('') +
+    '</div>';
+  }
   function renderAudit(d){
     var tmpl = state.templates[d.type];
     var op = overallProgress(d);
@@ -2055,7 +2070,7 @@
           '<button class="btn btn-text btn-sm btn-danger" data-action="discard-audit">Discard</button>' +
         '</div>' +
       '</div></div>' +
-      '<main style="padding-top:2px;">' + renderPriorIssuesPanel(d) + renderInquiryPanel(d) + secHtml + '</main>' +
+      '<main style="padding-top:2px;">' + renderPriorIssuesPanel(d) + renderInquiryPanel(d) + renderAuditMetrics(d) + secHtml + '</main>' +
       '<div class="footerbar"><div class="inner"><button class="btn btn-primary" data-action="finish-audit">Finish Audit</button></div></div>';
   }
 
@@ -2148,6 +2163,8 @@
       startedAt:d.startedAt, finishedAt:d.finishedAt, remark:d.remark,
       totalMs:d.overall.accumMs, completionPct:op.pct, checked:op.checked, total:op.total,
       prevScore: prev ? prev.completionPct : null, prevAuditDate: prev ? prev.auditDate : null,
+      serviceId: d.serviceId||'',
+      metrics: (d.metrics||[]).filter(function(m){ return m.value!=='' && !isNaN(parseFloat(m.value)); }).map(function(m){ return { name:m.name, unit:m.unit||'', value:m.value }; }),
       sections: d.sections.map(function(s){
         var p=sectionProgress(s);
         return { id:s.id, name:s.name, accumMs:s.accumMs, checked:p.checked, total:p.total, na:p.na, items:s.items.slice(), issue:(s.issue||'').trim() };
@@ -2200,6 +2217,8 @@
       '<div class="card" style="padding:4px 16px;margin-bottom:20px;">' +
         rec.sections.filter(sectionWasAudited).map(function(s){ return '<div class="sumrow"><span class="k">'+esc(s.name)+'</span><span class="v">'+fmtTime(s.accumMs)+' · '+s.checked+'/'+s.total+'</span></div>'; }).join('') +
       '</div>' +
+      ((rec.metrics||[]).length ? sh('📈','Metrics recorded') +
+        '<div class="card" style="padding:4px 16px;margin-bottom:16px;">' + rec.metrics.map(function(m){ return '<div class="sumrow"><span class="k">'+esc(m.name)+'</span><span class="v">'+esc(m.value)+(m.unit?' '+esc(m.unit):'')+'</span></div>'; }).join('') + '</div>' : '') +
       sh('📋','Full checklist responses') +
       rec.sections.filter(sectionWasAudited).map(function(s){
         return '<div class="card" style="padding:4px 16px;margin-bottom:10px;">' +
@@ -2827,6 +2846,19 @@
     var areas = (svc.auditAreas && svc.auditAreas.length) ? svc.auditAreas.join(', ') : 'All areas';
     var mets = serviceMetricNames(svc);
     return 'Audits: '+areas+(mets.length ? ' · Tracks: '+mets.join(', ') : '');
+  }
+  function serviceMetricList(svc){
+    return ((svc && svc.metrics) || []).map(function(id){
+      var l = state.paramLibrary.filter(function(x){ return x.id===id; })[0];
+      return l ? { libId:l.id, name:l.name, unit:l.unit||'', better:l.better||'lower', value:'' } : null;
+    }).filter(Boolean);
+  }
+  function lastReadingFor(storeName, metricName){
+    var p = state.prospects.filter(function(x){ return norm(x.name)===norm(storeName); })[0];
+    var prm = p && (p.parameters||[]).filter(function(x){ return norm(x.name)===norm(metricName); })[0];
+    if (!prm) return null;
+    var rs = state.readings.filter(function(r){ return r.clientId===p.id && r.paramId===prm.id; }).sort(function(a,b){ return (b.date||'').localeCompare(a.date||'') || (b.createdAt||0)-(a.createdAt||0); });
+    return rs[0] || null;
   }
   function addServiceMetrics(p, svc){
     if (!p || !svc) return;
@@ -5609,6 +5641,9 @@
       if (setupProblems(state.setup).length) return;
       state.draft = newDraft(state.setup.type, state.setup.storeName, state.setup.storeLocation, state.setup.contactName, state.setup.contactDesignation, state.setup.contactMobile, state.setup.auditDate, state.setup.auditTime, state.setup.selectedSections, state.setup.menuItemCount, state.setup.mode);
       state.draft.inquiry = cleanInquiry(state.setup.inquiry);
+      var startSvc = state.setup.serviceId ? findService(state.setup.serviceId) : null;
+      state.draft.serviceId = startSvc ? startSvc.id : '';
+      state.draft.metrics = serviceMetricList(startSvc);
       state.setup.inquiry = [];
       state.setup.mode = 'full';
       persistDraft();
@@ -5804,6 +5839,16 @@
         linkedP.nextNote = '';
         linkedP.nextData = {};
       }
+      if (linkedP && d.metrics && d.metrics.length){
+        linkedP.parameters = linkedP.parameters || [];
+        d.metrics.forEach(function(m){
+          var mv = parseFloat(m.value);
+          if (m.value==='' || isNaN(mv)) return;
+          var prm = linkedP.parameters.filter(function(x){ return norm(x.name)===norm(m.name); })[0];
+          if (!prm){ prm = { id: uid(), name:m.name, unit:m.unit||'', better:m.better||'lower', target:'', createdAt: Date.now() }; linkedP.parameters.push(prm); }
+          state.readings.push({ id: uid(), clientId: linkedP.id, paramId: prm.id, value: mv, date: d.auditDate || todayISO(), note: 'From audit', createdAt: Date.now() });
+        });
+      }
       if (linkedP && state.setup.serviceId && !linkedP.servicesOffered){
         linkedP.servicesOffered = state.setup.serviceId;
         scheduleServiceFollowup(linkedP, findService(state.setup.serviceId));
@@ -5814,6 +5859,7 @@
       if (linkedP){
         mergeInquiryInto(linkedP, d.inquiry, rec.id);
         persistProspects();
+        if (d.metrics && d.metrics.length) persistReadings();
         state.activeProspectId = linkedP.id;
         state.view = 'prospects'; render();
       } else {
@@ -6169,6 +6215,10 @@
     else if (el.dataset.bind === 'witnessName' && state.draft){ state.draft.witnessName = el.value; persistDraft(); }
     else if (el.dataset.bind === 'witnessDesignation' && state.draft){ state.draft.witnessDesignation = el.value; persistDraft(); }
     else if (el.dataset.bind === 'witnessMobile' && state.draft){ state.draft.witnessMobile = el.value; persistDraft(); }
+    else if (el.dataset.bindMetric !== undefined && state.draft){
+      var bm = state.draft.metrics && state.draft.metrics[parseInt(el.dataset.bindMetric,10)];
+      if (bm){ bm.value = el.value; persistDraft(); }
+    }
     else if (el.dataset.fuEditField){
       if (state.fuEdit) state.fuEdit[el.dataset.fuEditField] = el.value;
     }
