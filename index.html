@@ -119,6 +119,7 @@
   .field input:focus, .field textarea:focus, .field select:focus, button:focus-visible, .navbtn:focus-visible{outline:2px solid var(--accent); outline-offset:1px;}
   input:focus-visible, textarea:focus-visible, select:focus-visible{outline:2px solid var(--accent); outline-offset:1px;}
   .field textarea{resize:vertical; min-height:88px; line-height:1.45;}
+  .field textarea.autogrow{resize:none; overflow:hidden; word-wrap:break-word;}
 
   /* setup */
   .typegrid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:14px 0 20px;}
@@ -1515,7 +1516,7 @@
     }
     saveNav();
     if (navScrollY){ var ny = navScrollY; navScrollY = 0; window.scrollTo(0, ny); }
-    var lookupTAs = app.querySelectorAll('.lookuptext, .edtext, .inqtext');
+    var lookupTAs = app.querySelectorAll('.lookuptext, .edtext, .inqtext, .autogrow');
     for (var lti=0; lti<lookupTAs.length; lti++){
       lookupTAs[lti].style.height = 'auto';
       lookupTAs[lti].style.height = lookupTAs[lti].scrollHeight+'px';
@@ -2631,6 +2632,7 @@
         return '<div class="card histcard" style="padding:14px 16px;margin-bottom:10px;cursor:pointer;" data-action="toggle-service-open" data-svc="'+s.id+'" role="button" tabindex="0">' +
           '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;"><div style="font-weight:800;font-size:15px;line-height:1.3;">'+esc(s.name)+'</div><span class="furow-open" style="flex:none;">Edit ›</span></div>' +
           '<div class="histmeta" style="margin-top:4px;">'+esc(servicePriceLine(s))+'</div>' +
+          (s.priceNote ? '<div class="histmeta" style="margin-top:4px;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:anywhere;">'+esc(s.priceNote)+'</div>' : '') +
           '<div class="histmeta" style="margin-top:2px;">'+tm.icon+' '+esc(tm.label)+(vi.days||s.visitInterval==='per-visit' ? ' · '+esc(vi.label) : '')+' · '+((s.auditAreas||[]).length ? s.auditAreas.length+' audit area'+(s.auditAreas.length===1?'':'s') : 'all areas')+((s.metrics||[]).length ? ' · '+s.metrics.length+' metric'+(s.metrics.length===1?'':'s') : '')+'</div>' +
         '</div>';
       }
@@ -2658,7 +2660,7 @@
         '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
           fieldNum('Retainer min (₹/mo)', 'retainerMin', s) + fieldNum('Retainer max (₹/mo)', 'retainerMax', s) + fieldNum('Min months', 'retainerMinMonths', s) +
         '</div>' +
-        '<div class="field" style="margin-bottom:0;"><label>Notes — QSR scaling, per-outlet fees, GST, anything price-shaped that doesn\'t fit the boxes above</label><textarea data-svc-field="priceNote" data-svc="'+s.id+'" placeholder="e.g. Scale down ~20% for QSR. Excludes 18% GST.">'+esc(s.priceNote||'')+'</textarea></div>' +
+        '<div class="field" style="margin-bottom:0;"><label>Notes — QSR scaling, per-outlet fees, GST, anything price-shaped that doesn\'t fit the boxes above</label><textarea class="autogrow" data-svc-field="priceNote" data-svc="'+s.id+'" placeholder="e.g. Scale down ~20% for QSR. Excludes 18% GST.">'+esc(s.priceNote||'')+'</textarea></div>' +
         '<button type="button" class="btn btn-primary btn-sm" style="margin-top:14px;" data-action="toggle-service-open" data-svc="'+s.id+'">Done</button>' +
       '</div>';
     }
@@ -2682,8 +2684,10 @@
       '<div class="tabs">' +
         '<button class="tab '+(tab==='corrective'?'on':'')+'" data-action="actions-tab" data-tab="corrective">Corrective Actions</button>' +
         '<button class="tab '+(tab==='schedule'?'on':'')+'" data-action="actions-tab" data-tab="schedule">Re-audit Due</button>' +
+        '<button class="tab '+(tab==='task'?'on':'')+'" data-action="actions-tab" data-tab="task">Tasks</button>' +
+        '<button class="tab '+(tab==='lookup'?'on':'')+'" data-action="actions-tab" data-tab="lookup">Lookups</button>' +
       '</div>' +
-      (tab==='schedule' ? renderDueList() : renderCorrectiveList()) +
+      (tab==='schedule' ? renderDueList() : (tab==='task' || tab==='lookup') ? lookupInner(tab) : renderCorrectiveList()) +
     '</main>';
   }
 
@@ -3493,7 +3497,8 @@
           var pct = h.completionPct||0;
           return '<div data-action="view-audit" data-id="'+h.id+'" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;cursor:pointer;'+(i?'border-top:1px solid var(--line);':'')+'">' +
             '<div style="min-width:0;"><div style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(h.storeName||'Unnamed store')+'</div><div class="histmeta">'+esc(fmtAuditWhen(h.auditDate,h.auditTime))+'</div></div>' +
-            '<span class="pill '+(pct>=80?'good':'warn')+'">'+pct+'%</span>' +
+            '<span style="display:flex;align-items:center;gap:6px;flex:none;"><span class="pill '+(pct>=80?'good':'warn')+'">'+pct+'%</span>' +
+            '<button class="iconbtn" data-action="delete-recent-audit" data-id="'+h.id+'" title="Remove this audit" aria-label="Remove this audit">✕</button></span>' +
           '</div>';
         }).join('') +
       '</div>';
@@ -4164,29 +4169,23 @@
   }
   // Today's check-in/break/drive/outing split, shown on the dashboard as a quick summary (tap to open The Day).
   function renderDashboardTimeCard(){
+    var w = openWorkday();
+    var active = w ? workdayActiveAway(w) : null;
     var todayStr = todayISO();
-    var days = state.workdays.filter(function(w){ return w.date===todayStr; });
-    if (!days.length) return '';
-    var work = days.reduce(function(s,w){ return s+workdayWorkElapsed(w); }, 0);
-    var awayByCat = {};
-    AWAY_CATS.forEach(function(c){ awayByCat[c.key] = days.reduce(function(s,w){ return s+workdayAwayElapsed(w, c.key); }, 0); });
-    var totalAway = AWAY_CATS.reduce(function(s,c){ return s+awayByCat[c.key]; }, 0);
-    var total = work+totalAway;
-    var openW = days.filter(function(w){ return !w.checkOutAt; })[0];
-    var activeKey = openW ? workdayActiveAway(openW) : null;
-    var statusPill = openW ? '<span class="pill '+(activeKey?'warn':'good')+'" style="margin-bottom:10px;display:inline-block;">'+(activeKey?awayCatOf(activeKey).icon+' '+esc(awayCatOf(activeKey).verb):'🟢 Working')+'</span>' : '<span class="pill" style="margin-bottom:10px;display:inline-block;">Checked out</span>';
-    return sh('⏱️',"Today's Time") +
-      '<div class="card" style="padding:14px 16px;margin-bottom:20px;cursor:pointer;" data-action="go-time">' +
-        statusPill +
-        '<div class="statgrid" style="margin:0;">' +
-          '<div class="stattile"><div class="v mono" data-dashwtimer="work">'+fmtTime(work)+'</div><div class="k">Working</div></div>' +
-          '<div class="stattile"><div class="v mono" data-dashwtimer="away">'+fmtTime(totalAway)+'</div><div class="k">Away</div></div>' +
-          '<div class="stattile t-accent"><div class="v mono" data-dashwtimer="total">'+fmtTime(total)+'</div><div class="k">Total</div></div>' +
-        '</div>' +
-        (totalAway>0 ? '<div class="histmeta" style="margin-top:10px;">' +
-          AWAY_CATS.filter(function(c){ return awayByCat[c.key]>0; }).map(function(c){ return c.icon+' '+esc(c.label)+' '+fmtTime(awayByCat[c.key]); }).join(' · ') +
-        '</div>' : '') +
-      '</div>';
+    var doneToday = !w && state.workdays.some(function(x){ return x.date===todayStr && x.checkOutAt; });
+    return sh('⏱️',"Check in") +
+      (w ? renderWorkdayCard(w, true) : '<div class="empty" style="padding:18px 14px;margin-bottom:12px;"><div class="big">⏱️</div>'+(doneToday ? 'Checked out for today.' : 'Not checked in yet today.')+'</div>') +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px;">' +
+        (!w
+          ? '<button class="btn btn-primary" style="flex:1;" data-action="check-in">✅ Check in'+(doneToday ? ' again' : '')+'</button>'
+          : (active
+              ? '<button class="btn btn-primary" style="flex:1 1 100%;" data-action="end-away">▶ End '+esc(awayCatOf(active).label.toLowerCase())+'</button>'
+              : AWAY_CATS.map(function(c){ return '<button class="btn btn-ghost" style="flex:1 1 45%;" data-action="start-away" data-cat="'+c.key+'">'+c.icon+' '+esc(c.label)+'</button>'; }).join('')
+            ) +
+            '<button class="btn btn-ghost" style="flex:1 1 100%;" data-action="check-out">🚪 Check out</button>'
+        ) +
+      '</div>' +
+      '<button class="btn btn-text btn-sm" style="width:100%;margin-bottom:20px;" data-action="go-timelog">⏱️ Time log — last 7 days &amp; past days →</button>';
   }
   function renderTimeDist(w){
     var work = workdayWorkElapsed(w);
@@ -4270,12 +4269,14 @@
         : '<div class="empty"><div class="big">✅</div>Nothing overdue — you\'re all caught up.</div>';
     }
     else if (tab==='actions'){
-      var at = state.actionsTab==='schedule' ? 'schedule' : 'corrective';
+      var at = ({schedule:1, task:1, lookup:1})[state.actionsTab] ? state.actionsTab : 'corrective';
       body = '<div class="seg">' +
-          '<button class="'+(at==='corrective'?'on':'')+'" data-action="actions-tab" data-tab="corrective">🛠️ Corrective actions</button>' +
-          '<button class="'+(at==='schedule'?'on':'')+'" data-action="actions-tab" data-tab="schedule">🗓️ Re-audit due</button>' +
+          '<button class="'+(at==='corrective'?'on':'')+'" data-action="actions-tab" data-tab="corrective">🛠️ Corrective</button>' +
+          '<button class="'+(at==='schedule'?'on':'')+'" data-action="actions-tab" data-tab="schedule">🗓️ Re-audit</button>' +
+          '<button class="'+(at==='task'?'on':'')+'" data-action="actions-tab" data-tab="task">✅ Tasks ('+lookupOpenN('task')+')</button>' +
+          '<button class="'+(at==='lookup'?'on':'')+'" data-action="actions-tab" data-tab="lookup">🔎 Lookups ('+lookupOpenN('lookup')+')</button>' +
         '</div>' +
-        (at==='schedule' ? renderDueList() : renderCorrectiveList());
+        (at==='schedule' ? renderDueList() : (at==='task' || at==='lookup') ? lookupInner(at) : renderCorrectiveList());
     }
     else body = renderDayTimeLog();
     var todayLabel = new Date().toLocaleDateString(undefined,{weekday:'long', month:'short', day:'numeric'});
@@ -4294,18 +4295,7 @@
     var w = openWorkday();
     var active = w ? workdayActiveAway(w) : null;
     var items = g.days[0].items;
-    return (w ? renderWorkdayCard(w, true) : '<div class="empty" style="padding:22px 14px;margin-bottom:14px;"><div class="big">⏱️</div>Not checked in yet today.</div>') +
-      '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px;">' +
-        (!w
-          ? '<button class="btn btn-primary" style="flex:1;" data-action="check-in">✅ Check in</button>'
-          : (active
-              ? '<button class="btn btn-primary" style="flex:1 1 100%;" data-action="end-away">▶ End '+esc(awayCatOf(active).label.toLowerCase())+'</button>'
-              : AWAY_CATS.map(function(c){ return '<button class="btn btn-ghost" style="flex:1 1 45%;" data-action="start-away" data-cat="'+c.key+'">'+c.icon+' '+esc(c.label)+'</button>'; }).join('')
-            ) +
-            '<button class="btn btn-ghost" style="flex:1 1 100%;" data-action="check-out">🚪 Check out</button>'
-        ) +
-        '<button class="btn btn-text btn-sm" style="flex:1 1 100%;" data-action="day-tab" data-tab="time">⏱️ Time log — last 7 days &amp; past days →</button>' +
-      '</div>' +
+    return '<button type="button" class="card dayalert" data-action="go-dashboard">⏱️ Check in, breaks &amp; time log now live on the Dashboard <span style="margin-left:auto;">Open →</span></button>' +
       (g.overdue.length ? '<button type="button" class="card dayalert" data-action="day-tab" data-tab="overdue">⚠️ <b>'+g.overdue.length+' overdue</b> from earlier days <span style="margin-left:auto;">View →</span></button>' : '') +
       sh('📋','Today\'s agenda') +
       (items.length
@@ -4664,19 +4654,17 @@
   }
   function smNewCount(){ return smCalls().filter(function(c){ return (c.status||'new')==='new'; }).length; }
 
-  function renderLookup(){
+  function lookupGroups(){
     function sortFn(a,b){ return (b.createdAt||0)-(a.createdAt||0); }
-    var groups = {
+    return {
       task:   state.lookups.filter(function(l){ return lookupGroup(l)==='task'; }).sort(sortFn),
       lookup: state.lookups.filter(function(l){ return lookupGroup(l)==='lookup'; }).sort(sortFn)
     };
-    var openN = function(k){ return groups[k].filter(function(l){ return !l.done; }).length; };
+  }
+  function lookupOpenN(k){ return lookupGroups()[k].filter(function(l){ return !l.done; }).length; }
+  function renderLookup(){
     var tab = state.lookupTab==='lookup' ? 'lookup' : 'task';
-    var items = groups[tab];
-    var open = items.filter(function(l){ return !l.done; });
-    var done = items.filter(function(l){ return l.done; });
-    var showDone = !!state.lookupShowDone;
-    var noun = tab==='task' ? 'task' : 'lookup';
+    var openN = lookupOpenN;
     return '<main>' +
       '<div class="eyebrow">Lookup</div>' +
       '<h1 style="font-size:26px;margin-top:6px;margin-bottom:6px;">Tasks &amp; Lookup</h1>' +
@@ -4685,7 +4673,17 @@
         '<button class="tab '+(tab==='task'?'on':'')+'" data-action="lookup-tab" data-tab="task">✅ Tasks<span class="tabcount">'+openN('task')+'</span></button>' +
         '<button class="tab '+(tab==='lookup'?'on':'')+'" data-action="lookup-tab" data-tab="lookup">🔎 Lookups<span class="tabcount">'+openN('lookup')+'</span></button>' +
       '</div>' +
-      '<div class="statgrid" style="margin-top:0;">' +
+      lookupInner(tab) +
+    '</main>';
+  }
+  function lookupInner(tab){
+    var groups = lookupGroups();
+    var items = groups[tab];
+    var open = items.filter(function(l){ return !l.done; });
+    var done = items.filter(function(l){ return l.done; });
+    var showDone = !!state.lookupShowDone;
+    var noun = tab==='task' ? 'task' : 'lookup';
+    return '<div class="statgrid" style="margin-top:0;">' +
         '<div class="stattile t-accent"><div class="v">'+open.length+'</div><div class="k">Open</div></div>' +
         '<div class="stattile t-good"><div class="v">'+done.length+'</div><div class="k">Done</div></div>' +
       '</div>' +
@@ -4696,8 +4694,7 @@
       (done.length ? (
         '<button class="btn btn-text" style="margin-top:12px;" data-action="toggle-lookup-showdone">'+(showDone?'Hide':'Show')+' '+done.length+' done</button>' +
         (showDone ? '<div class="cardstack" style="margin-top:8px;">'+done.map(lookupCard).join('')+'</div>' : '')
-      ) : '') +
-    '</main>';
+      ) : '');
   }
 
   function computeAlerts(){
@@ -4754,7 +4751,7 @@
     if (owAlert){
       var hoursOpen = (nowMs-owAlert.checkInAt)/3600000;
       if (owAlert.date!==todayStr || hoursOpen>16){
-        alerts.push({ tone:'bad', icon:'⏱️', text: 'Still checked in since '+fmtDateShort(owAlert.checkInAt)+' '+fmtClock(owAlert.checkInAt)+' — check out if the day is done', action:'go-time' });
+        alerts.push({ tone:'bad', icon:'⏱️', text: 'Still checked in since '+fmtDateShort(owAlert.checkInAt)+' '+fmtClock(owAlert.checkInAt)+' — check out if the day is done', action:'go-dashboard' });
       }
     }
     return alerts;
@@ -5049,26 +5046,6 @@
     var resolvedTotal = state.correctiveActions.filter(function(a){ return a.done; }).length;
     var resolutionPct = totalActionsAll ? Math.round(resolvedTotal/totalActionsAll*100) : 0;
 
-    var scoreHistory = state.history.slice().sort(function(a,b){ return a.finishedAt-b.finishedAt; }).slice(-10);
-    var sparkHtml = '';
-    if (scoreHistory.length >= 2){
-      var sw = 300, sh = 64, spad = 6;
-      var spts = scoreHistory.map(function(h,i){
-        var x = spad + (i/(scoreHistory.length-1)) * (sw-2*spad);
-        var y = sh - spad - (h.completionPct/100) * (sh-2*spad);
-        return [x,y];
-      });
-      var spath = spts.map(function(p,i){ return (i===0?'M':'L')+p[0].toFixed(1)+','+p[1].toFixed(1); }).join(' ');
-      var slast = spts[spts.length-1];
-      sparkHtml = '<div class="card dashcard" style="margin-bottom:20px;">' +
-        '<div class="dashcard-title">Score trend (last '+scoreHistory.length+' audits)</div>' +
-        '<svg viewBox="0 0 '+sw+' '+sh+'" width="100%" height="'+sh+'" preserveAspectRatio="none">' +
-          '<path d="'+spath+'" fill="none" stroke="var(--accent)" stroke-width="2"/>' +
-          '<circle cx="'+slast[0].toFixed(1)+'" cy="'+slast[1].toFixed(1)+'" r="3.5" fill="var(--accent)"/>' +
-        '</svg>' +
-      '</div>';
-    }
-
     var newCalls = smNewCount();
     var dc = dayCounts();
     // Headline = the single most urgent thing, in the same order the day should be worked.
@@ -5116,8 +5093,6 @@
         '<div class="stattile"><div class="v">'+resolutionPct+'%</div><div class="k">Resolved All-time</div></div>' +
       '</div>' +
       '<button class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:22px;" data-action="go-actions">Open actions in The Day →</button>' : '') +
-
-      sparkHtml +
     '</main>';
   }
 
@@ -5132,7 +5107,7 @@
         if (el) el.textContent = fmtTime(sectionElapsed(sec));
       });
     }
-    if (state.view==='time'){
+    if (state.view==='time' || state.view==='dashboard'){
       var ow = openWorkday();
       if (ow){
         var work = workdayWorkElapsed(ow);
@@ -5244,6 +5219,7 @@
     else if (action==='close-sidebar'){ state.sidebarOpen = false; render(); }
     else if (action==='go-dashboard'){ if(!state.draft){ state.view='dashboard'; render(); } }
     else if (action==='go-week'){ if(!state.draft){ state.dayTab = 'week'; state.view='time'; window.scrollTo(0,0); render(); } }
+    else if (action==='go-timelog'){ if(!state.draft){ state.dayTab = 'time'; state.view='time'; window.scrollTo(0,0); render(); } }
     else if (action==='go-time'){ if(!state.draft){ state.dayTab = 'today'; state.view='time'; window.scrollTo(0,0); render(); } }
     else if (action==='day-tab'){ state.dayTab = t.dataset.tab; window.scrollTo(0,0); render(); }
     else if (action==='week-tab'){ state.weekTab = t.dataset.tab; render(); }
@@ -5592,6 +5568,13 @@
       delete state.reauditOverrides[t.dataset.key];
       persistReauditOverrides(); render();
     }
+    else if (action==='delete-recent-audit'){
+      var dra = state.history.filter(function(h){ return h.id===t.dataset.id; })[0];
+      if (dra && window.confirm('Remove the audit for "'+(dra.storeName||'Unnamed store')+'" ('+fmtAuditWhen(dra.auditDate, dra.auditTime)+')? This cannot be undone.')){
+        state.history = state.history.filter(function(h){ return h.id!==dra.id; });
+        persistHistory(); render();
+      }
+    }
     else if (action==='delete-store-audits'){
       if (window.confirm('Delete ALL audit history for "'+t.dataset.name+'"? This cannot be undone.')){
         var dkey = t.dataset.key;
@@ -5913,7 +5896,7 @@
       }
     }
     else if (action==='toggle-show-done'){ state.actionsShowDone = !state.actionsShowDone; render(); }
-    else if (action==='actions-tab'){ state.actionsTab = t.dataset.tab; render(); }
+    else if (action==='actions-tab'){ state.actionsTab = t.dataset.tab; if (t.dataset.tab==='task' || t.dataset.tab==='lookup') state.lookupTab = t.dataset.tab; render(); }
     else if (action==='prospects-tab'){ state.prospectsTab = t.dataset.tab; state.activeCallId = null; render(); }
     else if (action==='export-csv'){
       var csv = buildHistoryCSV();
