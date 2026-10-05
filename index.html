@@ -2673,7 +2673,8 @@
         '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
         '<div class="field" style="flex:1;min-width:100px;margin-bottom:0;"><label>First call</label><input type="time" data-plan="start" value="'+esc(c.start)+'"></div>' +
         '<div class="field" style="flex:1;min-width:100px;margin-bottom:0;"><label>Last call starts</label><input type="time" data-plan="last" value="'+esc(c.last)+'"></div>' +
-        '<div class="field" style="flex:1;min-width:100px;margin-bottom:0;"><label>Gap (min)</label><input type="number" min="15" step="15" inputmode="numeric" data-plan="gap" value="'+c.gap+'"></div></div></div>'; })() +
+        '<div class="field" style="flex:1;min-width:100px;margin-bottom:0;"><label>Gap (min)</label><input type="number" min="15" step="15" inputmode="numeric" data-plan="gap" value="'+c.gap+'"></div></div>' +
+        '<button type="button" class="btn btn-primary btn-sm" style="width:100%;margin-top:14px;" data-action="replan-followups">🗓️ Re-plan follow-ups now</button></div>'; })() +
 
       '<div class="card" style="padding:14px 16px;margin-bottom:28px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">' +
         '<div><div style="font-weight:700;">Services &amp; pricing catalog</div><div class="histmeta">Moved to its own page — packages, price ranges, visit cadence and tracking method.</div></div>' +
@@ -3626,8 +3627,7 @@
   }
   function renderReplanButton(){
     var n = computeFollowUpPlan().length;
-    if (!n) return '';
-    return '<button type="button" class="btn btn-ghost btn-sm" style="width:100%;margin-top:10px;" data-action="replan-followups">🗓️ Re-plan follow-ups ('+n+' to move)</button>';
+    return '<button type="button" class="btn btn-ghost btn-sm" style="width:100%;margin-top:10px;" data-action="replan-followups">🗓️ Re-plan follow-ups ('+(n ? n+' to move' : 'all within limits')+')</button>';
   }
   function renderFollowUpBoard(){
     var now = Date.now(), todayStr = todayISO();
