@@ -711,6 +711,14 @@
     if (!Array.isArray(svc.metrics)) svc.metrics = d.metrics.slice();
     if (!Array.isArray(svc.trackingOptions)) svc.trackingOptions = (svc.trackingMethod==='paper' || svc.trackingMethod==='sheets' || svc.trackingMethod==='app') ? [{ key:svc.trackingMethod, oneTimeAdd:0, retainerAdd:0 }] : [];
   }
+  // Tracking add-on prices live in Settings (stored with the targets so they sync and back up with them); a package can override its own.
+  function trackingDefault(key){ var t = (state.targets && state.targets.trackingPrices) || {}; return t[key] || { oneTime:0, retainer:0 }; }
+  function trackingAdd(opt, isRet){
+    var own = Number(isRet ? opt.retainerAdd : opt.oneTimeAdd) || 0;
+    if (own>0) return own;
+    var d = trackingDefault(opt.key);
+    return Number(isRet ? d.retainer : d.oneTime) || 0;
+  }
   function serviceTrackingOpts(svc){ return (svc && svc.trackingOptions) || []; }
   function trackingOpt(svc, key){ return serviceTrackingOpts(svc).filter(function(o){ return o.key===key; })[0] || null; }
   DEFAULT_SERVICES.forEach(fillServiceAuditFields);
@@ -2571,6 +2579,19 @@
       '</div>' +
       '<div class="field" style="max-width:150px;margin-bottom:28px;"><label>Currency symbol</label><input type="text" maxlength="3" data-pricing="currency" value="'+esc(state.pricing.currency)+'"></div>' +
 
+      '<h1 style="font-size:20px;margin:0 0 4px;">Tracking prices</h1>' +
+      '<div class="helper" style="margin-bottom:12px;margin-top:6px;">What each tracking method costs on top of a package. When a client opts for tracking, this is added to their quote and final price. You can override it for a single package on the Services page.</div>' +
+      '<div class="card" style="padding:4px 16px;margin-bottom:28px;">' +
+        TRACKING_METHODS.filter(function(tm){ return tm.key!=='n/a'; }).map(function(tm, i){
+          var d = trackingDefault(tm.key);
+          return '<div style="padding:12px 0;'+(i?'border-top:1px solid var(--line);':'')+'"><div style="font-weight:700;margin-bottom:8px;">'+tm.icon+' '+esc(tm.label)+'</div>' +
+            '<div style="display:flex;gap:10px;">' +
+              '<div class="field" style="flex:1;margin-bottom:0;"><label>One-time + ('+esc(state.pricing.currency)+')</label><input type="number" min="0" inputmode="numeric" data-trackprice="'+tm.key+'.oneTime" value="'+(d.oneTime||0)+'"></div>' +
+              '<div class="field" style="flex:1;margin-bottom:0;"><label>Monthly + ('+esc(state.pricing.currency)+'/mo)</label><input type="number" min="0" inputmode="numeric" data-trackprice="'+tm.key+'.retainer" value="'+(d.retainer||0)+'"></div>' +
+            '</div></div>';
+        }).join('') +
+      '</div>' +
+
       '<div class="card" style="padding:14px 16px;margin-bottom:28px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">' +
         '<div><div style="font-weight:700;">Services &amp; pricing catalog</div><div class="histmeta">Moved to its own page — packages, price ranges, visit cadence and tracking method.</div></div>' +
         '<button class="btn btn-ghost btn-sm" data-action="go-services">Open Services →</button>' +
@@ -2651,9 +2672,9 @@
         '</div>' +
         serviceTrackingOpts(s).map(function(o){
           var tm = trackingMethodOf(o.key);
-          return '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;align-items:flex-end;"><div style="flex:1 1 100%;font-weight:700;font-size:13px;">'+tm.icon+' '+esc(tm.label)+' — added to the package price</div>' +
-            '<div class="field" style="flex:1;min-width:110px;margin-bottom:0;"><label>One-time + (₹)</label><input type="number" min="0" inputmode="numeric" data-svc-track="oneTimeAdd" data-svc="'+s.id+'" data-key="'+o.key+'" value="'+(o.oneTimeAdd||0)+'"></div>' +
-            '<div class="field" style="flex:1;min-width:110px;margin-bottom:0;"><label>Retainer + (₹/mo)</label><input type="number" min="0" inputmode="numeric" data-svc-track="retainerAdd" data-svc="'+s.id+'" data-key="'+o.key+'" value="'+(o.retainerAdd||0)+'"></div></div>';
+          return '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;align-items:flex-end;"><div style="flex:1 1 100%;font-weight:700;font-size:13px;">'+tm.icon+' '+esc(tm.label)+' — added to the package price <span style="font-weight:500;color:var(--ink-600);">(blank = use Settings → Tracking prices)</span></div>' +
+            '<div class="field" style="flex:1;min-width:110px;margin-bottom:0;"><label>One-time + (₹)</label><input type="number" min="0" inputmode="numeric" data-svc-track="oneTimeAdd" data-svc="'+s.id+'" data-key="'+o.key+'" value="'+(o.oneTimeAdd>0?o.oneTimeAdd:'')+'" placeholder="Settings: '+trackingDefault(o.key).oneTime+'"></div>' +
+            '<div class="field" style="flex:1;min-width:110px;margin-bottom:0;"><label>Retainer + (₹/mo)</label><input type="number" min="0" inputmode="numeric" data-svc-track="retainerAdd" data-svc="'+s.id+'" data-key="'+o.key+'" value="'+(o.retainerAdd>0?o.retainerAdd:'')+'" placeholder="Settings: '+trackingDefault(o.key).retainer+'"></div></div>';
         }).join('') +
         '<div class="helper" style="margin-top:6px;">'+(serviceTrackingOpts(s).length ? 'When you pitch this package to a client you pick one of these (or none) and the quote updates. The price boxes below are the base package without tracking.' : 'None added — this package has no tracking add-on to offer. Tap a method to add it with its own price.')+'</div></div>' +
         '<div class="field"><label>Visit cadence</label><div class="areagrid">' +
@@ -2879,7 +2900,7 @@
     var opt = p.trackingChoice ? trackingOpt(svc, p.trackingChoice) : null;
     var isRet = kind==='retainer';
     var baseLo = Number(isRet ? svc.retainerMin : svc.oneTimeMin)||0, baseHi = Number(isRet ? svc.retainerMax : svc.oneTimeMax)||0;
-    var add = opt ? (Number(isRet ? opt.retainerAdd : opt.oneTimeAdd)||0) : 0;
+    var add = opt ? trackingAdd(opt, isRet) : 0;
     var dv = Number(p.discountValue)||0, dt = p.discountType;
     function disc(x){ if (!dv || !dt) return x; return Math.max(0, Math.round(dt==='pct' ? x*(1-Math.min(dv,100)/100) : x-dv)); }
     var lo = baseLo+add, hi = baseHi+add;
@@ -3769,7 +3790,7 @@
               if (!tsvc || !serviceTrackingOpts(tsvc).length) return '';
               var cur = state.pricing.currency||'₹';
               return '<div class="field" style="margin-bottom:0;"><label for="pTracking">Tracking option (client\'s choice)</label><select id="pTracking" data-action="set-tracking-choice"><option value="">No tracking — base package</option>' +
-                serviceTrackingOpts(tsvc).map(function(o){ var tm = trackingMethodOf(o.key); return '<option value="'+o.key+'" '+(p.trackingChoice===o.key?'selected':'')+'>'+tm.icon+' '+esc(tm.label)+(o.oneTimeAdd||o.retainerAdd ? ' (+'+cur+fmtCompact(o.oneTimeAdd||0)+' one-time / +'+cur+fmtCompact(o.retainerAdd||0)+' per month)' : '')+'</option>'; }).join('') +
+                serviceTrackingOpts(tsvc).map(function(o){ var tm = trackingMethodOf(o.key); return '<option value="'+o.key+'" '+(p.trackingChoice===o.key?'selected':'')+'>'+tm.icon+' '+esc(tm.label)+(trackingAdd(o,false)||trackingAdd(o,true) ? ' (+'+cur+fmtCompact(trackingAdd(o,false))+' one-time / +'+cur+fmtCompact(trackingAdd(o,true))+' per month)' : '')+'</option>'; }).join('') +
                 '</select></div>';
             })() +
             '<div class="field" style="margin-bottom:0;"><label for="pPricingType">Pricing type</label><select id="pPricingType" data-action="set-pricing-type-select"><option value="">— Not set —</option><option value="onetime" '+(p.pricingType==='onetime'?'selected':'')+'>One-time</option><option value="retainer" '+(p.pricingType==='retainer'?'selected':'')+'>Monthly retainer</option></select></div>' +
@@ -6375,6 +6396,13 @@
         state.pricing[path[0]] = num2;
       }
       persistPricing();
+    }
+    else if (el.dataset.trackprice){
+      var tpp = el.dataset.trackprice.split('.'), tpn = parseFloat(el.value); if (isNaN(tpn)) tpn = 0;
+      state.targets.trackingPrices = state.targets.trackingPrices || {};
+      state.targets.trackingPrices[tpp[0]] = state.targets.trackingPrices[tpp[0]] || { oneTime:0, retainer:0 };
+      state.targets.trackingPrices[tpp[0]][tpp[1]] = tpn;
+      persistTargets();
     }
     else if (el.dataset.target){
       var tnum = parseFloat(el.value); if (isNaN(tnum)) tnum = 0;
