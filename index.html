@@ -709,6 +709,7 @@
     var d = SERVICE_AUDIT_DEFAULTS[svc.id] || { auditAreas:[], metrics:[] };
     if (!Array.isArray(svc.auditAreas)) svc.auditAreas = d.auditAreas.slice();
     if (!Array.isArray(svc.metrics)) svc.metrics = d.metrics.slice();
+    if (!Array.isArray(svc.steps)) svc.steps = [];
     if (!Array.isArray(svc.trackingOptions)) svc.trackingOptions = (svc.trackingMethod==='paper' || svc.trackingMethod==='sheets' || svc.trackingMethod==='app') ? [{ key:svc.trackingMethod, oneTimeAdd:0, retainerAdd:0 }] : [];
   }
   // Tracking add-on prices live in Settings (stored with the targets so they sync and back up with them); a package can override its own.
@@ -2742,6 +2743,7 @@
           '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;"><div style="font-weight:800;font-size:15px;line-height:1.3;">'+esc(s.name)+'</div><span class="furow-open" style="flex:none;">Edit ›</span></div>' +
           '<div class="histmeta" style="margin-top:4px;">'+esc(servicePriceLine(s))+'</div>' +
           (s.priceNote ? '<div class="histmeta" style="margin-top:4px;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:anywhere;">'+esc(s.priceNote)+'</div>' : '') +
+          serviceStepsHtml(s) +
           '<div class="histmeta" style="margin-top:2px;">'+esc(tmLine)+(vi.days||s.visitInterval==='per-visit' ? ' · '+esc(vi.label) : '')+' · '+((s.auditAreas||[]).length ? s.auditAreas.length+' audit area'+(s.auditAreas.length===1?'':'s') : 'all areas')+((s.metrics||[]).length ? ' · '+s.metrics.length+' metric'+(s.metrics.length===1?'':'s') : '')+'</div>' +
         '</div>';
       }
@@ -2776,6 +2778,13 @@
         '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
           fieldNum('Retainer min (₹/mo)', 'retainerMin', s) + fieldNum('Retainer max (₹/mo)', 'retainerMax', s) + fieldNum('Min months', 'retainerMinMonths', s) +
         '</div>' +
+        '<div class="field"><label>Steps / actions — what you do for this package</label>' +
+          (s.steps||[]).map(function(st, i){
+            return '<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:6px;"><span style="flex:none;font-weight:800;color:var(--accent-ink);padding-top:6px;min-width:20px;">'+(i+1)+'.</span>' +
+              '<textarea rows="1" class="edtext" data-svc-step="'+i+'" data-svc="'+s.id+'" placeholder="e.g. Walk the kitchen and photograph issues">'+esc(st)+'</textarea>' +
+              '<button class="iconbtn" data-action="service-step-remove" data-svc="'+s.id+'" data-idx="'+i+'" title="Remove step" aria-label="Remove step">✕</button></div>';
+          }).join('') +
+          '<button type="button" class="btn btn-ghost btn-sm" data-action="service-step-add" data-svc="'+s.id+'">+ Add step</button></div>' +
         '<div class="field" style="margin-bottom:0;"><label>Notes — QSR scaling, per-outlet fees, GST, anything price-shaped that doesn\'t fit the boxes above</label><textarea class="autogrow" data-svc-field="priceNote" data-svc="'+s.id+'" placeholder="e.g. Scale down ~20% for QSR. Excludes 18% GST.">'+esc(s.priceNote||'')+'</textarea></div>' +
         '<button type="button" class="btn btn-primary btn-sm" style="margin-top:14px;" data-action="toggle-service-open" data-svc="'+s.id+'">Done</button>' +
       '</div>';
@@ -2967,6 +2976,11 @@
     var wanted = svc.auditAreas.map(norm);
     var hit = tmpl.sections.filter(function(s){ return wanted.indexOf(norm(s.name))>=0; }).map(function(s){ return s.id; });
     return hit.length ? hit : all;
+  }
+  function serviceStepsHtml(svc){
+    var st = ((svc && svc.steps) || []).filter(function(x){ return (x||'').trim(); });
+    if (!st.length) return '';
+    return '<ol style="margin:6px 0 2px 20px;padding:0;font-size:13px;color:var(--ink-600);line-height:1.45;">' + st.map(function(x){ return '<li style="margin:2px 0;overflow-wrap:anywhere;">'+esc(x)+'</li>'; }).join('') + '</ol>';
   }
   function serviceChecklistCounts(svc){
     return templateKeys().map(function(k){
@@ -3917,7 +3931,7 @@
         sh('🎯','Post-Audit Follow-up') +
         '<div class="card" style="padding:16px;margin-bottom:20px;border:1.5px solid var(--accent);background:var(--accent-soft);">' +
           '<div class="formstack" style="gap:14px;margin-bottom:0;">' +
-            '<div class="field" style="margin-bottom:0;"><label for="pServices">Service package</label><select id="pServices" data-action="set-client-service"><option value="">— Not selected —</option>'+state.services.map(function(sc){ return '<option value="'+sc.id+'" '+(p.servicesOffered===sc.id?'selected':'')+'>'+esc(sc.name)+'</option>'; }).join('')+'</select>'+(p.servicesOffered && findService(p.servicesOffered) ? '<div class="histmeta" style="margin-top:6px;">'+esc(servicePriceLine(findService(p.servicesOffered)))+(visitIntervalOf(findService(p.servicesOffered).visitInterval).days ? ' · '+esc(visitIntervalOf(findService(p.servicesOffered).visitInterval).label)+' auto-scheduled' : '')+'</div><div class="histmeta" style="margin-top:2px;color:var(--accent-ink);">'+esc(serviceAuditLine(findService(p.servicesOffered)))+'</div>' : '')+'</div>' +
+            '<div class="field" style="margin-bottom:0;"><label for="pServices">Service package</label><select id="pServices" data-action="set-client-service"><option value="">— Not selected —</option>'+state.services.map(function(sc){ return '<option value="'+sc.id+'" '+(p.servicesOffered===sc.id?'selected':'')+'>'+esc(sc.name)+'</option>'; }).join('')+'</select>'+(p.servicesOffered && findService(p.servicesOffered) ? '<div class="histmeta" style="margin-top:6px;">'+esc(servicePriceLine(findService(p.servicesOffered)))+(visitIntervalOf(findService(p.servicesOffered).visitInterval).days ? ' · '+esc(visitIntervalOf(findService(p.servicesOffered).visitInterval).label)+' auto-scheduled' : '')+'</div><div class="histmeta" style="margin-top:2px;color:var(--accent-ink);">'+esc(serviceAuditLine(findService(p.servicesOffered)))+'</div>'+serviceStepsHtml(findService(p.servicesOffered)) : '')+'</div>' +
             (function(){
               var tsvc = p.servicesOffered ? findService(p.servicesOffered) : null;
               if (!tsvc || !serviceTrackingOpts(tsvc).length) return '';
@@ -6270,7 +6284,7 @@
     }
     else if (action==='service-add'){
       var newSvc = { id: uid(), name:'New package', category:'Other', trackingMethod:'n/a', visitInterval:'none',
-        oneTimeMin:0, oneTimeMax:0, retainerMin:0, retainerMax:0, retainerMinMonths:0, priceNote:'', auditAreas:[], metrics:[], trackingOptions:[] };
+        oneTimeMin:0, oneTimeMax:0, retainerMin:0, retainerMax:0, retainerMinMonths:0, priceNote:'', auditAreas:[], metrics:[], trackingOptions:[], steps:[] };
       state.services.push(newSvc);
       state.svcOpen = newSvc.id;
       persistServices(); render();
@@ -6288,6 +6302,14 @@
         try{ localStorage.removeItem('diagnosisroom_nofreeaudit'); }catch(e){}
         persistServices(); render();
       }
+    }
+    else if (action==='service-step-add'){
+      var svcSA = state.services.filter(function(s){ return s.id===t.dataset.svc; })[0];
+      if (svcSA){ svcSA.steps = svcSA.steps || []; svcSA.steps.push(''); persistServices(); render(); }
+    }
+    else if (action==='service-step-remove'){
+      var svcSR = state.services.filter(function(s){ return s.id===t.dataset.svc; })[0];
+      if (svcSR && svcSR.steps){ svcSR.steps.splice(parseInt(t.dataset.idx,10),1); persistServices(); render(); }
     }
     else if (action==='service-tracking-toggle'){
       var svcTT = state.services.filter(function(s){ return s.id===t.dataset.svc; })[0];
@@ -6613,6 +6635,11 @@
     else if (el.dataset.dlField){
       var dl2 = state.deliverables.filter(function(x){ return x.id===el.dataset.dl; })[0];
       if (dl2){ dl2.label = el.value; persistDeliverables(); }
+    }
+    else if (el.dataset.svcStep !== undefined){
+      var sts = state.services.filter(function(s){ return s.id===el.dataset.svc; })[0];
+      if (sts && sts.steps){ sts.steps[parseInt(el.dataset.svcStep,10)] = el.value.replace(/[\r\n]+/g,' '); persistServices(); }
+      el.style.height = 'auto'; el.style.height = el.scrollHeight+'px';
     }
     else if (el.dataset.svcTrack){
       var stc = state.services.filter(function(s){ return s.id===el.dataset.svc; })[0];
