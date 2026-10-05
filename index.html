@@ -485,6 +485,16 @@
 
   /* area filter */
   .areagrid{display:flex; flex-wrap:wrap; gap:8px; margin-top:4px;}
+  .msel-btn{width:100%; display:flex; justify-content:space-between; align-items:center; gap:10px; text-align:left; border:1px solid var(--line-strong); background:var(--surface); border-radius:var(--r-s); padding:11px 12px; font-size:14px; font-family:inherit; color:var(--ink);}
+  .msel-btn .msel-sum{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .msel-btn .msel-sum.empty{color:var(--ink-400);}
+  .msel-panel{border:1px solid var(--line-strong); border-radius:var(--r-s); margin-top:6px; max-height:300px; overflow:auto; background:var(--surface);}
+  .msel-opt{display:flex; gap:10px; align-items:center; width:100%; text-align:left; border:none; border-top:1px solid var(--line); background:none; padding:11px 12px; font-size:14px; font-family:inherit; color:var(--ink);}
+  .msel-opt:first-child{border-top:none;}
+  .msel-opt:hover{background:var(--surface-2);}
+  .msel-box{width:20px; height:20px; border:1.5px solid var(--line-strong); border-radius:5px; display:inline-flex; align-items:center; justify-content:center; font-size:13px; flex:none; color:#fff;}
+  .msel-opt.on .msel-box{background:var(--accent); border-color:var(--accent);}
+  .msel-done{width:100%; border-radius:0; border-top:1px solid var(--line);}
   .areachip{border:1px solid var(--line-strong); background:var(--surface); border-radius:20px; padding:8px 14px; font-size:13px; font-weight:600; color:var(--ink-600); transition:background .15s, color .15s, border-color .15s;}
   .areachip:hover:not(.on){background:var(--surface-2);}
   .areachip.on{background:var(--accent); color:#fff; border-color:var(--accent);}
@@ -1760,10 +1770,10 @@
     return sh('📈','Analysis parameters') +
       '<div class="helper" style="margin:-4px 0 10px;">The numbers that guide the whole engagement. Record a starting value after the first audit, set a target, and add a reading each time you re-measure.</div>' +
       params.map(card).join('') +
-      '<div class="areagrid" style="margin-bottom:22px;">' +
-        lib.map(function(l){ return '<button type="button" class="areachip" data-action="param-add" data-lib="'+esc(l.id)+'">+ '+esc(l.name)+'</button>'; }).join('') +
-        '<button type="button" class="areachip" data-action="param-add">+ Custom</button>' +
-      '</div>';
+      '<div class="field" style="margin-bottom:22px;"><select data-proxy="1" aria-label="Add a parameter"><option value="">＋ Add a parameter…</option>' +
+        lib.map(function(l){ return '<option value="'+esc(l.id)+'" data-action="param-add" data-lib="'+esc(l.id)+'">'+esc(l.name)+(l.unit?' ('+esc(l.unit)+')':'')+'</option>'; }).join('') +
+        '<option value="custom" data-action="param-add">Custom parameter…</option>' +
+      '</select></div>';
   }
 
   // ---------- client trail: inquiry, solution tasks and client requests ----------
@@ -1848,12 +1858,10 @@
     return sh('🛠️','Solution to build') +
       '<div class="card" style="padding:14px 16px;margin-bottom:20px;">' +
         '<div class="helper" style="margin:0 0 10px;">Tick what you will build for this client. Each one is added to your Tasks list automatically.</div>' +
-        '<div class="areagrid">' +
-          state.deliverables.map(function(dl){
-            var task = deliverableTask(p, dl.id);
-            return '<button type="button" class="areachip '+(task?'on':'')+'" data-action="toggle-deliverable" data-key="'+esc(dl.id)+'">'+(task ? (task.done?'✅ ':'✓ ') : '')+esc(dl.label)+'</button>';
-          }).join('') +
-        '</div>' +
+        msel('deliverables-'+p.id, 'Nothing chosen yet', state.deliverables.map(function(dl){
+          var task = deliverableTask(p, dl.id);
+          return { label:dl.label+(task && task.done ? ' (done)' : ''), on:!!task, attrs:'data-action="toggle-deliverable" data-key="'+esc(dl.id)+'"' };
+        })) +
         (tasks.length ? '<div style="margin-top:10px;">' + tasks.map(function(l){
           return '<div class="lookuprow '+(l.done?'done':'')+'">' +
             '<button class="chk '+(l.done?'checked':'')+'" data-action="toggle-lookup-done" data-id="'+l.id+'" aria-label="Toggle done">'+(l.done?'✓':'')+'</button>' +
@@ -1939,20 +1947,28 @@
     var open = openActionsForStore(s.storeName).length;
     var mode = s.mode || 'full';
     var opts = [['full','Full audit','Every selected area'],['recheck','Quick re-check',missed+' item'+(missed===1?'':'s')+' missed last time'],['issues','Open issues only',open+' open issue'+(open===1?'':'s')]];
-    return '<div class="field" style="margin-bottom:20px;"><label>Audit length</label><div class="areagrid">' +
-      opts.map(function(o){ return '<button type="button" class="areachip '+(mode===o[0]?'on':'')+'" data-action="set-audit-mode" data-val="'+o[0]+'">'+(mode===o[0]?'✓ ':'')+o[1]+' · '+o[2]+'</button>'; }).join('') +
-      '</div><div class="helper">Last audit for this store: '+esc(fmtAuditWhen(prev.auditDate, prev.auditTime))+' ('+prev.completionPct+'%). A shorter audit checks only what needs follow-up.</div></div>';
+    return '<div class="field" style="margin-bottom:20px;"><label for="auditMode">Audit length</label><select id="auditMode" data-proxy="1">' +
+      opts.map(function(o){ return '<option value="'+o[0]+'" '+(mode===o[0]?'selected':'')+' data-action="set-audit-mode" data-val="'+o[0]+'">'+o[1]+' · '+o[2]+'</option>'; }).join('') +
+      '</select><div class="helper">Last audit for this store: '+esc(fmtAuditWhen(prev.auditDate, prev.auditTime))+' ('+prev.completionPct+'%). A shorter audit checks only what needs follow-up.</div></div>';
+  }
+  // Multi-select dropdown: a button showing what is picked, opening a tick-list. Each option keeps its own data-action, so existing handlers are reused.
+  function msel(id, emptyText, opts){
+    var open = state.mselOpen===id, picked = opts.filter(function(o){ return o.on; });
+    var sum = picked.length ? picked.map(function(o){ return o.label; }).join(', ') : emptyText;
+    return '<div class="msel">' +
+      '<button type="button" class="msel-btn" data-action="msel-toggle" data-id="'+esc(id)+'" aria-expanded="'+(open?'true':'false')+'"><span class="msel-sum'+(picked.length?'':' empty')+'">'+(picked.length ? picked.length+' selected — ' : '')+esc(sum)+'</span><span aria-hidden="true">'+(open?'▴':'▾')+'</span></button>' +
+      (open ? '<div class="msel-panel">' + opts.map(function(o){
+        return '<button type="button" class="msel-opt'+(o.on?' on':'')+'" '+o.attrs+'><span class="msel-box">'+(o.on?'✓':'')+'</span><span>'+esc(o.label)+'</span></button>';
+      }).join('') + '<button type="button" class="btn btn-ghost btn-sm msel-done" data-action="msel-toggle" data-id="'+esc(id)+'">Done</button></div>' : '') +
+    '</div>';
   }
   function renderAreaFilter(s){
     var tmpl = state.templates[s.type];
     return '<div class="field" style="margin-bottom:20px;">' +
       '<label>Select areas to audit</label>' +
-      '<div class="areagrid">' +
-        tmpl.sections.map(function(sec){
-          var on = s.selectedSections.indexOf(sec.id) !== -1;
-          return '<button type="button" class="areachip '+(on?'on':'')+'" data-action="toggle-area" data-sec="'+sec.id+'">'+(on?'✓ ':'')+esc(sec.name)+'</button>';
-        }).join('') +
-      '</div>' +
+      msel('setup-areas', 'No area selected', tmpl.sections.map(function(sec){
+        return { label:sec.name, on:s.selectedSections.indexOf(sec.id) !== -1, attrs:'data-action="toggle-area" data-sec="'+sec.id+'"' };
+      })) +
       '<div class="helper">Untick a section to run a shorter, focused audit on just the areas you pick.</div>' +
     '</div>';
   }
@@ -2770,9 +2786,8 @@
           '<button class="iconbtn" data-action="service-remove" data-svc="'+s.id+'" title="Remove package">✕</button>' +
         '</div>' +
         '<div class="field" style="margin-top:8px;"><label>Category</label><input type="text" data-svc-field="category" data-svc="'+s.id+'" value="'+esc(s.category)+'" placeholder="e.g. Delivery & Menu"></div>' +
-        '<div class="field"><label>Tracking options — optional extras the client can pick by budget</label><div class="areagrid">' +
-          TRACKING_METHODS.filter(function(tm){ return tm.key!=='n/a'; }).map(function(tm){ var on = !!trackingOpt(s, tm.key); return '<button type="button" class="areachip '+(on?'on':'')+'" data-action="service-tracking-toggle" data-svc="'+s.id+'" data-val="'+tm.key+'">'+(on?'✓ ':'')+tm.icon+' '+tm.label+'</button>'; }).join('') +
-        '</div>' +
+        '<div class="field"><label>Tracking options — optional extras the client can pick by budget</label>' +
+          msel('svc-track-'+s.id, 'None — no tracking add-on', TRACKING_METHODS.filter(function(tm){ return tm.key!=='n/a'; }).map(function(tm){ return { label:tm.icon+' '+tm.label, on:!!trackingOpt(s, tm.key), attrs:'data-action="service-tracking-toggle" data-svc="'+s.id+'" data-val="'+tm.key+'"' }; })) +
         serviceTrackingOpts(s).map(function(o){
           var tm = trackingMethodOf(o.key);
           return '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;align-items:flex-end;"><div style="flex:1 1 100%;font-weight:700;font-size:13px;">'+tm.icon+' '+esc(tm.label)+' — added to the package price <span style="font-weight:500;color:var(--ink-600);">(blank = use Settings → Tracking prices)</span></div>' +
@@ -2780,15 +2795,15 @@
             '<div class="field" style="flex:1;min-width:110px;margin-bottom:0;"><label>Retainer + (₹/mo)</label><input type="number" min="0" inputmode="numeric" data-svc-track="retainerAdd" data-svc="'+s.id+'" data-key="'+o.key+'" value="'+(o.retainerAdd>0?o.retainerAdd:'')+'" placeholder="Settings: '+trackingDefault(o.key).retainer+'"></div></div>';
         }).join('') +
         '<div class="helper" style="margin-top:6px;">'+(serviceTrackingOpts(s).length ? 'When you pitch this package to a client you pick one of these (or none) and the quote updates. The price boxes below are the base package without tracking.' : 'None added — this package has no tracking add-on to offer. Tap a method to add it with its own price.')+'</div></div>' +
-        '<div class="field"><label>Visit cadence</label><div class="areagrid">' +
-          VISIT_INTERVALS.map(function(vi){ return '<button type="button" class="areachip '+(s.visitInterval===vi.key?'on':'')+'" data-action="service-interval" data-svc="'+s.id+'" data-val="'+vi.key+'">'+vi.label+'</button>'; }).join('') +
-        '</div>' + (visitIntervalOf(s.visitInterval).days ? '<div class="helper" style="margin-top:4px;">Assigning this package to a client — or marking its visit follow-up done — automatically schedules the next one, '+visitIntervalOf(s.visitInterval).days+' days out.</div>' : '') + '</div>' +
-        '<div class="field"><label>Areas this package audits</label><div class="areagrid">' +
-          allSectionNames().map(function(n){ var on = (s.auditAreas||[]).map(norm).indexOf(norm(n))>=0; return '<button type="button" class="areachip '+(on?'on':'')+'" data-action="service-area-toggle" data-svc="'+s.id+'" data-name="'+esc(n)+'">'+(on?'✓ ':'')+esc(n)+'</button>'; }).join('') +
-        '</div><div class="helper" style="margin-top:4px;">'+((s.auditAreas||[]).length ? 'Linked to your checklist: a New Audit for this package pre-selects just these areas ('+serviceChecklistCounts(s)+').' : 'None picked — a New Audit for this package covers every checklist area.')+'</div></div>' +
-        '<div class="field"><label>Metrics to follow</label><div class="areagrid">' +
-          (state.paramLibrary.length ? state.paramLibrary.map(function(l){ var on = (s.metrics||[]).indexOf(l.id)>=0; return '<button type="button" class="areachip '+(on?'on':'')+'" data-action="service-metric-toggle" data-svc="'+s.id+'" data-lib="'+esc(l.id)+'">'+(on?'✓ ':'')+esc(l.name)+'</button>'; }).join('') : '<span class="helper">Add parameters in Settings → Parameter library first.</span>') +
-        '</div><div class="helper" style="margin-top:4px;">Added to the client\'s Analysis parameters when you assign this package.</div></div>' +
+        '<div class="field"><label>Visit cadence</label><select data-proxy="1" aria-label="Visit cadence">' +
+          VISIT_INTERVALS.map(function(vi){ return '<option value="'+vi.key+'" '+(s.visitInterval===vi.key?'selected':'')+' data-action="service-interval" data-svc="'+s.id+'" data-val="'+vi.key+'">'+vi.label+'</option>'; }).join('') +
+        '</select>' + (visitIntervalOf(s.visitInterval).days ? '<div class="helper" style="margin-top:4px;">Assigning this package to a client — or marking its visit follow-up done — automatically schedules the next one, '+visitIntervalOf(s.visitInterval).days+' days out.</div>' : '') + '</div>' +
+        '<div class="field"><label>Areas this package audits</label>' +
+          msel('svc-areas-'+s.id, 'None picked — all areas', allSectionNames().map(function(n){ return { label:n, on:(s.auditAreas||[]).map(norm).indexOf(norm(n))>=0, attrs:'data-action="service-area-toggle" data-svc="'+s.id+'" data-name="'+esc(n)+'"' }; })) +
+        '<div class="helper" style="margin-top:4px;">'+((s.auditAreas||[]).length ? 'Linked to your checklist: a New Audit for this package pre-selects just these areas ('+serviceChecklistCounts(s)+').' : 'None picked — a New Audit for this package covers every checklist area.')+'</div></div>' +
+        '<div class="field"><label>Metrics to follow</label>' +
+          (state.paramLibrary.length ? msel('svc-metrics-'+s.id, 'None picked', state.paramLibrary.map(function(l){ return { label:l.name, on:(s.metrics||[]).indexOf(l.id)>=0, attrs:'data-action="service-metric-toggle" data-svc="'+s.id+'" data-lib="'+esc(l.id)+'"' }; })) : '<span class="helper">Add parameters in Settings → Parameter library first.</span>') +
+        '<div class="helper" style="margin-top:4px;">Added to the client\'s Analysis parameters when you assign this package.</div></div>' +
         '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
           fieldNum('One-time min (₹)', 'oneTimeMin', s) + fieldNum('One-time max (₹)', 'oneTimeMax', s) +
         '</div>' +
@@ -5910,6 +5925,7 @@
       var reP = findProspect(state.activeProspectId);
       if (reP){ reP.extraItems = (reP.extraItems||[]).filter(function(x){ return x.id!==t.dataset.id; }); reP.updatedAt = Date.now(); persistProspects(); render(); }
     }
+    else if (action==='msel-toggle'){ state.mselOpen = state.mselOpen===t.dataset.id ? null : t.dataset.id; render(); }
     else if (action==='set-audit-mode'){ state.setup.mode = t.dataset.val; render(); }
     else if (action==='toggle-area'){
       var areaId = t.dataset.sec;
@@ -6723,6 +6739,16 @@
 
   app.addEventListener('change', function(e){
     var el = e.target;
+    // A <select> whose chosen <option> carries its own data-action: run that action as if the option had been clicked.
+    if (el.tagName==='SELECT' && el.dataset.proxy){
+      var popt = el.options[el.selectedIndex];
+      if (popt && popt.dataset.action){
+        var pb = document.createElement('button');
+        Object.keys(popt.dataset).forEach(function(k){ pb.dataset[k] = popt.dataset[k]; });
+        app.appendChild(pb); pb.click(); pb.remove();
+      }
+      return;
+    }
     if (state.view==='setup' && el.dataset.bind && el.dataset.bind!=='storeName' && el.dataset.bind!=='serviceId'){ updateSetupGate(); }
     if (el.dataset.bind==='storeName'){
       // Only redraw when the suggestion / audit-length card would actually change, so a tap on Start is never swallowed by a re-render.
