@@ -3213,7 +3213,7 @@
             (who || p.contactMobile ? '<div class="histmeta">👤 '+(who||'Contact')+(p.contactMobile?' · '+esc(p.contactMobile):'')+'</div>' : '') +
             (priceStr || p.timeline ? '<div class="histmeta">💰 '+priceStr+(priceStr && p.timeline?' · ':'')+(p.timeline?esc(p.timeline):'')+'</div>' : '') +
             (!p.declined && p.plannedAuditDate ? '<div class="histmeta">⭐ Audit day: '+fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime())+plannedTimeSuffix(p)+'</div>' : '') +
-            (nextFu ? '<div class="histmeta">📞 Next follow-up: '+esc(fmtFollowUpWhen(nextFu))+(nextFu.note?' — '+esc(nextFu.note):'')+'</div>'
+            (nextFu ? '<div class="histmeta">📞 Next follow-up: '+esc(fmtFollowUpWhen(nextFu))+(nextFu.note?' — '+esc(nextFu.note):'')+(p.declined ? '' : ' <span class="pill '+followUpTone(nextFu).tone+'">'+followUpTone(nextFu).label+'</span>')+'</div>'
               : (p.declined && p.followUpDate ? '<div class="histmeta">📞 Follow up: '+fmtDateShort(new Date(p.followUpDate+'T00:00:00').getTime())+'</div>' : '')) +
             (missing.length ? '<div class="pcard-missing">Missing: '+esc(missing.join(', '))+'</div>' : '') +
             '<div class="pcard-foot">'+(btns ? '<span class="contactrow">'+btns+'</span>' : '<span></span>')+'<span class="furow-open">Open ›</span></div>' +
@@ -4477,7 +4477,7 @@
     }
     else if (tab==='overdue'){
       body = g.overdue.length
-        ? renderReplanButton().replace('margin-top:10px;','margin:0 0 12px;') + g.overdue.map(function(e){ return weekRowHtml(e, true); }).join('')
+        ? g.overdue.map(function(e){ return weekRowHtml(e, true); }).join('')
         : '<div class="empty"><div class="big">✅</div>Nothing overdue — you\'re all caught up.</div>';
     }
     else if (tab==='actions'){
@@ -4491,6 +4491,7 @@
         (at==='schedule' ? renderDueList() : (at==='task' || at==='lookup') ? lookupInner(at) : renderCorrectiveList());
     }
     else body = renderDayTimeLog();
+    if (tab==='today' || tab==='week' || tab==='overdue') body = renderReplanButton().replace('margin-top:10px;','margin:0 0 12px;') + body;
     var todayLabel = new Date().toLocaleDateString(undefined,{weekday:'long', month:'short', day:'numeric'});
     return '<main>' +
       '<div class="eyebrow">'+esc(todayLabel)+'</div>' +
@@ -5141,17 +5142,19 @@
     return ev;
   }
   function weekGroups(days){
-    var todayStr = todayISO(), endStr = isoDaysFromNow(days-1);
+    var todayStr = todayISO(), endStr = isoDaysFromNow(days-1), nowHM = nowHHMM();
     var all = weekEventsAll();
+    // A follow-up call whose time today has already passed counts as overdue, matching the Follow-ups board and the client list.
+    function isOver(e){ return e.date<todayStr || (e.date===todayStr && e.icon==='📞' && e.time && e.time<nowHM); }
     var groups = [];
     for (var i=0; i<days; i++){
       var ds = isoDaysFromNow(i);
-      groups.push({ date:ds, offset:i, items:all.filter(function(e){ return e.date===ds; }) });
+      groups.push({ date:ds, offset:i, items:all.filter(function(e){ return e.date===ds && !isOver(e); }) });
     }
     return {
-      overdue: all.filter(function(e){ return e.date<todayStr; }),
+      overdue: all.filter(isOver),
       days: groups,
-      count: all.filter(function(e){ return e.date>=todayStr && e.date<=endStr; }).length
+      count: all.filter(function(e){ return e.date>=todayStr && e.date<=endStr && !isOver(e); }).length
     };
   }
   function weekRowHtml(e, showDate){
