@@ -2334,12 +2334,85 @@
     h += '<div class="rp-foot">Prepared by Diagnosis Room · '+esc(new Date().toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}))+'</div>';
     return h;
   }
+  // ---- Client progress report: audit scores, metric movement and issues resolved, for retainer reviews ----
+  function clientReportData(p){
+    var key = (p.name||'').trim().toLowerCase();
+    var audits = prospectAudits(p).slice().sort(function(a,b){ return (a.finishedAt||0)-(b.finishedAt||0); });
+    var params = (p.parameters||[]).map(function(prm){ return { prm:prm, st:paramStats(p, prm) }; }).filter(function(x){ return x.st.readings.length; });
+    var acts = state.correctiveActions.filter(function(a){ return (a.storeName||'').trim().toLowerCase()===key; });
+    var svc = p.servicesOffered ? findService(p.servicesOffered) : null;
+    var first = audits[0], last = audits[audits.length-1];
+    return { audits:audits, params:params, acts:acts, resolved:acts.filter(function(a){ return a.done; }).length, svc:svc,
+      first:first, last:last, delta:(first && last && first!==last) ? (last.completionPct||0)-(first.completionPct||0) : null };
+  }
+  function hasClientReport(p){ var r = clientReportData(p); return r.audits.length>0 || r.params.length>0; }
+  function reportMetricLine(x){
+    var prm = x.prm, st = x.st, u = prm.unit||'';
+    var ch = st.delta===null || st.delta===0 ? 'no change yet' : ((st.delta>0?'▲ ':'▼ ')+fmtNum(Math.abs(st.delta))+u+(st.improving ? ' — improving' : ' — needs attention'));
+    return { name:prm.name||'Metric', start:fmtNum(st.start)+u, now:fmtNum(st.now)+u, change:ch, target:st.target!==null ? fmtNum(st.target)+u : '—', good:st.improving };
+  }
+  function buildClientReportHtml(p){
+    var r = clientReportData(p);
+    var h = '<div class="rp-top"><div class="rp-brand"><img src="'+LOGO_SRC+'" alt="">Diagnosis Room</div><div class="rp-kind">Progress Report</div></div>';
+    h += '<h1>'+esc(p.name||'Client')+'</h1>';
+    h += '<div class="rp-sub">'+esc(prospectCategoryLabel(p))+(p.location?' · '+esc(p.location):'')+'</div>';
+    h += '<div class="rp-meta">' + (r.svc ? '<span><b>Package:</b> '+esc(r.svc.name)+'</span>' : '') +
+      (r.first ? '<span><b>Since:</b> '+esc(fmtDateShort(new Date(r.first.auditDate+'T00:00:00').getTime()))+'</span>' : '') +
+      '<span><b>Report date:</b> '+esc(new Date().toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}))+'</span></div>';
+    if (r.audits.length){
+      var latest = r.last.completionPct||0, tone = latest>=85 ? '#15803d' : (latest>=70 ? '#16a34a' : (latest>=40 ? '#d97706' : '#dc2626'));
+      h += '<div class="rp-score"><div class="rp-big" style="background:'+tone+';"><div class="n">'+latest+'%</div><div class="l">Latest audit score</div></div>' +
+        '<div class="rp-tile"><div class="n">'+(r.delta===null ? '—' : (r.delta>0?'▲ +':(r.delta<0?'▼ ':''))+r.delta+' pts')+'</div><div class="l">'+(r.delta===null ? 'First audit' : 'since the first audit')+'</div></div>' +
+        '<div class="rp-tile"><div class="n">'+r.resolved+' / '+r.acts.length+'</div><div class="l">Issues resolved</div></div></div>';
+      h += '<h2>Audit scores over time</h2>' + r.audits.map(function(a){
+        var v = a.completionPct||0, c = v>=70 ? '#16a34a' : (v>=40 ? '#d97706' : '#dc2626');
+        return '<div class="rp-row"><span class="nm">'+esc(fmtDateShort(new Date(a.auditDate+'T00:00:00').getTime()))+'</span><span class="bar"><i style="width:'+v+'%;background:'+c+';"></i></span><span class="pc">'+v+'%</span></div>';
+      }).join('');
+    }
+    if (r.params.length){
+      h += '<h2>Key numbers</h2><table style="width:100%;border-collapse:collapse;font-size:12.5px;"><tr style="text-align:left;color:#6b7280;"><th style="padding:4px 6px 4px 0;">Metric</th><th>Start</th><th>Now</th><th>Change</th><th>Target</th></tr>' +
+        r.params.map(function(x){
+          var m = reportMetricLine(x), col = m.good===null ? '#374151' : (m.good ? '#15803d' : '#b91c1c');
+          return '<tr style="border-top:1px solid #e5e7eb;"><td style="padding:6px 6px 6px 0;font-weight:600;">'+esc(m.name)+'</td><td>'+esc(m.start)+'</td><td>'+esc(m.now)+'</td><td style="color:'+col+';">'+esc(m.change)+'</td><td>'+esc(m.target)+'</td></tr>';
+        }).join('') + '</table>';
+    }
+    var open = r.acts.filter(function(a){ return !a.done; });
+    if (r.acts.length){
+      h += '<h2>Issues</h2><div class="rp-box"><div class="t">'+r.resolved+' of '+r.acts.length+' corrective actions resolved</div>' +
+        (open.length ? '<div class="s">Still open: '+open.slice(0,6).map(function(a){ return esc(a.description||''); }).join('; ')+'</div>' : '<div class="s">Nothing outstanding.</div>') + '</div>';
+    }
+    h += '<div class="rp-foot">Prepared by Diagnosis Room · '+esc(new Date().toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}))+'</div>';
+    return h;
+  }
+  function buildClientReportText(p){
+    var r = clientReportData(p), L = [];
+    L.push('📊 Progress report — '+(p.name||'Client'));
+    if (r.svc) L.push('Package: '+r.svc.name);
+    if (r.audits.length) L.push('Audits: '+r.audits.length+' · latest score '+(r.last.completionPct||0)+'%'+(r.delta!==null ? ' ('+(r.delta>0?'+':'')+r.delta+' pts since the first audit)' : ''));
+    if (r.params.length){ L.push(''); L.push('Key numbers:'); r.params.forEach(function(x){ var m = reportMetricLine(x); L.push('• '+m.name+': '+m.start+' → '+m.now+' ('+m.change+')'); }); }
+    if (r.acts.length){ L.push(''); L.push('Issues resolved: '+r.resolved+' of '+r.acts.length); }
+    L.push(''); L.push('— Diagnosis Room');
+    return L.join('\n');
+  }
+  function renderProgressReportCard(p){
+    if (!hasClientReport(p)) return '';
+    var r = clientReportData(p);
+    return sh('📄','Progress report') +
+      '<div class="card" style="padding:14px 16px;margin-bottom:20px;">' +
+        '<div class="helper" style="margin:0 0 10px;">A client-ready summary of how things have moved: '+r.audits.length+' audit'+(r.audits.length===1?'':'s')+(r.params.length ? ', '+r.params.length+' tracked number'+(r.params.length===1?'':'s') : '')+(r.acts.length ? ', '+r.resolved+'/'+r.acts.length+' issues resolved' : '')+'.</div>' +
+        '<div class="contactrow"><button type="button" class="btn btn-primary btn-sm" data-action="print-client-report" data-id="'+p.id+'">🖨️ Print / Save PDF</button>' +
+        '<button type="button" class="btn btn-ghost btn-sm" data-action="copy-client-report" data-id="'+p.id+'">📋 Copy for WhatsApp</button></div>' +
+      '</div>';
+  }
   function printAuditReport(rec){
+    printHtmlReport(buildAuditReportHtml(rec), (rec.storeName||'Audit')+' - Audit Report '+(rec.auditDate||''));
+  }
+  function printHtmlReport(html, title){
     var host = document.getElementById('printReport');
     if (!host){ host = document.createElement('div'); host.id = 'printReport'; document.body.appendChild(host); }
-    host.innerHTML = buildAuditReportHtml(rec);
+    host.innerHTML = html;
     var oldTitle = document.title;
-    document.title = ((rec.storeName||'Audit')+' - Audit Report '+(rec.auditDate||'')).replace(/[\\\/:*?"<>|]/g,'');
+    document.title = String(title||'Report').replace(/[\\\/:*?"<>|]/g,'');
     document.body.classList.add('printing');
     var done = function(){
       window.removeEventListener('afterprint', done);
@@ -2591,6 +2664,16 @@
             '</div></div>';
         }).join('') +
       '</div>' +
+
+      '<h1 style="font-size:20px;margin:0 0 4px;">Follow-up planner</h1>' +
+      '<div class="helper" style="margin-bottom:12px;margin-top:6px;">Used by the “Re-plan follow-ups” button: overdue follow-ups are moved forward and any day over the limit rolls to the next day, within these hours.</div>' +
+      (function(){ var c = planCfg(); return '<div class="card" style="padding:14px 16px;margin-bottom:28px;"><div style="display:flex;gap:10px;flex-wrap:wrap;">' +
+        '<div class="field" style="flex:1;min-width:120px;"><label>Max per weekday</label><input type="number" min="1" inputmode="numeric" data-plan="wk" value="'+c.wk+'"></div>' +
+        '<div class="field" style="flex:1;min-width:120px;"><label>Max per weekend day</label><input type="number" min="1" inputmode="numeric" data-plan="we" value="'+c.we+'"></div></div>' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
+        '<div class="field" style="flex:1;min-width:100px;margin-bottom:0;"><label>First call</label><input type="time" data-plan="start" value="'+esc(c.start)+'"></div>' +
+        '<div class="field" style="flex:1;min-width:100px;margin-bottom:0;"><label>Last call starts</label><input type="time" data-plan="last" value="'+esc(c.last)+'"></div>' +
+        '<div class="field" style="flex:1;min-width:100px;margin-bottom:0;"><label>Gap (min)</label><input type="number" min="15" step="15" inputmode="numeric" data-plan="gap" value="'+c.gap+'"></div></div></div>'; })() +
 
       '<div class="card" style="padding:14px 16px;margin-bottom:28px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">' +
         '<div><div style="font-weight:700;">Services &amp; pricing catalog</div><div class="histmeta">Moved to its own page — packages, price ranges, visit cadence and tracking method.</div></div>' +
@@ -3498,6 +3581,54 @@
         (done.length ? '<div class="histmeta">Recently done: '+done.map(function(f){ return esc(fmtDateShort(f.doneAt))+(f.note?' — '+esc(f.note):''); }).join(' · ')+'</div>' : '') +
       '</div>';
   }
+  // ---- Auto-plan: keep pipeline follow-ups within a daily cap and a working-hours window ----
+  function planCfg(){
+    var c = (state.targets && state.targets.plan) || {};
+    return { wk: parseInt(c.wk,10)||3, we: parseInt(c.we,10)||4, start: c.start||'10:00', gap: parseInt(c.gap,10)||60, last: c.last||'14:00' };
+  }
+  function hhmmToMin(t){ var m = /^(\d{1,2}):(\d{2})/.exec(t||''); return m ? parseInt(m[1],10)*60+parseInt(m[2],10) : null; }
+  function minToHHMM(n){ return String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0'); }
+  function planSlots(iso, cfg, isToday){
+    var d = new Date(iso+'T00:00:00'), wkend = d.getDay()===0 || d.getDay()===6;
+    var cap = wkend ? cfg.we : cfg.wk, times = [];
+    var s = hhmmToMin(cfg.start), l = hhmmToMin(cfg.last);
+    if (s===null) s = 600; if (l===null) l = 840;
+    for (var t=s; t<=l && times.length<cap; t+=Math.max(15,cfg.gap)) times.push(minToHHMM(t));
+    if (isToday){ var n = new Date(); var nowMin = n.getHours()*60+n.getMinutes(); times = times.filter(function(x){ return hhmmToMin(x) > nowMin; }); }
+    return times;
+  }
+  // Overdue follow-ups are placed first, then each day keeps its own up to the cap; the excess rolls to the next day.
+  function computeFollowUpPlan(){
+    var cfg = planCfg(), today = todayISO(), items = [];
+    state.prospects.forEach(function(p){
+      if (p.converted || p.declined) return;
+      (p.followUps||[]).forEach(function(f){ if (!f.done && !f.serviceRecurring && f.date) items.push({ p:p, f:f }); });
+    });
+    function key(x){ return x.f.date+' '+(x.f.time||'99:99'); }
+    var overdue = items.filter(function(x){ return x.f.date < today; }).sort(function(a,b){ return key(a).localeCompare(key(b)); });
+    var byDate = {}, maxDate = today;
+    items.filter(function(x){ return x.f.date >= today; }).forEach(function(x){ (byDate[x.f.date] = byDate[x.f.date] || []).push(x); if (x.f.date>maxDate) maxDate = x.f.date; });
+    var carry = overdue.slice(), moves = [], d = new Date(today+'T00:00:00'), guard = 0;
+    while (guard++ < 400){
+      var iso = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+      if (!carry.length && iso > maxDate) break;
+      var isToday = iso===today, slots = planSlots(iso, cfg, isToday);
+      var own = (byDate[iso]||[]).slice().sort(function(a,b){ return key(a).localeCompare(key(b)); });
+      if (!(isToday && !slots.length)){
+        var ordered = carry.concat(own), take = ordered.slice(0, slots.length);
+        var changed = carry.length>0 || own.length>slots.length;
+        carry = ordered.slice(slots.length);
+        if (changed) take.forEach(function(x, i){ if (x.f.date!==iso || x.f.time!==slots[i]) moves.push({ x:x, date:iso, time:slots[i] }); });
+      }
+      d.setDate(d.getDate()+1);
+    }
+    return moves;
+  }
+  function renderReplanButton(){
+    var n = computeFollowUpPlan().length;
+    if (!n) return '';
+    return '<button type="button" class="btn btn-ghost btn-sm" style="width:100%;margin-top:10px;" data-action="replan-followups">🗓️ Re-plan follow-ups ('+n+' to move)</button>';
+  }
   function renderFollowUpBoard(){
     var now = Date.now(), todayStr = todayISO();
     var all = [];
@@ -3537,6 +3668,7 @@
           '</div>';
         }).join('') : '<div class="helper" style="margin:8px 0 0;">Nothing due in the next 7 days.</div>') +
         (list.length>shown.length ? '<div class="helper" style="margin:8px 0 0;">+'+(list.length-shown.length)+' more due soon</div>' : '') +
+        renderReplanButton() +
       '</div>';
   }
 
@@ -3772,6 +3904,7 @@
       renderInquiryEditor('client', p.inquiry||[], inquiryAreaOptions(p.category)) +
       renderRepeatProblems(p) +
       renderParametersCard(p) +
+      renderProgressReportCard(p) +
       renderExtraItemsCard(p) +
       (audits.length ? (
         '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:6px;">' +
@@ -4344,7 +4477,7 @@
     }
     else if (tab==='overdue'){
       body = g.overdue.length
-        ? g.overdue.map(function(e){ return weekRowHtml(e, true); }).join('')
+        ? renderReplanButton().replace('margin-top:10px;','margin:0 0 12px;') + g.overdue.map(function(e){ return weekRowHtml(e, true); }).join('')
         : '<div class="empty"><div class="big">✅</div>Nothing overdue — you\'re all caught up.</div>';
     }
     else if (tab==='actions'){
@@ -5647,6 +5780,30 @@
       delete state.reauditOverrides[t.dataset.key];
       persistReauditOverrides(); render();
     }
+    else if (action==='replan-followups'){
+      var plan = computeFollowUpPlan();
+      if (!plan.length){ window.alert('Your follow-ups are already within your daily limits.'); }
+      else {
+        var pc = planCfg(), dayset = {}; plan.forEach(function(m){ dayset[m.date] = true; });
+        if (window.confirm('Move '+plan.length+' follow-up'+(plan.length===1?'':'s')+' across '+Object.keys(dayset).length+' day'+(Object.keys(dayset).length===1?'':'s')+'?\n\nMax '+pc.wk+' a day on weekdays, '+pc.we+' on weekends, starting '+pc.start+' (last start '+pc.last+'). Overdue ones go first.')){
+          plan.forEach(function(m){ m.x.f.date = m.date; m.x.f.time = m.time; m.x.p.updatedAt = Date.now(); });
+          persistProspects(); render();
+        }
+      }
+    }
+    else if (action==='print-client-report'){
+      var pcr = findProspect(t.dataset.id);
+      if (pcr) printHtmlReport(buildClientReportHtml(pcr), (pcr.name||'Client')+' - Progress report');
+    }
+    else if (action==='copy-client-report'){
+      var pcc = findProspect(t.dataset.id);
+      if (pcc){
+        var txtCR = buildClientReportText(pcc), origCR = t.textContent;
+        var doneCR = function(){ t.textContent = '✓ Copied'; setTimeout(function(){ t.textContent = origCR; }, 1500); };
+        if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(txtCR).then(doneCR).catch(function(){ fallbackCopyText(txtCR); doneCR(); }); }
+        else { fallbackCopyText(txtCR); doneCR(); }
+      }
+    }
     else if (action==='delete-recent-audit'){
       var dra = state.history.filter(function(h){ return h.id===t.dataset.id; })[0];
       if (dra && window.confirm('Remove the audit for "'+(dra.storeName||'Unnamed store')+'" ('+fmtAuditWhen(dra.auditDate, dra.auditTime)+')? This cannot be undone.')){
@@ -6396,6 +6553,11 @@
         state.pricing[path[0]] = num2;
       }
       persistPricing();
+    }
+    else if (el.dataset.plan){
+      state.targets.plan = state.targets.plan || {};
+      state.targets.plan[el.dataset.plan] = el.value;
+      persistTargets();
     }
     else if (el.dataset.trackprice){
       var tpp = el.dataset.trackprice.split('.'), tpn = parseFloat(el.value); if (isNaN(tpn)) tpn = 0;
