@@ -495,6 +495,7 @@
   .msel-box{width:20px; height:20px; border:1.5px solid var(--line-strong); border-radius:5px; display:inline-flex; align-items:center; justify-content:center; font-size:13px; flex:none; color:#fff;}
   .msel-opt.on .msel-box{background:var(--accent); border-color:var(--accent);}
   .msel-done{width:100%; border-radius:0; border-top:1px solid var(--line);}
+  .svcglimpse{margin-top:4px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere;}
   .areachip{border:1px solid var(--line-strong); background:var(--surface); border-radius:20px; padding:8px 14px; font-size:13px; font-weight:600; color:var(--ink-600); transition:background .15s, color .15s, border-color .15s;}
   .areachip:hover:not(.on){background:var(--surface-2);}
   .areachip.on{background:var(--accent); color:#fff; border-color:var(--accent);}
@@ -2775,9 +2776,8 @@
         return '<div class="card histcard" style="padding:14px 16px;margin-bottom:10px;cursor:pointer;" data-action="toggle-service-open" data-svc="'+s.id+'" role="button" tabindex="0">' +
           '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;"><div style="font-weight:800;font-size:15px;line-height:1.3;">'+esc(s.name)+'</div><span class="furow-open" style="flex:none;">Edit ›</span></div>' +
           '<div class="histmeta" style="margin-top:4px;">'+esc(servicePriceLine(s))+'</div>' +
-          (s.priceNote ? '<div class="histmeta" style="margin-top:4px;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:anywhere;">'+esc(s.priceNote)+'</div>' : '') +
-          serviceStepsHtml(s) +
-          '<div class="histmeta" style="margin-top:2px;">'+esc(tmLine)+(vi.days||s.visitInterval==='per-visit' ? ' · '+esc(vi.label) : '')+' · '+((s.auditAreas||[]).length ? s.auditAreas.length+' audit area'+(s.auditAreas.length===1?'':'s') : 'all areas')+((s.metrics||[]).length ? ' · '+s.metrics.length+' metric'+(s.metrics.length===1?'':'s') : '')+'</div>' +
+          (s.priceNote ? '<div class="histmeta svcglimpse">'+esc(s.priceNote)+'</div>' : '') +
+          '<div class="histmeta" style="margin-top:2px;">'+esc(tmLine)+(vi.days||s.visitInterval==='per-visit' ? ' · '+esc(vi.label) : '')+' · '+((s.auditAreas||[]).length ? s.auditAreas.length+' audit area'+(s.auditAreas.length===1?'':'s') : 'all areas')+((s.metrics||[]).length ? ' · '+s.metrics.length+' metric'+(s.metrics.length===1?'':'s') : '')+((s.steps||[]).filter(function(x){return (x||'').trim();}).length ? ' · '+(s.steps||[]).filter(function(x){return (x||'').trim();}).length+' steps' : '')+'</div>' +
         '</div>';
       }
       return '<div class="card svccard" style="padding:14px 16px;margin-bottom:12px;border:1.5px solid var(--accent);">' +
