@@ -709,7 +709,10 @@
     var d = SERVICE_AUDIT_DEFAULTS[svc.id] || { auditAreas:[], metrics:[] };
     if (!Array.isArray(svc.auditAreas)) svc.auditAreas = d.auditAreas.slice();
     if (!Array.isArray(svc.metrics)) svc.metrics = d.metrics.slice();
+    if (!Array.isArray(svc.trackingOptions)) svc.trackingOptions = (svc.trackingMethod==='paper' || svc.trackingMethod==='sheets' || svc.trackingMethod==='app') ? [{ key:svc.trackingMethod, oneTimeAdd:0, retainerAdd:0 }] : [];
   }
+  function serviceTrackingOpts(svc){ return (svc && svc.trackingOptions) || []; }
+  function trackingOpt(svc, key){ return serviceTrackingOpts(svc).filter(function(o){ return o.key===key; })[0] || null; }
   DEFAULT_SERVICES.forEach(fillServiceAuditFields);
 
   var DEFAULT_TEMPLATES = {
@@ -2628,12 +2631,13 @@
     }
     function card(s){
       if (state.svcOpen!==s.id){
-        var vi = visitIntervalOf(s.visitInterval), tm = trackingMethodOf(s.trackingMethod);
+        var vi = visitIntervalOf(s.visitInterval);
+        var tmLine = serviceTrackingOpts(s).length ? 'Tracking: '+serviceTrackingOpts(s).map(function(o){ return trackingMethodOf(o.key).icon+' '+trackingMethodOf(o.key).label; }).join(', ') : 'No tracking add-on';
         return '<div class="card histcard" style="padding:14px 16px;margin-bottom:10px;cursor:pointer;" data-action="toggle-service-open" data-svc="'+s.id+'" role="button" tabindex="0">' +
           '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;"><div style="font-weight:800;font-size:15px;line-height:1.3;">'+esc(s.name)+'</div><span class="furow-open" style="flex:none;">Edit ›</span></div>' +
           '<div class="histmeta" style="margin-top:4px;">'+esc(servicePriceLine(s))+'</div>' +
           (s.priceNote ? '<div class="histmeta" style="margin-top:4px;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:anywhere;">'+esc(s.priceNote)+'</div>' : '') +
-          '<div class="histmeta" style="margin-top:2px;">'+tm.icon+' '+esc(tm.label)+(vi.days||s.visitInterval==='per-visit' ? ' · '+esc(vi.label) : '')+' · '+((s.auditAreas||[]).length ? s.auditAreas.length+' audit area'+(s.auditAreas.length===1?'':'s') : 'all areas')+((s.metrics||[]).length ? ' · '+s.metrics.length+' metric'+(s.metrics.length===1?'':'s') : '')+'</div>' +
+          '<div class="histmeta" style="margin-top:2px;">'+esc(tmLine)+(vi.days||s.visitInterval==='per-visit' ? ' · '+esc(vi.label) : '')+' · '+((s.auditAreas||[]).length ? s.auditAreas.length+' audit area'+(s.auditAreas.length===1?'':'s') : 'all areas')+((s.metrics||[]).length ? ' · '+s.metrics.length+' metric'+(s.metrics.length===1?'':'s') : '')+'</div>' +
         '</div>';
       }
       return '<div class="card svccard" style="padding:14px 16px;margin-bottom:12px;border:1.5px solid var(--accent);">' +
@@ -2642,15 +2646,22 @@
           '<button class="iconbtn" data-action="service-remove" data-svc="'+s.id+'" title="Remove package">✕</button>' +
         '</div>' +
         '<div class="field" style="margin-top:8px;"><label>Category</label><input type="text" data-svc-field="category" data-svc="'+s.id+'" value="'+esc(s.category)+'" placeholder="e.g. Delivery & Menu"></div>' +
-        '<div class="field"><label>Tracking method</label><div class="areagrid">' +
-          TRACKING_METHODS.map(function(tm){ return '<button type="button" class="areachip '+(s.trackingMethod===tm.key?'on':'')+'" data-action="service-tracking" data-svc="'+s.id+'" data-val="'+tm.key+'">'+tm.icon+' '+tm.label+'</button>'; }).join('') +
-        '</div></div>' +
+        '<div class="field"><label>Tracking options — optional extras the client can pick by budget</label><div class="areagrid">' +
+          TRACKING_METHODS.filter(function(tm){ return tm.key!=='n/a'; }).map(function(tm){ var on = !!trackingOpt(s, tm.key); return '<button type="button" class="areachip '+(on?'on':'')+'" data-action="service-tracking-toggle" data-svc="'+s.id+'" data-val="'+tm.key+'">'+(on?'✓ ':'')+tm.icon+' '+tm.label+'</button>'; }).join('') +
+        '</div>' +
+        serviceTrackingOpts(s).map(function(o){
+          var tm = trackingMethodOf(o.key);
+          return '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;align-items:flex-end;"><div style="flex:1 1 100%;font-weight:700;font-size:13px;">'+tm.icon+' '+esc(tm.label)+' — added to the package price</div>' +
+            '<div class="field" style="flex:1;min-width:110px;margin-bottom:0;"><label>One-time + (₹)</label><input type="number" min="0" inputmode="numeric" data-svc-track="oneTimeAdd" data-svc="'+s.id+'" data-key="'+o.key+'" value="'+(o.oneTimeAdd||0)+'"></div>' +
+            '<div class="field" style="flex:1;min-width:110px;margin-bottom:0;"><label>Retainer + (₹/mo)</label><input type="number" min="0" inputmode="numeric" data-svc-track="retainerAdd" data-svc="'+s.id+'" data-key="'+o.key+'" value="'+(o.retainerAdd||0)+'"></div></div>';
+        }).join('') +
+        '<div class="helper" style="margin-top:6px;">'+(serviceTrackingOpts(s).length ? 'When you pitch this package to a client you pick one of these (or none) and the quote updates. The price boxes below are the base package without tracking.' : 'None added — this package has no tracking add-on to offer. Tap a method to add it with its own price.')+'</div></div>' +
         '<div class="field"><label>Visit cadence</label><div class="areagrid">' +
           VISIT_INTERVALS.map(function(vi){ return '<button type="button" class="areachip '+(s.visitInterval===vi.key?'on':'')+'" data-action="service-interval" data-svc="'+s.id+'" data-val="'+vi.key+'">'+vi.label+'</button>'; }).join('') +
         '</div>' + (visitIntervalOf(s.visitInterval).days ? '<div class="helper" style="margin-top:4px;">Assigning this package to a client — or marking its visit follow-up done — automatically schedules the next one, '+visitIntervalOf(s.visitInterval).days+' days out.</div>' : '') + '</div>' +
         '<div class="field"><label>Areas this package audits</label><div class="areagrid">' +
           allSectionNames().map(function(n){ var on = (s.auditAreas||[]).map(norm).indexOf(norm(n))>=0; return '<button type="button" class="areachip '+(on?'on':'')+'" data-action="service-area-toggle" data-svc="'+s.id+'" data-name="'+esc(n)+'">'+(on?'✓ ':'')+esc(n)+'</button>'; }).join('') +
-        '</div><div class="helper" style="margin-top:4px;">'+((s.auditAreas||[]).length ? 'A New Audit for this package pre-selects just these areas.' : 'None picked — a New Audit for this package covers all areas.')+'</div></div>' +
+        '</div><div class="helper" style="margin-top:4px;">'+((s.auditAreas||[]).length ? 'Linked to your checklist: a New Audit for this package pre-selects just these areas ('+serviceChecklistCounts(s)+').' : 'None picked — a New Audit for this package covers every checklist area.')+'</div></div>' +
         '<div class="field"><label>Metrics to follow</label><div class="areagrid">' +
           (state.paramLibrary.length ? state.paramLibrary.map(function(l){ var on = (s.metrics||[]).indexOf(l.id)>=0; return '<button type="button" class="areachip '+(on?'on':'')+'" data-action="service-metric-toggle" data-svc="'+s.id+'" data-lib="'+esc(l.id)+'">'+(on?'✓ ':'')+esc(l.name)+'</button>'; }).join('') : '<span class="helper">Add parameters in Settings → Parameter library first.</span>') +
         '</div><div class="helper" style="margin-top:4px;">Added to the client\'s Analysis parameters when you assign this package.</div></div>' +
@@ -2851,6 +2862,40 @@
     var wanted = svc.auditAreas.map(norm);
     var hit = tmpl.sections.filter(function(s){ return wanted.indexOf(norm(s.name))>=0; }).map(function(s){ return s.id; });
     return hit.length ? hit : all;
+  }
+  function serviceChecklistCounts(svc){
+    return templateKeys().map(function(k){
+      var ids = serviceSectionIds(k, svc), tmpl = state.templates[k];
+      var n = tmpl.sections.filter(function(s){ return ids.indexOf(s.id)>=0; }).reduce(function(a,s){ return a+s.items.length; }, 0);
+      return n+' '+tmpl.label+' items';
+    }).join(' · ');
+  }
+  // The price a client is quoted: package base + chosen tracking add-on, less any discount.
+  function quoteFor(p){
+    var svc = p && p.servicesOffered ? findService(p.servicesOffered) : null;
+    if (!svc) return null;
+    var kind = p.pricingType || (svc.oneTimeMax ? 'onetime' : (svc.retainerMax ? 'retainer' : ''));
+    if (!kind) return null;
+    var opt = p.trackingChoice ? trackingOpt(svc, p.trackingChoice) : null;
+    var isRet = kind==='retainer';
+    var baseLo = Number(isRet ? svc.retainerMin : svc.oneTimeMin)||0, baseHi = Number(isRet ? svc.retainerMax : svc.oneTimeMax)||0;
+    var add = opt ? (Number(isRet ? opt.retainerAdd : opt.oneTimeAdd)||0) : 0;
+    var dv = Number(p.discountValue)||0, dt = p.discountType;
+    function disc(x){ if (!dv || !dt) return x; return Math.max(0, Math.round(dt==='pct' ? x*(1-Math.min(dv,100)/100) : x-dv)); }
+    var lo = baseLo+add, hi = baseHi+add;
+    if (!lo && !hi) return null;
+    return { kind:kind, isRet:isRet, baseLo:baseLo, baseHi:baseHi, add:add, opt:opt, lo:lo, hi:hi, dlo:disc(lo), dhi:disc(hi), discounted:!!(dv && dt) };
+  }
+  function quoteRange(a, b){ var cur = state.pricing.currency||'₹'; return a===b ? cur+fmtCompact(a) : cur+fmtCompact(a)+'–'+cur+fmtCompact(b); }
+  function quoteHtml(p){
+    var q = quoteFor(p);
+    if (!q) return '<div class="helper" style="margin:0;">No price set on this package — nothing to quote.</div>';
+    var suffix = q.isRet ? '/mo' : ' one-time';
+    return '<div class="histmeta">Package: '+quoteRange(q.baseLo, q.baseHi)+suffix+'</div>' +
+      (q.opt ? '<div class="histmeta">+ '+esc(trackingMethodOf(q.opt.key).label)+' tracking: '+(state.pricing.currency||'₹')+fmtCompact(q.add)+suffix+'</div>' : '') +
+      (q.discounted ? '<div class="histmeta">− Discount: '+(p.discountType==='pct' ? esc(String(p.discountValue))+'%' : (state.pricing.currency||'₹')+fmtCompact(Number(p.discountValue)))+'</div>' : '') +
+      '<div style="font-weight:800;font-size:17px;margin-top:6px;">Quote: '+quoteRange(q.dlo, q.dhi)+suffix+'</div>' +
+      '<button type="button" class="btn btn-ghost btn-sm" style="margin-top:8px;" data-action="use-quote-price" data-id="'+p.id+'">Use '+(state.pricing.currency||'₹')+fmtCompact(q.dhi)+' as the price</button>';
   }
   function serviceMetricNames(svc){
     return ((svc && svc.metrics) || []).map(function(id){ var l = state.paramLibrary.filter(function(x){ return x.id===id; })[0]; return l ? l.name : null; }).filter(Boolean);
@@ -3719,7 +3764,20 @@
         '<div class="card" style="padding:16px;margin-bottom:20px;border:1.5px solid var(--accent);background:var(--accent-soft);">' +
           '<div class="formstack" style="gap:14px;margin-bottom:0;">' +
             '<div class="field" style="margin-bottom:0;"><label for="pServices">Service package</label><select id="pServices" data-action="set-client-service"><option value="">— Not selected —</option>'+state.services.map(function(sc){ return '<option value="'+sc.id+'" '+(p.servicesOffered===sc.id?'selected':'')+'>'+esc(sc.name)+'</option>'; }).join('')+'</select>'+(p.servicesOffered && findService(p.servicesOffered) ? '<div class="histmeta" style="margin-top:6px;">'+esc(servicePriceLine(findService(p.servicesOffered)))+(visitIntervalOf(findService(p.servicesOffered).visitInterval).days ? ' · '+esc(visitIntervalOf(findService(p.servicesOffered).visitInterval).label)+' auto-scheduled' : '')+'</div><div class="histmeta" style="margin-top:2px;color:var(--accent-ink);">'+esc(serviceAuditLine(findService(p.servicesOffered)))+'</div>' : '')+'</div>' +
+            (function(){
+              var tsvc = p.servicesOffered ? findService(p.servicesOffered) : null;
+              if (!tsvc || !serviceTrackingOpts(tsvc).length) return '';
+              var cur = state.pricing.currency||'₹';
+              return '<div class="field" style="margin-bottom:0;"><label for="pTracking">Tracking option (client\'s choice)</label><select id="pTracking" data-action="set-tracking-choice"><option value="">No tracking — base package</option>' +
+                serviceTrackingOpts(tsvc).map(function(o){ var tm = trackingMethodOf(o.key); return '<option value="'+o.key+'" '+(p.trackingChoice===o.key?'selected':'')+'>'+tm.icon+' '+esc(tm.label)+(o.oneTimeAdd||o.retainerAdd ? ' (+'+cur+fmtCompact(o.oneTimeAdd||0)+' one-time / +'+cur+fmtCompact(o.retainerAdd||0)+' per month)' : '')+'</option>'; }).join('') +
+                '</select></div>';
+            })() +
             '<div class="field" style="margin-bottom:0;"><label for="pPricingType">Pricing type</label><select id="pPricingType" data-action="set-pricing-type-select"><option value="">— Not set —</option><option value="onetime" '+(p.pricingType==='onetime'?'selected':'')+'>One-time</option><option value="retainer" '+(p.pricingType==='retainer'?'selected':'')+'>Monthly retainer</option></select></div>' +
+            (p.servicesOffered && findService(p.servicesOffered) ?
+              '<div class="field" style="margin-bottom:0;"><label>Discount</label><div style="display:flex;gap:8px;"><select id="pDiscType" data-action="set-discount-type" style="flex:1;"><option value="">No discount</option><option value="pct" '+(p.discountType==='pct'?'selected':'')+'>% off</option><option value="amt" '+(p.discountType==='amt'?'selected':'')+'>'+esc(state.pricing.currency||'₹')+' off</option></select>' +
+              (p.discountType ? '<input type="number" min="0" inputmode="decimal" data-bind-prospect="discountValue" value="'+esc(p.discountValue||'')+'" placeholder="'+(p.discountType==='pct'?'e.g. 10':'e.g. 5000')+'" style="flex:1;" aria-label="Discount value">' : '') +
+              '</div></div>' +
+              '<div class="card" data-quote style="padding:12px 14px;margin:0;background:var(--surface);">'+quoteHtml(p)+'</div>' : '') +
             '<div class="field" style="margin-bottom:0;"><label for="pProposalStatus">Solution proposed?</label><select id="pProposalStatus" data-action="set-proposal-status-select"><option value="">— Not set —</option><option value="proposed" '+(p.proposalStatus==='proposed'?'selected':'')+'>Proposed</option><option value="not_offered" '+(p.proposalStatus==='not_offered'?'selected':'')+'>Not offered right now</option><option value="meeting_scheduled" '+(p.proposalStatus==='meeting_scheduled'?'selected':'')+'>Meeting scheduled later</option></select></div>' +
             (p.proposalStatus==='meeting_scheduled' ? '<div class="field" style="margin-bottom:0;"><label for="pMeetingDate">Date of proposal / meeting</label><input id="pMeetingDate" type="date" data-bind-prospect="proposalMeetingDate" value="'+esc(p.proposalMeetingDate||'')+'"></div>' : '') +
           '</div>' +
@@ -6031,7 +6089,7 @@
     }
     else if (action==='service-add'){
       var newSvc = { id: uid(), name:'New package', category:'Other', trackingMethod:'n/a', visitInterval:'none',
-        oneTimeMin:0, oneTimeMax:0, retainerMin:0, retainerMax:0, retainerMinMonths:0, priceNote:'', auditAreas:[], metrics:[] };
+        oneTimeMin:0, oneTimeMax:0, retainerMin:0, retainerMax:0, retainerMinMonths:0, priceNote:'', auditAreas:[], metrics:[], trackingOptions:[] };
       state.services.push(newSvc);
       state.svcOpen = newSvc.id;
       persistServices(); render();
@@ -6048,6 +6106,23 @@
         state.services = JSON.parse(JSON.stringify(DEFAULT_SERVICES));
         try{ localStorage.removeItem('diagnosisroom_nofreeaudit'); }catch(e){}
         persistServices(); render();
+      }
+    }
+    else if (action==='service-tracking-toggle'){
+      var svcTT = state.services.filter(function(s){ return s.id===t.dataset.svc; })[0];
+      if (svcTT){
+        svcTT.trackingOptions = svcTT.trackingOptions || [];
+        var tti = svcTT.trackingOptions.map(function(o){ return o.key; }).indexOf(t.dataset.val);
+        if (tti>=0) svcTT.trackingOptions.splice(tti,1); else svcTT.trackingOptions.push({ key:t.dataset.val, oneTimeAdd:0, retainerAdd:0 });
+        svcTT.trackingMethod = svcTT.trackingOptions.length ? svcTT.trackingOptions[0].key : 'n/a';
+        persistServices(); render();
+      }
+    }
+    else if (action==='use-quote-price'){
+      var uqp = findProspect(t.dataset.id), uq = uqp && quoteFor(uqp);
+      if (uqp && uq){
+        uqp.finalPrice = String(uq.dhi); if (!uqp.pricingType) uqp.pricingType = uq.kind;
+        uqp.updatedAt = Date.now(); persistProspects(); render();
       }
     }
     else if (action==='service-tracking'){
@@ -6346,6 +6421,11 @@
       var dl2 = state.deliverables.filter(function(x){ return x.id===el.dataset.dl; })[0];
       if (dl2){ dl2.label = el.value; persistDeliverables(); }
     }
+    else if (el.dataset.svcTrack){
+      var stc = state.services.filter(function(s){ return s.id===el.dataset.svc; })[0];
+      var sto = stc && trackingOpt(stc, el.dataset.key);
+      if (sto){ var stn = parseFloat(el.value); sto[el.dataset.svcTrack] = isNaN(stn) ? 0 : stn; persistServices(); }
+    }
     else if (el.dataset.svcField){
       var sc2 = state.services.filter(function(s){ return s.id===el.dataset.svc; })[0];
       if (sc2){
@@ -6366,6 +6446,7 @@
           if (sabtn) sabtn.disabled = !el.value.trim();
         }
         if (el.dataset.bindProspect==='plannedAuditDate' || el.dataset.bindProspect==='servicesOffered') render();
+        if (el.dataset.bindProspect==='discountValue'){ var qEl = app.querySelector('[data-quote]'); if (qEl) qEl.innerHTML = quoteHtml(bp); }
       }
     }
     else if (el.dataset.bindContent){
@@ -6449,12 +6530,21 @@
     }
     else if (el.dataset.action==='set-pricing-type-select'){
       var ptp = findProspect(state.activeProspectId);
-      if (ptp){ ptp.pricingType = el.value; persistProspects(); }
+      if (ptp){ ptp.pricingType = el.value; persistProspects(); render(); }
+    }
+    else if (el.dataset.action==='set-tracking-choice'){
+      var tcp = findProspect(state.activeProspectId);
+      if (tcp){ tcp.trackingChoice = el.value; tcp.updatedAt = Date.now(); persistProspects(); render(); }
+    }
+    else if (el.dataset.action==='set-discount-type'){
+      var dtp = findProspect(state.activeProspectId);
+      if (dtp){ dtp.discountType = el.value; if (!el.value) dtp.discountValue = ''; dtp.updatedAt = Date.now(); persistProspects(); render(); }
     }
     else if (el.dataset.action==='set-client-service'){
       var scsP = findProspect(state.activeProspectId);
       if (scsP){
         scsP.servicesOffered = el.value;
+        scsP.trackingChoice = '';
         scsP.updatedAt = Date.now();
         var scsSvc = el.value ? findService(el.value) : null;
         if (scsSvc){ scheduleServiceFollowup(scsP, scsSvc); addServiceMetrics(scsP, scsSvc); }
