@@ -705,8 +705,25 @@
     svc_open_diagnosis: { auditAreas:[], metrics:[] },
     svc_free_audit:     { auditAreas:[], metrics:[] }
   };
+  // Starter action steps for each built-in package. Seeded only until you edit that package's steps yourself.
+  var SERVICE_STEP_DEFAULTS = {
+    svc_free_audit:     ['Book a 2–3 hour walkthrough with the owner or manager','Run the full checklist and note the gaps','Record the package metrics and photograph key issues','Share the findings and score with the owner on the spot','Recommend the right package and set a proposal follow-up'],
+    svc_open_diagnosis: ['Agree the scope and the outlets to cover','Run the audit across the selected areas','Interview the owner, manager and key staff','Map the biggest leaks and quick wins','Present the findings with a costed action plan'],
+    svc_delivery:       ['Pull 30 days of aggregator orders, ratings and discounts','Audit packing, handover and order accuracy','Review the menu mix and find top and bottom items','Fix aggregator listings, photos and prices','Build the live dashboard and review it weekly'],
+    svc_inventory:      ['Do an opening physical stock count','Set par levels and reorder points','Start the daily stock and wastage log','Reconcile usage against sales weekly','Review variance and wastage with the team monthly'],
+    svc_sop:            ['List every dish and process to standardise','Document each SOP and recipe card with portions','Train the kitchen team and sign off each SOP','Set up the tracking app or checklists','Spot-check compliance and update the SOPs'],
+    svc_controlos_a:    ['Set up the printed registers and formats','Train staff to fill them daily','Collect and digitise the registers on a fixed day','Analyse the numbers and flag deviations','Review the findings with the owner each month'],
+    svc_controlos_b:    ['Build the Google Forms and linked Sheets','Train staff to submit data every day','Check the dashboard daily for gaps','Flag deviations and alerts to the owner','Send the monthly report and review it together'],
+    svc_controlos_c:    ['Define the data and workflows the app must capture','Build and test the custom app with the team','Roll out to staff and train them','Monitor the live dashboard and alerts','Review the monthly report and refine the app'],
+    svc_multi_sheets:   ['Standardise the audit format across all outlets','Set up one Sheets tracker per outlet and a central view','Train each outlet manager','Rank outlets and review the scorecard monthly','Run the corrective actions with each outlet'],
+    svc_multi_app:      ['Standardise the audit format across all outlets','Build or configure the multi-outlet app','Onboard every outlet and manager','Use the central dashboard to rank outlets and franchisees','Review the scorecards and actions monthly'],
+    svc_preopening:     ['Review the concept, menu and layout plan','Build the equipment, staffing and licensing checklist','Set up the SOPs and tracking from day one','Run a mock service before opening','Sign off the opening readiness checklist'],
+    svc_franchise_audit:['Schedule the outlet visit','Run the full audit with photo evidence','Score the outlet against the franchise standard','Share the scorecard with the franchisee and head office','Agree and track the corrective actions'],
+    svc_perf_linked:    ['Agree the baseline numbers and the savings target','Set up the tracking for the agreed metrics','Review the numbers every month','Verify the savings with the owner','Invoice the base fee plus the share of verified savings']
+  };
   function fillServiceAuditFields(svc){
     var d = SERVICE_AUDIT_DEFAULTS[svc.id] || { auditAreas:[], metrics:[] };
+    if ((!Array.isArray(svc.steps) || (!svc.steps.length && !svc.stepsTouched)) && SERVICE_STEP_DEFAULTS[svc.id]) svc.steps = SERVICE_STEP_DEFAULTS[svc.id].slice();
     if (!Array.isArray(svc.auditAreas)) svc.auditAreas = d.auditAreas.slice();
     if (!Array.isArray(svc.metrics)) svc.metrics = d.metrics.slice();
     if (!Array.isArray(svc.steps)) svc.steps = [];
@@ -6305,11 +6322,11 @@
     }
     else if (action==='service-step-add'){
       var svcSA = state.services.filter(function(s){ return s.id===t.dataset.svc; })[0];
-      if (svcSA){ svcSA.steps = svcSA.steps || []; svcSA.steps.push(''); persistServices(); render(); }
+      if (svcSA){ svcSA.steps = svcSA.steps || []; svcSA.steps.push(''); svcSA.stepsTouched = true; persistServices(); render(); }
     }
     else if (action==='service-step-remove'){
       var svcSR = state.services.filter(function(s){ return s.id===t.dataset.svc; })[0];
-      if (svcSR && svcSR.steps){ svcSR.steps.splice(parseInt(t.dataset.idx,10),1); persistServices(); render(); }
+      if (svcSR && svcSR.steps){ svcSR.steps.splice(parseInt(t.dataset.idx,10),1); svcSR.stepsTouched = true; persistServices(); render(); }
     }
     else if (action==='service-tracking-toggle'){
       var svcTT = state.services.filter(function(s){ return s.id===t.dataset.svc; })[0];
@@ -6638,7 +6655,7 @@
     }
     else if (el.dataset.svcStep !== undefined){
       var sts = state.services.filter(function(s){ return s.id===el.dataset.svc; })[0];
-      if (sts && sts.steps){ sts.steps[parseInt(el.dataset.svcStep,10)] = el.value.replace(/[\r\n]+/g,' '); persistServices(); }
+      if (sts && sts.steps){ sts.steps[parseInt(el.dataset.svcStep,10)] = el.value.replace(/[\r\n]+/g,' '); sts.stepsTouched = true; persistServices(); }
       el.style.height = 'auto'; el.style.height = el.scrollHeight+'px';
     }
     else if (el.dataset.svcTrack){
