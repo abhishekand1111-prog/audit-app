@@ -496,6 +496,7 @@
   .msel-opt.on .msel-box{background:var(--accent); border-color:var(--accent);}
   .msel-done{width:100%; border-radius:0; border-top:1px solid var(--line);}
   .svcglimpse{margin-top:4px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere;}
+  .copysel{flex:none; max-width:120px; border:1px solid var(--line-strong); background:var(--surface); color:var(--accent); border-radius:8px; padding:5px 6px; font-size:12px; font-weight:700; font-family:inherit;}
   .areachip{border:1px solid var(--line-strong); background:var(--surface); border-radius:20px; padding:8px 14px; font-size:13px; font-weight:600; color:var(--ink-600); transition:background .15s, color .15s, border-color .15s;}
   .areachip:hover:not(.on){background:var(--surface-2);}
   .areachip.on{background:var(--accent); color:#fff; border-color:var(--accent);}
@@ -579,6 +580,77 @@
   @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .sm-card{--sm-warn:#E0A63A;} }
   :root[data-theme="dark"] .sm-card{--sm-warn:#E0A63A;}
   [hidden]{display:none !important;}
+
+  /* ===== Visual polish: calmer surfaces, clearer hierarchy, better contrast ===== */
+  :root{
+    --paper:#F4F6F9; --surface:#FFFFFF; --surface-2:#EDF0F4;
+    --ink:#0F172A; --ink-600:#475569; --ink-400:#8190A5;
+    --line:#E5E9EF; --line-strong:#D2D9E3;
+    --accent:#1F8FDB; --accent-ink:#0B5C97; --accent-soft:#E6F2FC;
+    --shadow:0 1px 2px rgba(15,23,42,.05),0 10px 28px rgba(15,23,42,.07);
+    --shadow-sm:0 1px 2px rgba(15,23,42,.05),0 2px 8px rgba(15,23,42,.04);
+    --r-l:16px;
+  }
+  body{-webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;}
+  h1,h2,h3{letter-spacing:-.02em;}
+  main{animation:viewin .24s ease both;}
+  @keyframes viewin{from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:none;}}
+  .topbar{background:var(--paper); background:color-mix(in srgb, var(--paper) 86%, transparent); -webkit-backdrop-filter:saturate(1.4) blur(12px); backdrop-filter:saturate(1.4) blur(12px);}
+  .footerbar{background:color-mix(in srgb, var(--paper) 90%, transparent); -webkit-backdrop-filter:blur(12px); backdrop-filter:blur(12px);}
+  .card{border-radius:16px; box-shadow:var(--shadow-sm);}
+  .histcard:hover{box-shadow:var(--shadow);}
+  .btn{min-height:44px; border-radius:12px;}
+  .btn-sm{min-height:36px; border-radius:10px;}
+  .btn-primary{background:linear-gradient(180deg,#2A9AE6 0%,#1B86D2 100%); box-shadow:0 1px 0 rgba(255,255,255,.2) inset, 0 4px 14px rgba(31,143,219,.28);}
+  .btn-primary:hover{background:linear-gradient(180deg,#1F8FDB 0%,#1676BA 100%);}
+  .btn-ghost{box-shadow:var(--shadow-sm);}
+  .field label{font-size:12px; letter-spacing:.01em;}
+  .field input, .field textarea, .field select{border-radius:10px; min-height:44px; transition:border-color .15s, box-shadow .15s;}
+  .field textarea{min-height:88px;}
+  .field input:focus, .field textarea:focus, .field select:focus{outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft);}
+  .stattile{background:var(--surface-2); border:1px solid transparent; border-radius:14px; padding:12px 14px;}
+  .stattile .v{font-family:var(--font-d); font-weight:800; font-size:22px; letter-spacing:-.02em; font-variant-numeric:tabular-nums;}
+  .stattile .k{font-weight:600; letter-spacing:.01em;}
+  .stattile.t-accent{background:var(--accent-soft);} .stattile.t-good{background:var(--good-soft);} .stattile.t-bad{background:var(--bad-soft);}  .sumrow .v, .dayshort .ds b, .pv, .bar-val, .donut-val{font-family:var(--font-d); font-variant-numeric:tabular-nums;}
+  .dayshort .ds b{font-weight:800; font-size:21px;}
+  .sechead2{margin:26px 0 10px;}
+  .sechead2 h2{font-size:12.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-600);}
+  .sechead2 .ic{background:var(--surface-2) !important; width:26px; height:26px; border-radius:8px; font-size:13px;}
+  .pill{padding:3px 8px; font-weight:800;}
+  .tabs{border-radius:13px; background:var(--surface-2);}
+  .tab{border-radius:10px;}
+  .tab.on{background:var(--surface); color:var(--ink); box-shadow:0 1px 3px rgba(15,23,42,.14);}
+  .tab.on .tabcount{background:var(--accent-soft); color:var(--accent-ink);}
+  .sidebarbtn{border-radius:10px;}
+  .sidebarbtn.active{background:var(--accent-soft); color:var(--accent-ink); box-shadow:inset 3px 0 0 var(--accent);}
+  .typecard{border-radius:16px;}
+  .section{border-radius:16px;}
+  .empty{padding:44px 20px;}
+  .checkrow{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 16px; margin-bottom:8px;}
+  .checkrow .cr-main{min-width:0;}
+  .checkrow .cr-title{font-weight:800; font-size:15px;}
+  .checkrow .cr-sub{font-size:12.5px; color:var(--ink-400); margin-top:2px;}
+  .checkrow .btn{flex:none;}
+  .remcard{padding:14px 16px; margin-bottom:28px;}
+  .remcard .row{display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;}
+  /* Dark theme: the light accent needs dark text on it to stay readable */
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]) .btn-primary, :root:not([data-theme="light"]) .areachip.on, :root:not([data-theme="light"]) .scorebtn.on{color:#04121D;}
+    :root:not([data-theme="light"]) .btn-primary{background:linear-gradient(180deg,#6CC3F8 0%,#4FB0EE 100%);}
+    :root:not([data-theme="light"]) .tab.on{background:var(--surface); color:var(--ink); box-shadow:0 1px 3px rgba(0,0,0,.5);}
+    :root:not([data-theme="light"]) .sidebarbtn.active{color:var(--accent-ink);}
+  }
+  :root[data-theme="dark"] .btn-primary, :root[data-theme="dark"] .areachip.on, :root[data-theme="dark"] .scorebtn.on{color:#04121D;}
+  :root[data-theme="dark"] .btn-primary{background:linear-gradient(180deg,#6CC3F8 0%,#4FB0EE 100%);}
+  /* Roomier desktop layout: the menu stays open on the left instead of hiding behind the ☰ button */
+  @media (min-width:1100px){
+    .sidebar{transform:none; box-shadow:none;}
+    .sidebar-overlay{display:none;}
+    .hamburger{display:none;}
+    .shell{max-width:760px; margin-left:calc(250px + (100vw - 250px - 760px) / 2); margin-right:0;}
+    .footerbar{left:250px;}
+    .topbar{grid-template-columns:auto 1fr auto;}
+  }
 </style>
 </head>
 <body>
@@ -1423,14 +1495,19 @@
       var pr = prospectByKey[key];
       var intervalDays = (state.schedule[h.type]||{}).intervalDays || 30;
       var perMonth = pr ? Number(pr.auditsPerMonth) : 0;
-      if (perMonth > 0) intervalDays = Math.max(1, Math.round(30/perMonth));
+      var pkgSvc = pr && pr.servicesOffered ? findService(pr.servicesOffered) : null;
+      var pkgDays = pkgSvc ? visitIntervalOf(pkgSvc.visitInterval).days : 0;
+      var source = 'type';
+      if (perMonth > 0){ intervalDays = Math.max(1, Math.round(30/perMonth)); source = 'client'; }
+      else if (pkgDays > 0){ intervalDays = pkgDays; source = 'package'; }
       var computedDueAt = h.finishedAt + intervalDays*86400000;
       var ov = splitReaudit(state.reauditOverrides[key]);
       var dueAt = ov.date ? new Date(ov.date+'T'+(ov.time||'00:00')+':00').getTime() : computedDueAt;
       return {
         key: key, storeName: h.storeName, storeLocation: h.storeLocation, type: h.type,
         lastAuditAt: h.finishedAt, dueAt: dueAt, overridden: !!ov.date, overrideDate: ov.date, overrideTime: ov.time,
-        daysUntil: Math.ceil((dueAt-todayMs)/86400000), intervalDays: intervalDays, customCadence: perMonth>0
+        daysUntil: Math.ceil((dueAt-todayMs)/86400000), intervalDays: intervalDays, customCadence: perMonth>0,
+        cadenceSource: source, packageName: pkgSvc ? pkgSvc.name : ''
       };
     }).sort(function(a,b){ return a.dueAt-b.dueAt; });
   }
@@ -2563,8 +2640,6 @@
   function renderEditor(){
     var tab = state.editorTab;
     var tmpl = state.templates[tab];
-    var otherTab = tab==='dinein' ? 'qsr' : 'dinein';
-    var otherLabel = state.templates[otherTab].label;
     return '<main>' +
       '<div class="eyebrow">Checklist Editor</div>' +
       '<h1 style="font-size:26px;margin-top:6px;margin-bottom:14px;">Edit sections & items</h1>' +
@@ -2575,7 +2650,9 @@
         return '<div class="card edsection">' +
           '<div class="edhead">' +
             '<textarea rows="1" class="edtext" data-action="rename-section" data-sec="'+sec.id+'">'+esc(sec.name)+'</textarea>' +
-            '<button class="copybtn" data-action="copy-section-to-other" data-sec="'+sec.id+'" title="Copy this section to '+esc(otherLabel)+'">⇄ '+esc(otherLabel)+'</button>' +
+            '<select class="copysel" data-proxy="1" aria-label="Copy this section to another checklist"><option value="">⇄ Copy to…</option>' +
+              templateKeys().filter(function(k){ return k!==tab; }).map(function(k){ return '<option value="'+esc(k)+'" data-action="copy-section-to" data-sec="'+sec.id+'" data-to="'+esc(k)+'">'+esc(state.templates[k].label)+'</option>'; }).join('') +
+            '</select>' +
             '<button class="iconbtn" data-action="delete-section" data-sec="'+sec.id+'" title="Delete section">✕</button>' +
           '</div>' +
           sec.items.map(function(it){
@@ -2700,6 +2777,7 @@
         }).join('') +
       '</div>' +
 
+      renderRemindersCard() +
       '<h1 style="font-size:20px;margin:0 0 4px;">Follow-up planner</h1>' +
       '<div class="helper" style="margin-bottom:12px;margin-top:6px;">Used by the “Re-plan follow-ups” button: overdue follow-ups are moved forward and any day over the limit rolls to the next day, within these hours.</div>' +
       (function(){ var c = planCfg(); return '<div class="card" style="padding:14px 16px;margin-bottom:28px;"><div style="display:flex;gap:10px;flex-wrap:wrap;">' +
@@ -2906,6 +2984,19 @@
       '</div>';
   }
 
+  // Next recurring audit for one client: set automatically from their package's visit cadence (or the checklist type's default).
+  function renderNextAuditCard(p){
+    var key = (p.name||'').trim().toLowerCase();
+    var due = computeDueList().filter(function(x){ return x.key===key; })[0];
+    if (!due) return '';
+    var over = due.dueAt < Date.now();
+    var tone = over ? 'bad' : (due.daysUntil<=7 ? 'warn' : 'good');
+    var label = over ? 'Overdue by '+Math.abs(due.daysUntil)+'d' : (due.daysUntil===0 ? 'Due today' : 'In '+due.daysUntil+'d');
+    var why = due.overridden ? 'set manually' : (due.cadenceSource==='package' ? 'every '+due.intervalDays+' days · '+due.packageName : (due.customCadence ? 'every '+due.intervalDays+' days · custom' : 'every '+due.intervalDays+' days · '+((state.templates[due.type]||{}).label||due.type)+' default'));
+    return '<div class="card checkrow" style="margin-bottom:14px;border-left:3px solid var(--'+(over?'bad':'accent')+');">' +
+      '<div class="cr-main"><div class="cr-title">🗓️ Next audit: '+esc(fmtDateShort(due.dueAt))+' <span class="pill '+tone+'">'+label+'</span></div><div class="cr-sub">'+esc(why)+'</div></div>' +
+      '<button type="button" class="btn btn-primary btn-sm" data-action="start-reaudit" data-name="'+esc(p.name)+'" data-location="'+esc(p.location||'')+'" data-type="'+esc(due.type)+'">Start</button></div>';
+  }
   function renderDueList(){
     var list = computeDueList();
     var todayMs = Date.now();
@@ -2928,7 +3019,7 @@
         '<div class="histtop"><span class="badge">'+esc(tmpl.label||x.type)+'</span><span class="pill '+tone+'">'+statusText+'</span></div>' +
         '<div style="font-weight:700;margin-top:8px;">'+esc(x.storeName||'Unnamed store')+serviceBadgeHtml(dueProspect)+'</div>' +
         '<div class="histmeta">'+(x.storeLocation?esc(x.storeLocation)+' · ':'')+'Last audited '+fmtDateShort(x.lastAuditAt)+'</div>' +
-        '<div class="histmeta">Next due '+fmtDateShort(x.dueAt)+(x.overrideTime?' · '+fmtTime12(x.overrideTime):'')+(x.overridden?' (manually set)':(x.customCadence?' (every '+x.intervalDays+'d — custom cadence)':''))+'</div>' +
+        '<div class="histmeta">Next due '+fmtDateShort(x.dueAt)+(x.overrideTime?' · '+fmtTime12(x.overrideTime):'')+(x.overridden?' (manually set)':(x.customCadence?' (every '+x.intervalDays+'d — custom cadence)':(x.cadenceSource==='package'?' (every '+x.intervalDays+'d — '+esc(x.packageName)+')':'')))+'</div>' +
         '<div class="cardstack" style="margin-top:12px;">' +
           '<div style="display:flex; gap:10px;">' +
             '<div class="field" style="flex:1;"><label>Reschedule to</label><input type="date" data-reaudit-key="'+esc(x.key)+'" data-reaudit-part="date" value="'+esc(x.overrideDate)+'"></div>' +
@@ -3628,6 +3719,75 @@
         (done.length ? '<div class="histmeta">Recently done: '+done.map(function(f){ return esc(fmtDateShort(f.doneAt))+(f.note?' — '+esc(f.note):''); }).join(' · ')+'</div>' : '') +
       '</div>';
   }
+  // ---- Reminders: a morning brief and a heads-up before each timed call (per device; needs the notification permission) ----
+  var LS_REM = 'diagnosisroom_reminders_v1';
+  function remCfg(){
+    var c = loadJSON(LS_REM, null) || {};
+    return { on:!!c.on, brief:c.brief||'09:00', lead:(c.lead===undefined||c.lead===null||c.lead==='') ? 10 : Number(c.lead), lastBrief:c.lastBrief||'', sent:c.sent||{} };
+  }
+  function remSave(c){ saveJSON(LS_REM, c); }
+  function remSupported(){ return typeof window.Notification !== 'undefined'; }
+  function remPermission(){ return remSupported() ? Notification.permission : 'unsupported'; }
+  function remNotify(title, body, tag){
+    if (remPermission()!=='granted') return;
+    var opts = { body:body, tag:tag, icon:'icons/icon-192.png', badge:'icons/favicon-32.png' };
+    try{
+      if (navigator.serviceWorker && navigator.serviceWorker.getRegistration){
+        navigator.serviceWorker.getRegistration().then(function(reg){ if (reg && reg.showNotification) reg.showNotification(title, opts); else new Notification(title, opts); }).catch(function(){ try{ new Notification(title, opts); }catch(e){} });
+      } else { new Notification(title, opts); }
+    }catch(e){}
+  }
+  function checkReminders(){
+    var c = remCfg();
+    if (!c.on || remPermission()!=='granted' || !state.authUser) return;
+    var now = new Date(), today = todayISO(), hm = nowHHMM(), changed = false;
+    if (c.lastBrief!==today && hm>=c.brief){
+      var dc = dayCounts(), parts = [];
+      if (dc.today) parts.push(dc.today+' on today\'s agenda');
+      if (dc.overdue) parts.push(dc.overdue+' overdue');
+      var due = computeDueList().filter(function(x){ return x.dueAt<Date.now(); }).length;
+      if (due) parts.push(due+' re-audit'+(due===1?'':'s')+' due');
+      if (parts.length) remNotify('Good morning — your day', parts.join(' · '), 'brief-'+today);
+      c.lastBrief = today; changed = true;
+    }
+    if (c.lead>0){
+      state.prospects.forEach(function(p){
+        if (p.converted || p.declined) return;
+        openFollowUps(p).forEach(function(f){
+          if (f.date!==today || !f.time || c.sent[f.id]===today) return;
+          var diff = followUpDueAt(f) - Date.now();
+          if (diff>0 && diff<=c.lead*60000){
+            remNotify('📞 Call '+(p.name||'client')+' at '+fmtTime12(f.time), f.note||'Follow-up due', 'fu-'+f.id);
+            c.sent[f.id] = today; changed = true;
+          }
+        });
+      });
+    }
+    Object.keys(c.sent).forEach(function(k){ if (c.sent[k]!==today){ delete c.sent[k]; changed = true; } });
+    if (changed) remSave(c);
+  }
+  setTimeout(checkReminders, 5000);
+  setInterval(checkReminders, 60000);
+  document.addEventListener('visibilitychange', function(){ if (document.visibilityState==='visible') setTimeout(checkReminders, 800); });
+  function renderRemindersCard(){
+    var c = remCfg(), perm = remPermission(), on = c.on && perm==='granted';
+    var status = perm==='unsupported' ? 'This browser can\'t show notifications. On iPhone, add the app to your Home Screen first.'
+      : (perm==='denied' ? 'Notifications are blocked for this app — allow them in your browser or phone settings, then come back.'
+      : (on ? '✓ On for this device. You\'ll get a morning brief and a heads-up before timed calls.' : 'Off. Turn on to get a morning brief and a heads-up before timed calls.'));
+    return '<h1 style="font-size:20px;margin:0 0 4px;">Reminders</h1>' +
+      '<div class="helper" style="margin-bottom:12px;margin-top:6px;">'+esc(status)+'</div>' +
+      '<div class="card remcard">' +
+        '<div class="row"><div style="font-weight:700;">Notifications on this device</div>' +
+          (on ? '<button type="button" class="btn btn-ghost btn-sm" data-action="rem-disable">Turn off</button>' : (perm==='denied'||perm==='unsupported' ? '' : '<button type="button" class="btn btn-primary btn-sm" data-action="rem-enable">Turn on</button>')) + '</div>' +
+        (on ? '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">' +
+          '<div class="field" style="flex:1;min-width:130px;margin-bottom:0;"><label>Morning brief at</label><input type="time" data-rem="brief" value="'+esc(c.brief)+'"></div>' +
+          '<div class="field" style="flex:1;min-width:130px;margin-bottom:0;"><label>Warn before a call</label><select data-rem="lead">' +
+            [0,5,10,15,30].map(function(m){ return '<option value="'+m+'" '+(c.lead===m?'selected':'')+'>'+(m ? m+' minutes' : 'Don\'t warn')+'</option>'; }).join('') +
+          '</select></div></div>' +
+          '<button type="button" class="btn btn-ghost btn-sm" style="width:100%;margin-top:12px;" data-action="rem-test">Send a test notification</button>' +
+          '<div class="helper" style="margin-top:10px;">Reminders fire while the app is open or running in the background. A fully closed app can\'t be woken without a push server, so open it once in the morning.</div>' : '') +
+      '</div>';
+  }
   // ---- Auto-plan: keep pipeline follow-ups within a daily cap and a working-hours window ----
   function planCfg(){
     var c = (state.targets && state.targets.plan) || {};
@@ -3958,6 +4118,7 @@
           '<button type="button" class="btn btn-ghost btn-sm" data-action="start-reaudit" data-name="'+esc(p.name)+'" data-location="'+esc(p.location||'')+'" data-type="'+esc(audits[0].type)+'">🔁 Re-audit now</button>' +
         '</div>' +
         renderClientTimeline(p, audits) +
+        renderNextAuditCard(p) +
         renderEngagementLoop(p, audits) +
         renderNextActionsCard(p, audits) +
         sh('🎯','Post-Audit Follow-up') +
@@ -4431,6 +4592,11 @@
     var active = w ? workdayActiveAway(w) : null;
     var todayStr = todayISO();
     var doneToday = !w && state.workdays.some(function(x){ return x.date===todayStr && x.checkOutAt; });
+    if (!w){
+      return '<div class="card checkrow"><div class="cr-main"><div class="cr-title">⏱️ '+(doneToday ? 'Checked out for today' : 'Not checked in yet')+'</div>' +
+        '<div class="cr-sub"><span data-action="go-timelog" role="button" tabindex="0" style="cursor:pointer;text-decoration:underline;">Time log</span> · last 7 days &amp; past days</div></div>' +
+        '<button type="button" class="btn btn-primary btn-sm" data-action="check-in">✅ Check in'+(doneToday ? ' again' : '')+'</button></div>';
+    }
     return sh('⏱️',"Check in") +
       (w ? renderWorkdayCard(w, true) : '<div class="empty" style="padding:18px 14px;margin-bottom:12px;"><div class="big">⏱️</div>'+(doneToday ? 'Checked out for today.' : 'Not checked in yet today.')+'</div>') +
       '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px;">' +
@@ -5829,6 +5995,15 @@
       delete state.reauditOverrides[t.dataset.key];
       persistReauditOverrides(); render();
     }
+    else if (action==='rem-enable'){
+      if (!remSupported()){ window.alert('This browser does not support notifications.'); return; }
+      Notification.requestPermission().then(function(res){
+        if (res==='granted'){ var rc = remCfg(); rc.on = true; remSave(rc); remNotify('Reminders are on', 'You\'ll get a morning brief and a heads-up before timed calls.', 'rem-on'); }
+        render();
+      });
+    }
+    else if (action==='rem-disable'){ var rd = remCfg(); rd.on = false; remSave(rd); render(); }
+    else if (action==='rem-test'){ remNotify('Diagnosis Room', 'This is how your reminders will look.', 'rem-test'); }
     else if (action==='replan-followups'){
       var plan = computeFollowUpPlan();
       if (!plan.length){ window.alert('Your follow-ups are already within your daily limits.'); }
@@ -6211,7 +6386,7 @@
       tmpl.sections = tmpl.sections.filter(function(s){ return s.id!==t.dataset.sec; });
       persistTemplates(); render();
     }
-    else if (action==='copy-section-to-other'){
+    else if (action==='copy-section-to'){
       function copyItem(it){
         var c = { id:uid(), text:it.text };
         if (it.requiresInfo) c.requiresInfo = true;
@@ -6222,8 +6397,9 @@
       var srcTmpl = state.templates[state.editorTab];
       var srcSec = srcTmpl.sections.filter(function(s){return s.id===t.dataset.sec;})[0];
       if (!srcSec) return;
-      var otherKey = state.editorTab==='dinein' ? 'qsr' : 'dinein';
+      var otherKey = t.dataset.to;
       var otherTmpl = state.templates[otherKey];
+      if (!otherTmpl || otherKey===state.editorTab) return;
       var existing = otherTmpl.sections.filter(function(s){ return s.name.toLowerCase()===srcSec.name.toLowerCase(); })[0];
       if (existing){
         srcSec.items.forEach(function(it){
@@ -6611,6 +6787,12 @@
         state.pricing[path[0]] = num2;
       }
       persistPricing();
+    }
+    else if (el.dataset.rem){
+      var rcfg = remCfg();
+      rcfg[el.dataset.rem] = el.dataset.rem==='lead' ? Number(el.value) : el.value;
+      if (el.dataset.rem==='brief') rcfg.lastBrief = '';
+      remSave(rcfg);
     }
     else if (el.dataset.plan){
       state.targets.plan = state.targets.plan || {};

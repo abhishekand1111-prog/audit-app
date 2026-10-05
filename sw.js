@@ -1,4 +1,4 @@
-﻿const CACHE = 'diagnosis-room-v71';
+const CACHE = 'diagnosis-room-v73';
 const SHELL = ['./', './index.html', './manifest.json', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png', './icons/favicon-32.png'];
 
 self.addEventListener('install', function(event){
@@ -13,6 +13,19 @@ self.addEventListener('activate', function(event){
     })
   );
   self.clients.claim();
+});
+
+// Tapping a reminder brings the app to the front (or opens it).
+self.addEventListener('notificationclick', function(event){
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type:'window', includeUncontrolled:true }).then(function(list){
+      for (var i=0; i<list.length; i++){
+        if ('focus' in list[i]) return list[i].focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow('./');
+    })
+  );
 });
 
 self.addEventListener('fetch', function(event){
