@@ -4065,8 +4065,13 @@
     var cap = wkend ? cfg.we : cfg.wk, times = [];
     var s = hhmmToMin(cfg.start), l = hhmmToMin(cfg.last);
     if (s===null) s = 600; if (l===null) l = 840;
-    for (var t=s; t<=l && times.length<cap; t+=Math.max(15,cfg.gap)) times.push(minToHHMM(t));
-    if (isToday){ var n = new Date(); var nowMin = n.getHours()*60+n.getMinutes(); times = times.filter(function(x){ return hhmmToMin(x) > nowMin; }); }
+    for (var t=s; t<=l; t+=Math.max(15,cfg.gap)) times.push(minToHHMM(t));
+    if (isToday){
+      // Today: only the times still ahead, and the day's cap minus the calls already done today — so a late morning still has room left.
+      var n = new Date(), nowMin = n.getHours()*60+n.getMinutes(), startMs = dayStartMs(0), doneToday = 0;
+      state.prospects.forEach(function(p){ (p.followUps||[]).forEach(function(f){ if (f.done && (f.doneAt||0)>=startMs) doneToday++; }); });
+      times = times.filter(function(x){ return hhmmToMin(x) > nowMin; }).slice(0, Math.max(0, cap-doneToday));
+    } else { times = times.slice(0, cap); }
     return times;
   }
   // Overdue follow-ups are placed first, then each day keeps its own up to the cap; the excess rolls to the next day.
@@ -4078,9 +4083,12 @@
       (p.followUps||[]).forEach(function(f){ if (!f.done && !f.serviceRecurring && f.date) items.push({ p:p, f:f }); });
     });
     function key(x){ return x.f.date+' '+(x.f.time||'99:99'); }
-    var overdue = items.filter(function(x){ return x.f.date < today; }).sort(function(a,b){ return key(a).localeCompare(key(b)); });
+    // A call counts as overdue the moment its time passes — no need to wait for the day to end.
+    var nowHM = nowHHMM();
+    function isLate(x){ return x.f.date < today || (x.f.date===today && !!x.f.time && x.f.time < nowHM); }
+    var overdue = items.filter(isLate).sort(function(a,b){ return key(a).localeCompare(key(b)); });
     var byDate = {}, maxDate = today;
-    items.filter(function(x){ return x.f.date >= today; }).forEach(function(x){ (byDate[x.f.date] = byDate[x.f.date] || []).push(x); if (x.f.date>maxDate) maxDate = x.f.date; });
+    items.filter(function(x){ return !isLate(x); }).forEach(function(x){ (byDate[x.f.date] = byDate[x.f.date] || []).push(x); if (x.f.date>maxDate) maxDate = x.f.date; });
     var carry = overdue.slice(), moves = [], d = new Date(today+'T00:00:00'), guard = 0;
     while (guard++ < 400){
       var iso = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
