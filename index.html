@@ -671,6 +671,11 @@
   .jumpbar::-webkit-scrollbar{display:none;}
   .jumpbar button{flex:none; white-space:nowrap;}
   h1{scroll-margin-top:70px;}
+  .processcard{padding:14px 16px; margin-bottom:16px; border:1.5px solid var(--accent);}
+  .procstep{display:flex; align-items:center; gap:10px; padding:7px 0; font-size:13.5px; color:var(--ink-600);}
+  .procstep .procdot{width:20px; height:20px; border-radius:50%; border:1.5px solid var(--line-strong); display:inline-flex; align-items:center; justify-content:center; font-size:11px; color:#fff; flex:none;}
+  .procstep.done{color:var(--ink);} .procstep.done .procdot{background:var(--good); border-color:var(--good);}
+  .procstep.next{font-weight:800; color:var(--ink);} .procstep.next .procdot{border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft);}
 </style>
 </head>
 <body>
@@ -2513,6 +2518,158 @@
     h += '<div class="rp-foot">Prepared by Diagnosis Room · '+esc(new Date().toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}))+'</div>';
     return h;
   }
+  // ---- Billing: invoices per client (invoice date, due date, amount, paid or not) ----
+  function addDaysISO(iso, n){ var d = new Date(iso+'T00:00:00'); d.setDate(d.getDate()+n); return isoFromDate(d); }
+  function addMonthsISO(iso, n){
+    var d = new Date(iso+'T00:00:00'), day = d.getDate();
+    d.setDate(1); d.setMonth(d.getMonth()+n);
+    var last = new Date(d.getFullYear(), d.getMonth()+1, 0).getDate();
+    d.setDate(Math.min(day, last));
+    return isoFromDate(d);
+  }
+  function invAmount(inv){ return Number(inv.amount)||0; }
+  function invDue(inv){ return inv.dueDate || inv.date || ''; }
+  function invStatus(inv){
+    if (inv.paid) return { key:'paid', label:'Paid', tone:'good' };
+    var due = invDue(inv), today = todayISO();
+    if (due && due<today) return { key:'overdue', label:'Overdue '+Math.max(1, Math.round((new Date(today+'T00:00:00')-new Date(due+'T00:00:00'))/86400000))+'d', tone:'bad' };
+    if (due===today) return { key:'due', label:'Due today', tone:'warn' };
+    return { key:'pending', label:'Due '+fmtDateShort(new Date(due+'T00:00:00').getTime()), tone:'warn' };
+  }
+  function allInvoices(){
+    var out = [];
+    state.prospects.forEach(function(p){ if (p.declined) return; (p.invoices||[]).forEach(function(inv){ out.push({ p:p, inv:inv }); }); });
+    return out;
+  }
+  // The next invoice you should raise: a one-time deal bills once; a retainer bills again a month after the last one.
+  function nextInvoiceSuggestion(p){
+    if (!p.converted || p.declined || p.engagementEnded) return null;
+    var price = clientPriceOf(p);
+    if (!price) return null;
+    var invs = (p.invoices||[]).slice().sort(function(a,b){ return (a.date||'')<(b.date||'') ? -1 : 1; });
+    var base = p.convertedAt ? isoFromDate(new Date(p.convertedAt)) : todayISO();
+    if (p.pricingType==='retainer'){
+      return { date: invs.length ? addMonthsISO(invs[invs.length-1].date||base, 1) : base, amount: price, retainer:true };
+    }
+    return invs.length ? null : { date: base, amount: price, retainer:false };
+  }
+  function makeInvoice(date, amount, note, dueGapDays){
+    return { id: uid(), date: date, dueDate: addDaysISO(date, dueGapDays===undefined ? 7 : dueGapDays), amount: Number(amount)||0, note: note||'', paid:false, paidDate:'', createdAt: Date.now() };
+  }
+  function fmtMonthYear(iso){ return new Date(iso+'T00:00:00').toLocaleDateString(undefined,{month:'long', year:'numeric'}); }
+  function fmtMoney(n){ return (state.pricing.currency||'₹')+Math.round(n).toLocaleString('en-IN'); }
+  function invDraftFor(p){
+    var sg = nextInvoiceSuggestion(p);
+    if (!state.invDraft || state.invDraft.pid!==p.id){
+      var dt = todayISO();
+      state.invDraft = { pid:p.id, date:dt, due:addDaysISO(dt,7), amount: sg ? String(sg.amount) : (clientPriceOf(p) ? String(clientPriceOf(p)) : ''), note:'' };
+    }
+    return state.invDraft;
+  }
+  function renderBillingCard(p){
+    if (!p.converted && !(p.invoices||[]).length) return '';
+    var invs = (p.invoices||[]).slice().sort(function(a,b){ return (b.date||'')<(a.date||'') ? -1 : 1; });
+    var total = invs.reduce(function(s,i){ return s+invAmount(i); }, 0);
+    var paid = invs.filter(function(i){ return i.paid; }).reduce(function(s,i){ return s+invAmount(i); }, 0);
+    var sg = nextInvoiceSuggestion(p), dr = invDraftFor(p);
+    return sh('💸','Billing') +
+      '<div class="card" style="padding:14px 16px;margin-bottom:20px;">' +
+        (invs.length ? '<div class="statgrid" style="margin:0 0 12px;"><div class="stattile"><div class="v">'+fmtMoney(total)+'</div><div class="k">Invoiced</div></div><div class="stattile t-good"><div class="v">'+fmtMoney(paid)+'</div><div class="k">Paid</div></div><div class="stattile'+(total-paid?' t-bad':'')+'"><div class="v">'+fmtMoney(total-paid)+'</div><div class="k">Outstanding</div></div></div>' : '') +
+        (sg ? '<div class="checkrow" style="padding:10px 12px;margin:0 0 10px;background:var(--accent-soft);border-radius:12px;"><div class="cr-main"><div class="cr-title" style="font-size:14px;">'+(sg.retainer ? 'Next monthly invoice' : 'Raise the invoice')+': '+esc(fmtDateShort(new Date(sg.date+'T00:00:00').getTime()))+'</div><div class="cr-sub">'+fmtMoney(sg.amount)+(sg.retainer ? ' per month' : '')+'</div></div><button type="button" class="btn btn-primary btn-sm" data-action="quick-invoice" data-id="'+p.id+'">Create invoice</button></div>' : '') +
+        invs.map(function(inv){
+          var st = invStatus(inv);
+          return '<div style="padding:10px 0;border-top:1px solid var(--line);">' +
+            '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;"><div style="font-weight:800;">'+fmtMoney(invAmount(inv))+(inv.note?' <span style="font-weight:500;color:var(--ink-600);">· '+esc(inv.note)+'</span>':'')+'</div><span class="pill '+st.tone+'">'+esc(st.label)+'</span></div>' +
+            '<div class="histmeta">Invoice date '+esc(fmtDateShort(new Date(inv.date+'T00:00:00').getTime()))+' · payment due '+esc(fmtDateShort(new Date(invDue(inv)+'T00:00:00').getTime()))+(inv.paid && inv.paidDate ? ' · paid '+esc(fmtDateShort(new Date(inv.paidDate+'T00:00:00').getTime())) : '')+'</div>' +
+            '<div class="contactrow" style="margin-top:6px;">' +
+              '<button type="button" class="btn btn-ghost btn-sm" data-action="toggle-invoice-paid" data-pid="'+p.id+'" data-iid="'+inv.id+'">'+(inv.paid ? '↺ Mark unpaid' : '✓ Mark paid')+'</button>' +
+              '<button type="button" class="btn btn-text btn-danger btn-sm" data-action="delete-invoice" data-pid="'+p.id+'" data-iid="'+inv.id+'">Delete</button>' +
+            '</div></div>';
+        }).join('') +
+        '<div style="border-top:1px solid var(--line);margin-top:'+(invs.length?'6':'0')+'px;padding-top:12px;">' +
+          '<div class="answerlabel" style="margin-bottom:8px;">Add an invoice</div>' +
+          '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
+            '<div class="field" style="flex:1;min-width:130px;margin-bottom:0;"><label>Invoice date</label><input type="date" data-inv-field="date" value="'+esc(dr.date)+'"></div>' +
+            '<div class="field" style="flex:1;min-width:130px;margin-bottom:0;"><label>Payment due</label><input type="date" data-inv-field="due" value="'+esc(dr.due)+'"></div>' +
+          '</div>' +
+          '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">' +
+            '<div class="field" style="flex:1;min-width:130px;margin-bottom:0;"><label>Amount ('+esc(state.pricing.currency||'₹')+')</label><input type="number" min="0" inputmode="numeric" data-inv-field="amount" value="'+esc(dr.amount)+'" placeholder="e.g. 60000"></div>' +
+            '<div class="field" style="flex:2;min-width:150px;margin-bottom:0;"><label>Note (optional)</label><input type="text" data-inv-field="note" value="'+esc(dr.note)+'" placeholder="e.g. October retainer"></div>' +
+          '</div>' +
+          '<button type="button" class="btn btn-primary btn-sm" style="width:100%;margin-top:12px;" data-action="add-invoice" data-pid="'+p.id+'">+ Add invoice</button>' +
+        '</div>' +
+      '</div>';
+  }
+  function renderInvoicesBoard(){
+    var all = allInvoices();
+    var sugg = state.prospects.map(function(p){ var s = nextInvoiceSuggestion(p); return s ? { p:p, s:s } : null; }).filter(Boolean)
+      .filter(function(x){ return x.s.date <= isoDaysFromNow(7); });
+    if (!all.length && !sugg.length) return '';
+    var today = todayISO(), mStart = today.slice(0,8)+'01';
+    var unpaid = all.filter(function(x){ return !x.inv.paid; });
+    var overdue = unpaid.filter(function(x){ return invDue(x.inv)<today; });
+    var sum = function(a){ return a.reduce(function(s,x){ return s+invAmount(x.inv); }, 0); };
+    var paidMonth = all.filter(function(x){ return x.inv.paid && (x.inv.paidDate||'')>=mStart; });
+    var list = unpaid.slice().sort(function(a,b){ return invDue(a.inv)<invDue(b.inv) ? -1 : 1; }).slice(0, 5);
+    return sh('💸','Invoices') +
+      '<div class="card" style="padding:14px 16px;margin-bottom:20px;">' +
+        '<div class="statgrid" style="margin:0 0 6px;">' +
+          '<div class="stattile t-accent"><div class="v">'+fmtMoney(sum(unpaid))+'</div><div class="k">Outstanding</div></div>' +
+          '<div class="stattile'+(overdue.length?' t-bad':'')+'"><div class="v">'+fmtMoney(sum(overdue))+'</div><div class="k">Overdue</div></div>' +
+          '<div class="stattile t-good"><div class="v">'+fmtMoney(sum(paidMonth))+'</div><div class="k">Paid this month</div></div>' +
+        '</div>' +
+        sugg.map(function(x){
+          return '<div class="furow" data-action="goto-prospect" data-id="'+x.p.id+'" role="button" tabindex="0"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;"><span style="font-weight:700;">'+esc(x.p.name||'Client')+'</span><span class="pill warn">Raise invoice</span></div>' +
+            '<div class="histmeta">'+fmtMoney(x.s.amount)+(x.s.retainer?' / month':'')+' · '+esc(fmtDateShort(new Date(x.s.date+'T00:00:00').getTime()))+'</div>' +
+            '<div class="contactrow" style="margin-top:6px;"><button type="button" class="btn btn-primary btn-sm" data-action="quick-invoice" data-id="'+x.p.id+'">Create invoice</button></div></div>';
+        }).join('') +
+        list.map(function(x){
+          var st = invStatus(x.inv);
+          return '<div class="furow" data-action="goto-prospect" data-id="'+x.p.id+'" role="button" tabindex="0"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;"><span style="font-weight:700;">'+esc(x.p.name||'Client')+'</span><span class="pill '+st.tone+'">'+esc(st.label)+'</span></div>' +
+            '<div class="histmeta">'+fmtMoney(invAmount(x.inv))+(x.inv.note?' · '+esc(x.inv.note):'')+' · invoiced '+esc(fmtDateShort(new Date(x.inv.date+'T00:00:00').getTime()))+'</div>' +
+            '<div class="contactrow" style="margin-top:6px;"><button type="button" class="btn btn-ghost btn-sm" data-action="toggle-invoice-paid" data-pid="'+x.p.id+'" data-iid="'+x.inv.id+'">✓ Mark paid</button></div></div>';
+        }).join('') +
+        (unpaid.length>list.length ? '<div class="helper" style="margin:8px 0 0;">+'+(unpaid.length-list.length)+' more unpaid</div>' : '') +
+      '</div>';
+  }
+
+  // ---- Client process: the whole journey from lead to paid, with the next step highlighted ----
+  function processSteps(p, audits){
+    var hasInv = (p.invoices||[]).length>0, hasPaid = (p.invoices||[]).some(function(i){ return i.paid; });
+    var steps = [
+      { k:'details',  label:'Client details complete',    done: prospectProblems(p).length===0, go:{ sel:'#pName' }, btn:'Fill in details' },
+      { k:'audit',    label:'First audit done',           done: audits.length>0, act:'start-audit-from-prospect', btn:'Start the audit' },
+      { k:'package',  label:'Package chosen',             done: !!p.servicesOffered, go:{ sel:'#pServices' }, btn:'Choose package' },
+      { k:'quote',    label:'Quote worked out',           done: !!(p.pricingType && (clientPriceOf(p) || quoteFor(p))), go:{ sel:'#pPricingType' }, btn:'Set the quote' },
+      { k:'proposal', label:'Proposal logged',            done: p.proposalStatus==='proposed' || !!(p.proposed||'').trim(), go:{ sel:'#pProposalStatus' }, btn:'Log the proposal' },
+      { k:'followup', label:'Next follow-up scheduled',   done: openFollowUps(p).length>0 || !!p.proposalMeetingDate, go:{ jump:'Follow-ups' }, btn:'Add a follow-up' },
+      { k:'convert',  label:'Client converted',           done: !!p.converted, act:'quick-convert', btn:'Mark converted' },
+      { k:'invoice',  label:'First invoice raised',       done: hasInv, act:'quick-invoice', btn:'Create invoice', needs: !!p.converted },
+      { k:'paid',     label:'Payment received',           done: hasPaid, go:{ jump:'Billing' }, btn:'Record payment', needs: hasInv },
+      { k:'tracking', label:'Metrics set up to track',    done: (p.parameters||[]).length>0, go:{ jump:'Analysis parameters' }, btn:'Add a metric', needs: !!p.converted }
+    ];
+    return steps;
+  }
+  function renderProcessCard(p, audits){
+    if (p.declined) return '';
+    var steps = processSteps(p, audits), done = steps.filter(function(s){ return s.done; }).length;
+    var next = steps.filter(function(s){ return !s.done && s.needs!==false && (s.needs===undefined || s.needs); })[0];
+    var open = !!state.procOpen;
+    var pct = Math.round(done/steps.length*100);
+    var nextBtn = !next ? '' : (next.act ? '<button type="button" class="btn btn-primary btn-sm" data-action="'+next.act+'" data-id="'+p.id+'">'+next.btn+'</button>'
+      : '<button type="button" class="btn btn-primary btn-sm" data-action="process-go" '+(next.go.sel ? 'data-sel="'+next.go.sel+'"' : 'data-jump="'+esc(next.go.jump)+'"')+'>'+next.btn+'</button>');
+    return '<div class="card processcard">' +
+      '<div class="checkrow" style="padding:0;margin:0 0 10px;"><div class="cr-main"><div class="cr-title">🧭 Client process · '+done+' of '+steps.length+'</div>' +
+        (next ? '<div class="cr-sub">Next: '+esc(next.label.replace(/^(Client converted)$/,'Convert the client'))+'</div>' : '<div class="cr-sub">Everything is in place 🎉</div>')+'</div>'+nextBtn+'</div>' +
+      '<div class="progtrack"><div class="progfill" style="width:'+pct+'%"></div></div>' +
+      '<button type="button" class="btn btn-text btn-sm" style="margin-top:6px;padding-left:0;" data-action="toggle-process">'+(open?'Hide steps ▴':'Show all steps ▾')+'</button>' +
+      (open ? '<div style="margin-top:4px;">'+steps.map(function(s){
+        var isNext = next && next.k===s.k;
+        return '<div class="procstep'+(s.done?' done':'')+(isNext?' next':'')+'"><span class="procdot">'+(s.done?'✓':'')+'</span><span>'+esc(s.label)+'</span></div>';
+      }).join('')+'</div>' : '') +
+    '</div>';
+  }
+
   // ---- Client progress report: audit scores, metric movement and issues resolved, for retainer reviews ----
   function clientReportData(p){
     var key = (p.name||'').trim().toLowerCase();
@@ -3826,6 +3983,8 @@
       if (dc.overdue) parts.push(dc.overdue+' overdue');
       var due = computeDueList().filter(function(x){ return x.dueAt<Date.now(); }).length;
       if (due) parts.push(due+' re-audit'+(due===1?'':'s')+' due');
+      var invDueN = allInvoices().filter(function(x){ return !x.inv.paid && invDue(x.inv)<=today; }).length;
+      if (invDueN) parts.push(invDueN+' invoice'+(invDueN===1?'':'s')+' to collect');
       if (parts.length) remNotify('Good morning — your day', parts.join(' · '), 'brief-'+today);
       c.lastBrief = today; changed = true;
     }
@@ -4165,6 +4324,7 @@
           .map(function(j){ return '<button type="button" data-action="jump" data-target="'+esc(j[1])+'">'+j[0]+'</button>'; }).join('') +
       '</div>' +
       renderClientHealthCard(p, audits) +
+      renderProcessCard(p, audits) +
       renderProgressSummary(p, audits) +
       '<div class="helper" data-prospect-hint style="margin:0 0 12px;'+(pProblems.length?'color:var(--accent-ink);':'color:var(--good);')+'">'+esc(prospectHintText(pProblems))+'</div>' +
       '<div class="formstack">' +
@@ -4187,6 +4347,7 @@
         '<div class="contactrow blockrow" data-contact-btns>'+contactButtons(p)+'</div>' +
       '</div>' +
       renderFollowUps(p) +
+      renderBillingCard(p) +
       renderMeetingTimerCard(p) +
       renderInquiryEditor('client', p.inquiry||[], inquiryAreaOptions(p.category)) +
       renderRepeatProblems(p) +
@@ -4660,7 +4821,8 @@
   var UNDO_ACTIONS = {
     'done-followup':'Follow-up marked done', 'delete-followup':'Follow-up deleted', 'delete-lookup':'Item deleted', 'toggle-lookup-done':'Item updated',
     'delete-recent-audit':'Audit removed', 'delete-store-audits':'Audit history deleted', 'delete-prospect':'Client deleted',
-    'resolve-action':'Action resolved', 'quick-convert':'Marked converted', 'quick-decline':'Marked not converted'
+    'resolve-action':'Action resolved', 'quick-convert':'Marked converted', 'quick-decline':'Marked not converted',
+    'delete-invoice':'Invoice deleted', 'add-invoice':'Invoice added', 'quick-invoice':'Invoice created', 'toggle-invoice-paid':'Invoice updated'
   };
   function undoSnap(){ return { prospects:JSON.stringify(state.prospects), history:JSON.stringify(state.history), lookups:JSON.stringify(state.lookups), correctiveActions:JSON.stringify(state.correctiveActions) }; }
   function undoChanged(a){ var b = undoSnap(); return Object.keys(a).some(function(k){ return a[k]!==b[k]; }); }
@@ -5307,6 +5469,8 @@
         alerts.push({ tone: mOverdue?'bad':'warn', icon:'🤝', text: (p.name||'Unnamed client')+' — proposal meeting '+(mOverdue?'was due '+fmtDateShort(new Date(p.proposalMeetingDate+'T00:00:00').getTime()):'due today')+', follow up', action:'goto-prospect', id:p.id });
       }
     });
+    var overInv = allInvoices().filter(function(x){ return !x.inv.paid && invDue(x.inv)<todayStr; });
+    if (overInv.length) alerts.push({ tone:'bad', icon:'💸', text: overInv.length+' invoice'+(overInv.length===1?'':'s')+' overdue — '+fmtMoney(overInv.reduce(function(s,x){ return s+invAmount(x.inv); },0))+' to collect', action:'go-time' });
     smCalls().forEach(function(c){
       var ct = c.contact, s = c.status||'new';
       if (!smOpen(c)) return;
@@ -5491,6 +5655,8 @@
       if (p.plannedAuditDate && !p.auditId && !p.declined) add(p.plannedAuditDate, p.plannedAuditTime, '⭐', 'warn', 'Scheduled audit', nm, 'goto-prospect', p.id);
       if (p.proposalStatus==='meeting_scheduled' && p.proposalMeetingDate && !p.converted && !p.declined) add(p.proposalMeetingDate, '', '🤝', 'warn', 'Proposal meeting', nm, 'goto-prospect', p.id);
     });
+    allInvoices().forEach(function(x){ if (!x.inv.paid) add(invDue(x.inv), '', '💸', 'bad', 'Payment due: '+fmtMoney(invAmount(x.inv)), (x.p.name||'Client')+(x.inv.note?' · '+x.inv.note:''), 'goto-prospect', x.p.id); });
+    state.prospects.forEach(function(p){ var sg = nextInvoiceSuggestion(p); if (sg) add(sg.date, '', '🧾', 'warn', 'Raise invoice: '+fmtMoney(sg.amount), (p.name||'Client')+(sg.retainer?' · monthly':''), 'goto-prospect', p.id); });
     computeDueList().forEach(function(x){
       add(isoFromDate(new Date(x.dueAt)), x.overrideTime, '🗓️', 'accent', 'Re-audit due', (x.storeName||'Unnamed store')+(x.storeLocation?' · '+x.storeLocation:''), 'go-actions', '', 'schedule');
     });
@@ -5664,6 +5830,7 @@
       '</div>' +
       renderFollowUpBoard() +
       renderWeekSummary() +
+      renderInvoicesBoard() +
       renderTargetCard(monthName, revenueMonth, clientsMonth) +
       renderLoopBoard() +
       renderParamsBoard() +
@@ -6260,6 +6427,34 @@
     else if (action==='remove-extra-item'){
       var reP = findProspect(state.activeProspectId);
       if (reP){ reP.extraItems = (reP.extraItems||[]).filter(function(x){ return x.id!==t.dataset.id; }); reP.updatedAt = Date.now(); persistProspects(); render(); }
+    }
+    else if (action==='add-invoice'){
+      var aiP = findProspect(t.dataset.pid), aiD = state.invDraft;
+      if (aiP && aiD && aiD.pid===aiP.id){
+        if (!aiD.date || !(Number(aiD.amount)>0)){ window.alert('Add an invoice date and an amount first.'); return; }
+        aiP.invoices = aiP.invoices || [];
+        var aiInv = makeInvoice(aiD.date, aiD.amount, aiD.note); if (aiD.due) aiInv.dueDate = aiD.due;
+        aiP.invoices.push(aiInv); aiP.updatedAt = Date.now(); state.invDraft = null; persistProspects(); render();
+      }
+    }
+    else if (action==='quick-invoice'){
+      var qiP = findProspect(t.dataset.id), qiS = qiP && nextInvoiceSuggestion(qiP);
+      if (qiP && qiS){ qiP.invoices = qiP.invoices || []; qiP.invoices.push(makeInvoice(qiS.date, qiS.amount, qiS.retainer ? 'Retainer — '+fmtMonthYear(qiS.date) : 'Services')); qiP.updatedAt = Date.now(); state.invDraft = null; persistProspects(); render(); }
+      else if (qiP){ window.alert('Set the client\'s price first (Deal value), then create the invoice.'); }
+    }
+    else if (action==='toggle-invoice-paid'){
+      var tpP = findProspect(t.dataset.pid), tpI = tpP && (tpP.invoices||[]).filter(function(i){ return i.id===t.dataset.iid; })[0];
+      if (tpI){ tpI.paid = !tpI.paid; tpI.paidDate = tpI.paid ? todayISO() : ''; tpP.updatedAt = Date.now(); persistProspects(); render(); }
+    }
+    else if (action==='delete-invoice'){
+      var diP = findProspect(t.dataset.pid);
+      if (diP && window.confirm('Delete this invoice?')){ diP.invoices = (diP.invoices||[]).filter(function(i){ return i.id!==t.dataset.iid; }); diP.updatedAt = Date.now(); persistProspects(); render(); }
+    }
+    else if (action==='toggle-process'){ state.procOpen = !state.procOpen; render(); }
+    else if (action==='process-go'){
+      var pgEl = t.dataset.sel ? app.querySelector(t.dataset.sel) : null;
+      if (!pgEl && t.dataset.jump){ pgEl = [].filter.call(app.querySelectorAll('main .sechead2 h2'), function(h){ return h.textContent===t.dataset.jump; })[0]; }
+      if (pgEl){ pgEl.scrollIntoView({ block:'center' }); if (pgEl.focus && /^(INPUT|SELECT|TEXTAREA)$/.test(pgEl.tagName)) pgEl.focus(); }
     }
     else if (action==='toggle-prog-group'){ state.progOpen = state.progOpen || {}; state.progOpen[t.dataset.key] = !state.progOpen[t.dataset.key]; render(); }
     else if (action==='settings-jump'){ var jh = Array.from(app.querySelectorAll('main h1')).filter(function(h){ return h.textContent.trim()===t.dataset.to; })[0]; if (jh) jh.scrollIntoView({ block:'start' }); }
@@ -6972,6 +7167,7 @@
       }
       persistPricing();
     }
+    else if (el.dataset.invField && state.invDraft){ state.invDraft[el.dataset.invField] = el.value; }
     else if (el.dataset.rem){
       var rcfg = remCfg();
       rcfg[el.dataset.rem] = el.dataset.rem==='lead' ? Number(el.value) : el.value;
