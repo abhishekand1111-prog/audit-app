@@ -661,6 +661,16 @@
   .askrow{display:flex; align-items:center; gap:10px; margin-top:6px;}
   .askrole{flex:0 0 92px; font-size:12.5px; font-weight:700; color:var(--ink-600); overflow-wrap:anywhere;}
   .askrow .itemvalue{flex:1; min-width:0;}
+  /* Long lists: let the browser skip laying out cards that are off-screen */
+  .pcard, .histcard{content-visibility:auto; contain-intrinsic-size:auto 150px;}
+  /* Audit screen: breathing room at the edges, roomier answer boxes */
+  .auditbar{padding:12px 18px 14px;}
+  .askrow{flex-direction:column; align-items:stretch; gap:4px; margin-top:8px;}
+  .askrole{flex:none; font-size:12px;}
+  .askrow .itemvalue{width:100%;}  .jumpbar{flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; padding-bottom:2px;}
+  .jumpbar::-webkit-scrollbar{display:none;}
+  .jumpbar button{flex:none; white-space:nowrap;}
+  h1{scroll-margin-top:70px;}
 </style>
 </head>
 <body>
@@ -921,7 +931,10 @@
 
   function uid(){ return Math.random().toString(36).slice(2,10)+Date.now().toString(36); }
   function loadJSON(key, fallback){ try{ var v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }catch(e){ return fallback; } }
-  function saveJSON(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
+  // Per-render memo: derived lists (due audits, week events, alerts) are used many times in one draw, so compute them once until the data or the draw changes.
+  var memoVer = 0, memoStore = {};
+  function memo(key, fn){ var e = memoStore[key]; if (e && e.v===memoVer) return e.val; var val = fn(); memoStore[key] = { v:memoVer, val:val }; return val; }
+  function saveJSON(key, val){ memoVer++; try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
 
   function seedTemplates(t){
     var out = {};
@@ -1059,12 +1072,15 @@
   function fsUserDataDoc(name){
     return fsUserDataColl().doc(name);
   }
+  // Sync callbacks fire in bursts (every record set, config, status); coalesce them into one redraw instead of one each.
+  var renderTimer = null;
+  function renderSoon(){ if (renderTimer) return; renderTimer = setTimeout(function(){ renderTimer = null; if (!isTypingInApp()) render(); }, 60); }
   function syncOk(){
-    if (state.syncError && RECORD_SETS.every(function(rs){ return rs.ready; })){ state.syncError = ''; if (!isTypingInApp()) render(); }
+    if (state.syncError && RECORD_SETS.every(function(rs){ return rs.ready; })){ state.syncError = ''; renderSoon(); }
   }
   function syncFail(err){
     state.syncError = (err && err.code) ? String(err.code) : 'error';
-    if (!isTypingInApp()) render();
+    renderSoon();
   }
   // Writes are counted individually so the "Syncing" pill clears as soon as THIS write lands,
   // instead of waiting for onSnapshotsInSync (which only fires once every listener in the app is caught up).
@@ -1074,7 +1090,7 @@
     if (pendingWriteCount>0) pendingWriteCount--;
     if (pendingWriteCount===0) state.syncPending = false;
     if (err) syncFail(err); else syncOk();
-    if (!isTypingInApp()) render();
+    renderSoon();
   }
   function fsSyncConfig(fieldName, value){
     if (!fsDb || !state.authUser) return;
@@ -1140,12 +1156,16 @@
         var r = d.data();
         if (r && r.id){ list.push(r); map[r.id] = JSON.stringify(r); }
       });
+      // Nothing new from the cloud (e.g. the echo of our own save): skip the reassign, the save and the redraw.
+      var prevMap = rs.synced || {}, prevKeys = Object.keys(prevMap), newKeys = Object.keys(map);
+      if (rs._seen && prevKeys.length===newKeys.length && newKeys.every(function(k){ return prevMap[k]===map[k]; })) return;
+      rs._seen = true;
       list.sort(rs.sort);
       state[rs.key] = list;
       rs.synced = map;
       saveJSON(rs.ls, list);
       if (snap.metadata.hasPendingWrites || isTypingInApp()) return;
-      render();
+      renderSoon();
     }, syncFail);
     fsUnsubs.push(unsub);
   }
@@ -1226,7 +1246,7 @@
         }
       }
       if (snap.metadata.hasPendingWrites || isTypingInApp()) return;
-      render();
+      renderSoon();
     }, function(){});
     fsUnsubs.push(unsub);
   }
@@ -1243,10 +1263,10 @@
       state.systemMaps = list;
       state.mapsError = '';
       if (isTypingInApp()) return;
-      render();
+      renderSoon();
     }, function(err){
       state.mapsError = (err && err.code) ? String(err.code) : 'error';
-      if (!isTypingInApp()) render();
+      renderSoon();
     });
     fsUnsubs.push(unsub);
   }
@@ -1258,7 +1278,7 @@
       var m = {};
       snap.forEach(function(doc){ m[doc.id] = doc.data(); });
       state.smStats = m;
-      if (!isTypingInApp()) render();
+      renderSoon();
     }, function(){ state.smStats = {}; });
     fsUnsubs.push(unsub);
   }
@@ -1271,7 +1291,7 @@
     var unsubSync = fsDb.onSnapshotsInSync(function(){
       state.syncPending = false;
       if (isTypingInApp()) return;
-      render();
+      renderSoon();
     });
     fsUnsubs.push(unsubSync);
   }
@@ -1491,7 +1511,8 @@
   }
 
   // ---------- re-audit schedule ----------
-  function computeDueList(){
+  function computeDueList(){ return memo('dueList', computeDueListRaw); }
+  function computeDueListRaw(){
     var latestByStore = {};
     state.history.forEach(function(h){
       var key = (h.storeName||'Unnamed store').trim().toLowerCase();
@@ -1612,6 +1633,7 @@
   }
 
   function render(){
+    memoVer++;
     if (!state.authReady){ app.innerHTML = '<div class="authwrap"><div class="authloading">Loading…</div></div>'; return; }
     if (!state.authUser){ app.innerHTML = renderAuthGate(); return; }
     // Week Ahead and Actions now live inside The Day; Call Requests inside Clients.
@@ -1643,10 +1665,13 @@
     }
     saveNav();
     if (navScrollY){ var ny = navScrollY; navScrollY = 0; window.scrollTo(0, ny); }
+    // Resize auto-growing text boxes in one batch (reset all, read all, write all) so the browser lays the page out once, not once per box.
     var lookupTAs = app.querySelectorAll('.lookuptext, .edtext, .inqtext, .autogrow');
-    for (var lti=0; lti<lookupTAs.length; lti++){
-      lookupTAs[lti].style.height = 'auto';
-      lookupTAs[lti].style.height = lookupTAs[lti].scrollHeight+'px';
+    if (lookupTAs.length){
+      var taH = [], lti;
+      for (lti=0; lti<lookupTAs.length; lti++) lookupTAs[lti].style.height = 'auto';
+      for (lti=0; lti<lookupTAs.length; lti++) taH.push(lookupTAs[lti].scrollHeight);
+      for (lti=0; lti<lookupTAs.length; lti++) lookupTAs[lti].style.height = taH[lti]+'px';
     }
   }
 
@@ -2772,8 +2797,10 @@
     return rep;
   }
   function lastBackupAt(){ return Number(loadJSON(LS_LB, 0)) || 0; }
+  var storageCache = { t:0, rep:null };
   function renderStorageMeter(){
-    var rep = storageReport(true);
+    if (!storageCache.rep || Date.now()-storageCache.t > 20000){ storageCache = { t:Date.now(), rep:storageReport(true) }; }
+    var rep = storageCache.rep;
     var barColor = { good:'var(--good)', warn:'var(--accent)', bad:'var(--bad)' };
     function setRow(s, first){
       return '<div style="padding:10px 0;'+(first?'':'border-top:1px solid var(--line);')+'">' +
@@ -2799,6 +2826,7 @@
     return '<main>' +
       '<div class="eyebrow">Settings</div>' +
       '<h1 style="font-size:26px;margin-top:6px;margin-bottom:0;">Settings</h1>' +
+      '<div class="seg jumpbar" style="margin:12px 0 0;">' + [['Monthly Targets','Targets'],['Tracking prices','Tracking prices'],['Reminders','Reminders'],['Follow-up planner','Planner'],['Parameter library','Parameters'],['Backup & Restore','Backup']].map(function(j){ return '<button type="button" data-action="settings-jump" data-to="'+esc(j[0])+'">'+j[1]+'</button>'; }).join('') + '</div>' +
       '<div class="card" style="padding:14px 16px;margin:14px 0 24px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">' +
         '<div><div style="font-weight:700;">'+esc(state.authUser?state.authUser.email:'')+'</div><div class="histmeta">Signed in</div></div>' +
         '<button class="btn btn-ghost btn-sm" data-action="auth-signout">Sign out</button>' +
@@ -3228,8 +3256,10 @@
   function prospectAudits(p){
     var key = (p.name||'').trim().toLowerCase();
     if (!key) return [];
-    return state.history.filter(function(h){ return (h.storeName||'').trim().toLowerCase()===key; })
-      .sort(function(a,b){ return b.finishedAt-a.finishedAt; });
+    return memo('pa:'+key, function(){
+      return state.history.filter(function(h){ return (h.storeName||'').trim().toLowerCase()===key; })
+        .sort(function(a,b){ return b.finishedAt-a.finishedAt; });
+    }).slice();
   }
 
   function prospectCategoryLabel(p){
@@ -3293,11 +3323,13 @@
     });
     locs.sort(); cats.sort();
     var fl = state.prospectsFilterLocation||'all', fc = state.prospectsFilterCategory||'all';
+    var ndMap = {};
+    state.prospects.forEach(function(p){ ndMap[p.id] = prospectNextDue(p); });
     var list = state.prospects.filter(function(p){
       return (fl==='all' || p.location===fl) && (fc==='all' || p.category===fc);
     }).sort(function(a,b){
       if (!!a.declined !== !!b.declined) return a.declined ? 1 : -1;
-      var nda = prospectNextDue(a), ndb = prospectNextDue(b);
+      var nda = ndMap[a.id], ndb = ndMap[b.id];
       if (nda!==ndb) return nda<ndb ? -1 : 1;
       return (b.createdAt||0)-(a.createdAt||0);
     });
@@ -3852,7 +3884,8 @@
     return times;
   }
   // Overdue follow-ups are placed first, then each day keeps its own up to the cap; the excess rolls to the next day.
-  function computeFollowUpPlan(){
+  function computeFollowUpPlan(){ return memo('fuPlan', computeFollowUpPlanRaw); }
+  function computeFollowUpPlanRaw(){
     var cfg = planCfg(), today = todayISO(), items = [];
     state.prospects.forEach(function(p){
       if (p.converted || p.declined) return;
@@ -4090,11 +4123,12 @@
     if (!sum) return '';
     var tone = sum.scoreDelta>0 ? 'good' : (sum.scoreDelta<0 ? 'bad' : 'warn');
     var arrow = sum.scoreDelta>0 ? '▲' : (sum.scoreDelta<0 ? '▼' : '—');
-    function chipGroup(arr, chipTone, emptyText){
+    function chipGroup(arr, chipTone, emptyText, gkey){
       if (!arr.length) return '<div class="helper" style="margin:2px 0 0;">'+emptyText+'</div>';
-      return '<div class="progchips">' + arr.map(function(it){
+      var LIMIT = 6, open = !!(state.progOpen && state.progOpen[gkey]), shown = (open || arr.length<=LIMIT+1) ? arr : arr.slice(0, LIMIT);
+      return '<div class="progchips">' + shown.map(function(it){
         return '<span class="progchip '+chipTone+'" title="'+esc(it.section)+' — '+esc(it.text)+'"><span class="s">'+esc(it.section)+':</span>'+esc(it.text)+'</span>';
-      }).join('') + '</div>';
+      }).join('') + (arr.length>LIMIT+1 ? '<button type="button" class="btn btn-text btn-sm" style="min-height:30px;padding:2px 6px;" data-action="toggle-prog-group" data-key="'+gkey+'">'+(open ? 'Show less' : '+ '+(arr.length-LIMIT)+' more')+'</button>' : '') + '</div>';
     }
     return sh('📊','Progress Summary') +
       '<div class="card" style="padding:14px 16px;margin-bottom:16px;">' +
@@ -4108,9 +4142,9 @@
           '<div class="stattile"><div class="v" style="'+(sum.actionsOpen?'color:var(--bad);':'')+'">'+sum.actionsOpen+'</div><div class="k">Open Issues</div></div>' +
           '<div class="stattile"><div class="v">'+sum.actionsResolved+'/'+sum.actionsRaised+'</div><div class="k">Issues Resolved</div></div>' +
         '</div>' +
-        '<div style="margin-bottom:10px;"><div style="font-weight:700;font-size:12px;color:var(--good);margin-bottom:5px;">✓ IMPROVED ('+sum.improved.length+')</div>'+chipGroup(sum.improved,'good','Nothing new fixed yet.')+'</div>' +
-        '<div style="margin-bottom:10px;"><div style="font-weight:700;font-size:12px;color:var(--bad);margin-bottom:5px;">⚠ REGRESSED ('+sum.regressed.length+')</div>'+chipGroup(sum.regressed,'bad','Nothing has slipped.')+'</div>' +
-        '<div><div style="font-weight:700;font-size:12px;color:var(--ink-600);margin-bottom:5px;">○ STILL PENDING ('+sum.persistent.length+')</div>'+chipGroup(sum.persistent,'neutral','No long-standing issues.')+'</div>' +
+        '<div style="margin-bottom:10px;"><div style="font-weight:700;font-size:12px;color:var(--good);margin-bottom:5px;">✓ IMPROVED ('+sum.improved.length+')</div>'+chipGroup(sum.improved,'good','Nothing new fixed yet.','imp')+'</div>' +
+        '<div style="margin-bottom:10px;"><div style="font-weight:700;font-size:12px;color:var(--bad);margin-bottom:5px;">⚠ REGRESSED ('+sum.regressed.length+')</div>'+chipGroup(sum.regressed,'bad','Nothing has slipped.','reg')+'</div>' +
+        '<div><div style="font-weight:700;font-size:12px;color:var(--ink-600);margin-bottom:5px;">○ STILL PENDING ('+sum.persistent.length+')</div>'+chipGroup(sum.persistent,'neutral','No long-standing issues.','per')+'</div>' +
       '</div>';
   }
 
@@ -4782,7 +4816,8 @@
     '</div>';
   }
   // The Day = check-in + today's agenda, the 7-day planner, overdue items, corrective actions / re-audits, and the time log.
-  function dayCounts(){
+  function dayCounts(){ return memo('dayCounts', dayCountsRaw); }
+  function dayCountsRaw(){
     var g = weekGroups(7);
     return { g:g, today:g.days[0].items.length, week:g.count, overdue:g.overdue.length,
       actions: state.correctiveActions.filter(function(a){ return !a.done; }).length + computeDueList().filter(function(x){ return x.dueAt<=Date.now(); }).length };
@@ -5241,7 +5276,8 @@
       ) : '');
   }
 
-  function computeAlerts(){
+  function computeAlerts(){ return memo('alerts', computeAlertsRaw); }
+  function computeAlertsRaw(){
     var todayStr = todayISO();
     var nowMs = Date.now();
     var due = computeDueList();
@@ -5442,7 +5478,8 @@
 
   // ---------- week ahead ----------
   function isoFromDate(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
-  function weekEventsAll(){
+  function weekEventsAll(){ return memo('weekEvents', weekEventsAllRaw); }
+  function weekEventsAllRaw(){
     var ev = [];
     function add(date, time, icon, tone, title, sub, action, id, tab){
       if (!date) return;
@@ -6224,6 +6261,8 @@
       var reP = findProspect(state.activeProspectId);
       if (reP){ reP.extraItems = (reP.extraItems||[]).filter(function(x){ return x.id!==t.dataset.id; }); reP.updatedAt = Date.now(); persistProspects(); render(); }
     }
+    else if (action==='toggle-prog-group'){ state.progOpen = state.progOpen || {}; state.progOpen[t.dataset.key] = !state.progOpen[t.dataset.key]; render(); }
+    else if (action==='settings-jump'){ var jh = Array.from(app.querySelectorAll('main h1')).filter(function(h){ return h.textContent.trim()===t.dataset.to; })[0]; if (jh) jh.scrollIntoView({ block:'start' }); }
     else if (action==='msel-toggle'){ state.mselOpen = state.mselOpen===t.dataset.id ? null : t.dataset.id; render(); }
     else if (action==='set-audit-mode'){ state.setup.mode = t.dataset.val; render(); }
     else if (action==='toggle-area'){
