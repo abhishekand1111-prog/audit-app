@@ -676,6 +676,13 @@
   .procstep .procdot{width:20px; height:20px; border-radius:50%; border:1.5px solid var(--line-strong); display:inline-flex; align-items:center; justify-content:center; font-size:11px; color:#fff; flex:none;}
   .procstep.done{color:var(--ink);} .procstep.done .procdot{background:var(--good); border-color:var(--good);}
   .procstep.next{font-weight:800; color:var(--ink);} .procstep.next .procdot{border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft);}
+  .workrow{display:flex; align-items:flex-start; gap:10px; padding:10px 0; border-top:1px solid var(--line);}
+  .workrow:first-of-type{border-top:none;}
+  .workrow .chk{margin-top:2px;}
+  .wr-main{flex:1; min-width:0;}
+  .wr-text{font-size:14.5px; line-height:1.35; overflow-wrap:anywhere; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;}
+  .ansblock{margin-top:8px;}
+  .ansblock .itemvalue{margin-bottom:8px;}
 </style>
 </head>
 <body>
@@ -1590,7 +1597,7 @@
       activeSectionId: null,
       sections: chosen.map(function(s){
         return { id:s.id, name:s.name, accumMs:0, runningSince:null,
-          items: s.items.map(function(it){ return { id:it.id, text:it.text, state:'unchecked', requiresInfo:!!it.requiresInfo, infoLabel:it.infoLabel||'', value:'', askWho:(it.askWho||[]).slice(), who:{},
+          items: s.items.map(function(it){ return { id:it.id, text:it.text, state:'unchecked', requiresInfo:!!it.requiresInfo, infoLabel:it.infoLabel||'', value:'', askWho:(it.askWho||[]).slice(), who:{}, answers:(it.answers||[]).map(function(a){ return { label:a.label||'', type:a.type==='number'?'number':'text' }; }), ansVals:[],
             kind:it.kind||'tick', unit:it.unit||'', passMin:(it.passMin===undefined?'':it.passMin), passMax:(it.passMax===undefined?'':it.passMax), critical:!!it.critical, failNote:'', failDue:'' }; }) };
       })
     };
@@ -2205,6 +2212,7 @@
             (flagged ? '<div class="histmeta" style="color:var(--bad);">Flagged unresolved on last visit</div>' : '') +
             (streak>=2 ? '<div class="histmeta" style="color:var(--bad);">🔁 Missed in the last '+streak+' audits in a row</div>' : '') +
             askWhoHtml(it, sec) +
+            ansFieldsHtml(it, sec) +
             (kind==='number' && !(it.askWho||[]).length ? '<div class="answerblock"><label class="answerlabel">'+esc(it.infoLabel||'Reading')+(it.unit?' ('+esc(it.unit)+')':'')+(rangeHint?' · '+esc(rangeHint):'')+'</label><input type="number" step="any" inputmode="decimal" class="itemvalue" data-bind-item="numvalue" data-sec="'+sec.id+'" data-item="'+it.id+'" placeholder="Enter reading" value="'+esc(it.value||'')+'"></div>' : '') +
             (kind==='score' ? '<div class="scorerow">'+[1,2,3,4,5].map(function(n){ return '<button type="button" class="scorebtn '+(String(it.value)===String(n)?'on':'')+'" data-action="set-score" data-sec="'+sec.id+'" data-item="'+it.id+'" data-val="'+n+'">'+n+'</button>'; }).join('')+'</div><div class="histmeta">Score 4–5 passes · 1–3 is flagged</div>' : '') +
             (it.requiresInfo && kind==='tick' ? '<div class="answerblock"><label class="answerlabel">📝 '+esc(it.infoLabel||'Recorded answer')+'</label><input type="text" class="itemvalue" data-bind-item="value" data-sec="'+sec.id+'" data-item="'+it.id+'" placeholder="'+esc(it.infoLabel||'Enter value')+'" value="'+esc(it.value||'')+'"></div>' : '') +
@@ -2346,6 +2354,18 @@
       }).join('') +
       (differ ? '<div class="histmeta" style="color:var(--bad);font-weight:600;">⚠ Their answers differ ('+nums.join(' / ')+')</div>' : '') + '</div>';
   }
+  // Up to two extra answer fields per item (e.g. 'Brand', 'Last serviced'), each a short text or a number.
+  var MAX_ANSWERS = 2;
+  function ansFieldsHtml(it, sec){
+    var defs = it.answers || [];
+    if (!defs.length) return '';
+    return '<div class="ansblock">' + defs.map(function(a, i){
+      return '<label class="answerlabel">📝 '+esc(a.label||('Answer '+(i+1)))+'</label><input class="itemvalue" '+(a.type==='number' ? 'type="number" step="any" inputmode="decimal"' : 'type="text"')+' data-bind-ans="'+i+'" data-sec="'+sec.id+'" data-item="'+it.id+'" placeholder="'+esc(a.label||'Enter answer')+'" value="'+esc((it.ansVals||[])[i]||'')+'">';
+    }).join('') + '</div>';
+  }
+  function ansLines(it){
+    return (it.answers||[]).map(function(a, i){ var v = (it.ansVals||[])[i]; return (v!==undefined && v!=='') ? (a.label||('Answer '+(i+1)))+': '+v : null; }).filter(Boolean);
+  }
   function whoLines(it){
     return (it.askWho||[]).map(function(r){ var v = (it.who||{})[r]; return (v!==undefined && v!=='') ? r+': '+v+(((it.kind||'tick')==='number' && it.unit) ? ' '+it.unit : '') : null; }).filter(Boolean);
   }
@@ -2429,7 +2449,7 @@
             var label = it.state==='checked' ? '✓ Checked' : (it.state==='na' ? '– N/A' : (it.state==='fail' ? '✗ Failed' : '○ Not checked'));
             var extra = (it.kind==='number' && it.value!=='' && it.value!==undefined) ? '<div class="histmeta">'+esc(it.infoLabel||'Reading')+': '+esc(it.value)+(it.unit?' '+esc(it.unit):'')+'</div>'
               : (it.kind==='score' && it.value ? '<div class="histmeta">Scored '+esc(it.value)+' / 5</div>' : '');
-            return '<div class="sumrow" style="align-items:flex-start;"><span class="k">'+(it.critical?'<span class="critbadge">CRITICAL</span>':'')+esc(it.text)+extra+(it.state==='fail' && it.failNote ? '<div class="histmeta" style="color:var(--bad);">'+esc(it.failNote)+'</div>' : '')+(it.requiresInfo ? '<div class="histmeta">'+esc(it.infoLabel||'Answer')+': '+(esc(it.value||'')||'—')+'</div>' : '')+(whoLines(it).length ? '<div class="histmeta">👤 '+whoLines(it).map(esc).join(' · ')+'</div>' : '')+'</span><span class="v"><span class="pill '+tone+'">'+label+'</span></span></div>';
+            return '<div class="sumrow" style="align-items:flex-start;"><span class="k">'+(it.critical?'<span class="critbadge">CRITICAL</span>':'')+esc(it.text)+extra+(it.state==='fail' && it.failNote ? '<div class="histmeta" style="color:var(--bad);">'+esc(it.failNote)+'</div>' : '')+(it.requiresInfo ? '<div class="histmeta">'+esc(it.infoLabel||'Answer')+': '+(esc(it.value||'')||'—')+'</div>' : '')+(whoLines(it).length ? '<div class="histmeta">👤 '+whoLines(it).map(esc).join(' · ')+'</div>' : '')+(ansLines(it).length ? '<div class="histmeta">📝 '+ansLines(it).map(esc).join(' · ')+'</div>' : '')+'</span><span class="v"><span class="pill '+tone+'">'+label+'</span></span></div>';
           }).join('') +
         '</div>';
       }).join('') +
@@ -2497,10 +2517,10 @@
         return '<div style="break-inside:avoid;"><b>'+esc(s.name)+'</b><ul>'+s.items.map(function(it){ return '<li>'+esc(it.text)+'</li>'; }).join('')+'</ul></div>';
       }).join('');
     }
-    var told = secs.map(function(s){ return { name:s.name, items:(s.items||[]).filter(function(it){ return whoLines(it).length; }) }; }).filter(function(s){ return s.items.length; });
+    var told = secs.map(function(s){ return { name:s.name, items:(s.items||[]).filter(function(it){ return whoLines(it).length || ansLines(it).length; }) }; }).filter(function(s){ return s.items.length; });
     if (told.length){
-      h += '<h2>What each person told us</h2>' + told.map(function(s){
-        return '<div style="break-inside:avoid;"><b>'+esc(s.name)+'</b><ul>'+s.items.map(function(it){ return '<li>'+esc(it.text)+' — '+whoLines(it).map(esc).join('; ')+'</li>'; }).join('')+'</ul></div>';
+      h += '<h2>Answers recorded</h2>' + told.map(function(s){
+        return '<div style="break-inside:avoid;"><b>'+esc(s.name)+'</b><ul>'+s.items.map(function(it){ return '<li>'+esc(it.text)+' — '+whoLines(it).concat(ansLines(it)).map(esc).join('; ')+'</li>'; }).join('')+'</ul></div>';
       }).join('');
     }
     if (recs.length){
@@ -2887,6 +2907,13 @@
             if (it.critical) tags.push('🔴 Critical');
             if (it.requiresInfo) tags.push('📝 Needs an answer');
             if ((it.askWho||[]).length) tags.push('👤 Ask: '+it.askWho.join(', '));
+            if ((it.answers||[]).length) tags.push('📝 '+it.answers.length+' answer field'+(it.answers.length===1?'':'s'));
+            var ansEdHtml = '<div style="margin-top:8px;"><div class="answerlabel" style="margin-bottom:4px;">📝 Answer fields (up to '+MAX_ANSWERS+')</div>' +
+                (it.answers||[]).map(function(a, i){ return '<div style="display:flex;gap:6px;margin-bottom:6px;align-items:center;"><input type="text" class="iteminfolabel" style="flex:1;min-width:0;" data-answer-label="'+i+'" data-sec="'+sec.id+'" data-item="'+it.id+'" value="'+esc(a.label||'')+'" placeholder="e.g. Brand name">' +
+                  '<button type="button" class="naBtn '+(a.type!=='number'?'on':'')+'" data-action="answer-type" data-idx="'+i+'" data-val="text" data-sec="'+sec.id+'" data-item="'+it.id+'">Text</button>' +
+                  '<button type="button" class="naBtn '+(a.type==='number'?'on':'')+'" data-action="answer-type" data-idx="'+i+'" data-val="number" data-sec="'+sec.id+'" data-item="'+it.id+'">Number</button>' +
+                  '<button type="button" class="iconbtn" data-action="remove-answer-field" data-idx="'+i+'" data-sec="'+sec.id+'" data-item="'+it.id+'" aria-label="Remove answer field">✕</button></div>'; }).join('') +
+                ((it.answers||[]).length<MAX_ANSWERS ? '<button type="button" class="btn btn-ghost btn-sm" data-action="add-answer-field" data-sec="'+sec.id+'" data-item="'+it.id+'">+ Add an answer field</button>' : '') + '</div>';
             var askHtml = '<div style="margin-top:8px;"><div class="answerlabel" style="margin-bottom:4px;">👤 Whom to ask</div>' +
                 msel('ask-'+it.id, 'Nobody specific', allAskRoles().map(function(r){ return { label:r, on:(it.askWho||[]).indexOf(r)>=0, attrs:'data-action="toggle-ask-role" data-sec="'+sec.id+'" data-item="'+it.id+'" data-role="'+esc(r)+'"' }; })) +
                 '<div style="display:flex;gap:8px;margin-top:6px;"><input type="text" class="iteminfolabel" style="flex:1;min-width:0;" placeholder="Add another person, e.g. Store keeper" aria-label="Add a person to ask"><button type="button" class="btn btn-ghost btn-sm" data-action="add-ask-role" data-sec="'+sec.id+'" data-item="'+it.id+'">Add</button></div>' +
@@ -2904,7 +2931,7 @@
                   '<input type="number" step="any" class="iteminfolabel" data-item-field="passMin" data-sec="'+sec.id+'" data-item="'+it.id+'" value="'+esc(it.passMin===undefined?'':it.passMin)+'" placeholder="OK from" style="flex:1;min-width:70px;">' +
                   '<input type="number" step="any" class="iteminfolabel" data-item-field="passMax" data-sec="'+sec.id+'" data-item="'+it.id+'" value="'+esc(it.passMax===undefined?'':it.passMax)+'" placeholder="OK up to" style="flex:1;min-width:70px;">' +
                 '</div>'
-              ) : '') + askHtml;
+              ) : '') + ansEdHtml + askHtml;
             return '<div class="itemrow '+(it.requiresInfo?'hasanswer':'')+'">' +
               '<div class="itemrow-top">' +
                 '<textarea rows="1" class="edtext" data-action="rename-item" data-sec="'+sec.id+'" data-item="'+it.id+'">'+esc(it.text)+'</textarea>' +
@@ -4816,6 +4843,47 @@
 
   // A one-line week-in-review pulled from data already in the app — audits, conversions, posts, hours worked —
   // so the week's shape is visible without opening Actions, Clients, Content and The Day separately.
+  // ---- Dashboard: open tasks, lookups and corrective actions in one tabbed card ----
+  function renderWorkBoard(){
+    var tasks = state.lookups.filter(function(l){ return !l.done && lookupGroup(l)==='task'; }).sort(function(a,b){ return (b.createdAt||0)-(a.createdAt||0); });
+    var looks = state.lookups.filter(function(l){ return !l.done && lookupGroup(l)==='lookup'; }).sort(function(a,b){ return (b.createdAt||0)-(a.createdAt||0); });
+    var fixes = state.correctiveActions.filter(function(a){ return !a.done; }).sort(function(a,b){ return (a.dueDate||'9999')<(b.dueDate||'9999') ? -1 : 1; });
+    if (!tasks.length && !looks.length && !fixes.length) return '';
+    var today = todayISO(), weekAgo = Date.now()-7*86400000;
+    var tabs = [['fix','🛠️ Fixes',fixes],['task','✅ Tasks',tasks],['lookup','🔎 Lookups',looks]];
+    var cur = state.dashLookupTab;
+    if (!cur || !tabs.some(function(x){ return x[0]===cur; })) cur = (tabs.filter(function(x){ return x[2].length; })[0] || tabs[0])[0];
+    var sel = tabs.filter(function(x){ return x[0]===cur; })[0], items = sel[2];
+    var overdueFixes = fixes.filter(function(a){ return a.dueDate && a.dueDate<today; }).length;
+    var resolvedWeek = state.correctiveActions.filter(function(a){ return a.done && (a.resolvedAt||0)>=weekAgo; }).length;
+    var body;
+    if (!items.length){
+      body = '<div class="empty" style="padding:22px 10px;"><div class="big">✅</div>Nothing open here — nice.</div>';
+    } else if (cur==='fix'){
+      body = items.slice(0,5).map(function(a){
+        var over = a.dueDate && a.dueDate<today;
+        return '<div class="workrow"><button class="chk" data-action="resolve-action" data-id="'+a.id+'" aria-label="Mark resolved"></button>' +
+          '<div class="wr-main"><div class="wr-text">'+esc(a.description||'(unspecified)')+'</div><div class="histmeta">'+esc(a.storeName||'Unnamed store')+(a.dueDate ? ' · '+(over?'was due ':'due ')+esc(fmtDateShort(new Date(a.dueDate+'T00:00:00').getTime())) : '')+'</div></div>' +
+          (over ? '<span class="pill bad">Overdue</span>' : '') + '</div>';
+      }).join('');
+    } else {
+      body = items.slice(0,5).map(function(l){
+        var cl = l.clientId ? state.prospects.filter(function(p){ return p.id===l.clientId; })[0] : null;
+        return '<div class="workrow"><button class="chk" data-action="toggle-lookup-done" data-id="'+l.id+'" aria-label="Mark done"></button>' +
+          '<div class="wr-main"><div class="wr-text">'+esc(l.text||'(empty)')+'</div>'+(cl ? '<div class="histmeta">👤 '+esc(cl.name||'Client')+'</div>' : '')+'</div></div>';
+      }).join('');
+    }
+    return sh('🗂️','Tasks & fixes') +
+      '<div class="card" style="padding:12px 16px 14px;margin-bottom:20px;">' +
+        '<div class="tabs tabs-auto" style="margin:0 0 8px;">' + tabs.map(function(x){ return '<button class="tab '+(cur===x[0]?'on':'')+'" data-action="dash-lookup-tab" data-tab="'+x[0]+'">'+x[1]+'<span class="tabcount'+(x[0]==='fix' && overdueFixes ? ' bad' : '')+'">'+x[2].length+'</span></button>'; }).join('') + '</div>' +
+        body +
+        (items.length>5 ? '<div class="helper" style="margin:8px 0 0;">+'+(items.length-5)+' more</div>' : '') +
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px;">' +
+          '<span class="helper" style="margin:0;">'+(cur==='fix' ? (overdueFixes ? overdueFixes+' overdue · ' : '')+resolvedWeek+' resolved this week' : '')+'</span>' +
+          '<button type="button" class="btn btn-text btn-sm" data-action="go-actions" data-tab="'+(cur==='fix'?'corrective':cur)+'">See all →</button>' +
+        '</div>' +
+      '</div>';
+  }
   // ---- Undo bar: after a delete / done / convert tap, a short "Undo" lets you take it back ----
   var undoTimer = null;
   var UNDO_ACTIONS = {
@@ -5831,19 +5899,11 @@
       renderFollowUpBoard() +
       renderWeekSummary() +
       renderInvoicesBoard() +
+      renderWorkBoard() +
       renderTargetCard(monthName, revenueMonth, clientsMonth) +
       renderLoopBoard() +
       renderParamsBoard() +
       renderRecentAudits() +
-      (totalActionsAll ?
-      '<div class="sechead2"><span class="ic" style="background:var(--bad-soft);">🛠️</span><h2>Corrective actions</h2></div>' +
-      '<div class="statgrid" style="margin-top:0;margin-bottom:10px;">' +
-        '<div class="stattile"><div class="v">'+openActionsNow+'</div><div class="k">Open</div></div>' +
-        '<div class="stattile'+(overdueActions?' t-bad':'')+'"><div class="v">'+overdueActions+'</div><div class="k">Overdue</div></div>' +
-        '<div class="stattile t-good"><div class="v">'+actionsResolvedWeek+'</div><div class="k">Resolved (7d)</div></div>' +
-        '<div class="stattile"><div class="v">'+resolutionPct+'%</div><div class="k">Resolved All-time</div></div>' +
-      '</div>' +
-      '<button class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:22px;" data-action="go-actions">Open actions in The Day →</button>' : '') +
     '</main>';
   }
 
@@ -6750,6 +6810,7 @@
         if (it.requiresInfo) c.requiresInfo = true;
         if (it.infoLabel) c.infoLabel = it.infoLabel;
         if ((it.askWho||[]).length) c.askWho = it.askWho.slice();
+        if ((it.answers||[]).length) c.answers = it.answers.map(function(a){ return { label:a.label, type:a.type }; });
         ['kind','unit','passMin','passMax','critical'].forEach(function(k){ if (it[k]!==undefined && it[k]!=='') c[k] = it[k]; });
         return c;
       }
@@ -6787,6 +6848,18 @@
       if (itK){
         if (action==='item-kind'){ itK.kind = t.dataset.val; if (itK.kind!=='tick') itK.requiresInfo = false; }
         else { itK.critical = !itK.critical; }
+        persistTemplates(); render();
+      }
+    }
+    else if (action==='add-answer-field' || action==='remove-answer-field' || action==='answer-type'){
+      var tmAF = state.templates[state.editorTab];
+      var seAF = tmAF.sections.filter(function(s){return s.id===t.dataset.sec;})[0];
+      var itAF = seAF && seAF.items.filter(function(i){return i.id===t.dataset.item;})[0];
+      if (itAF){
+        itAF.answers = itAF.answers || [];
+        if (action==='add-answer-field'){ if (itAF.answers.length<MAX_ANSWERS) itAF.answers.push({ label:'', type:'text' }); }
+        else if (action==='remove-answer-field'){ itAF.answers.splice(parseInt(t.dataset.idx,10),1); }
+        else { var afd = itAF.answers[parseInt(t.dataset.idx,10)]; if (afd) afd.type = t.dataset.val; }
         persistTemplates(); render();
       }
     }
@@ -7087,6 +7160,18 @@
     else if (el.dataset.bind === 'witnessName' && state.draft){ state.draft.witnessName = el.value; persistDraft(); }
     else if (el.dataset.bind === 'witnessDesignation' && state.draft){ state.draft.witnessDesignation = el.value; persistDraft(); }
     else if (el.dataset.bind === 'witnessMobile' && state.draft){ state.draft.witnessMobile = el.value; persistDraft(); }
+    else if (el.dataset.answerLabel !== undefined){
+      var tmAL = state.templates[state.editorTab];
+      var seAL = tmAL && tmAL.sections.filter(function(s){return s.id===el.dataset.sec;})[0];
+      var itAL = seAL && seAL.items.filter(function(i){return i.id===el.dataset.item;})[0];
+      var dfAL = itAL && (itAL.answers||[])[parseInt(el.dataset.answerLabel,10)];
+      if (dfAL){ dfAL.label = el.value; persistTemplates(); }
+    }
+    else if (el.dataset.bindAns !== undefined && state.draft){
+      var aSec = state.draft.sections.filter(function(s){ return s.id===el.dataset.sec; })[0];
+      var aIt = aSec && aSec.items.filter(function(i){ return i.id===el.dataset.item; })[0];
+      if (aIt){ aIt.ansVals = aIt.ansVals || []; aIt.ansVals[parseInt(el.dataset.bindAns,10)] = el.value; persistDraft(); }
+    }
     else if (el.dataset.bindWho && state.draft){
       var wSec = state.draft.sections.filter(function(s){ return s.id===el.dataset.sec; })[0];
       var wIt = wSec && wSec.items.filter(function(i){ return i.id===el.dataset.item; })[0];
