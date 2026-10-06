@@ -649,6 +649,14 @@
     .footerbar{left:250px;}
     .topbar{grid-template-columns:auto 1fr auto;}
   }
+  .winscard{padding:14px 16px; margin-bottom:20px;}
+  .winsline{font-weight:700; font-size:14.5px; color:var(--ink);}
+  .stattile .dlt{font-size:11px; font-weight:800; margin-top:4px;}
+  .stattile .dlt.up{color:var(--good);} .stattile .dlt.dn{color:var(--bad);}
+  .undobar{position:fixed; left:50%; transform:translateX(-50%); bottom:calc(84px + env(safe-area-inset-bottom)); z-index:40; display:flex; align-items:center; gap:16px; background:var(--ink); color:var(--paper); padding:11px 12px 11px 16px; border-radius:14px; box-shadow:0 8px 28px rgba(15,23,42,.35); font-size:14px; font-weight:600; max-width:calc(100vw - 32px);}
+  .undobar button{background:none; border:none; color:var(--accent); font-weight:800; font-size:14px; padding:6px 10px; border-radius:8px; cursor:pointer;}
+  :root[data-theme="dark"] .undobar button{color:var(--accent-ink);}
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .undobar button{color:var(--accent-ink);} }
 </style>
 </head>
 <body>
@@ -4572,6 +4580,78 @@
 
   // A one-line week-in-review pulled from data already in the app — audits, conversions, posts, hours worked —
   // so the week's shape is visible without opening Actions, Clients, Content and The Day separately.
+  // ---- Undo bar: after a delete / done / convert tap, a short "Undo" lets you take it back ----
+  var undoTimer = null;
+  var UNDO_ACTIONS = {
+    'done-followup':'Follow-up marked done', 'delete-followup':'Follow-up deleted', 'delete-lookup':'Item deleted', 'toggle-lookup-done':'Item updated',
+    'delete-recent-audit':'Audit removed', 'delete-store-audits':'Audit history deleted', 'delete-prospect':'Client deleted',
+    'resolve-action':'Action resolved', 'quick-convert':'Marked converted', 'quick-decline':'Marked not converted'
+  };
+  function undoSnap(){ return { prospects:JSON.stringify(state.prospects), history:JSON.stringify(state.history), lookups:JSON.stringify(state.lookups), correctiveActions:JSON.stringify(state.correctiveActions) }; }
+  function undoChanged(a){ var b = undoSnap(); return Object.keys(a).some(function(k){ return a[k]!==b[k]; }); }
+  function undoRestore(s){
+    state.prospects = JSON.parse(s.prospects); state.history = JSON.parse(s.history);
+    state.lookups = JSON.parse(s.lookups); state.correctiveActions = JSON.parse(s.correctiveActions);
+    persistProspects(); persistHistory(); persistLookups(); persistActions(); render();
+  }
+  function showUndo(msg, snap){
+    var bar = document.getElementById('undoBar');
+    if (!bar){ bar = document.createElement('div'); bar.id = 'undoBar'; bar.className = 'undobar'; bar.setAttribute('role','status'); document.body.appendChild(bar); }
+    bar.innerHTML = '<span></span><button type="button">Undo</button>';
+    bar.firstChild.textContent = msg;
+    bar.lastChild.onclick = function(){ clearTimeout(undoTimer); bar.remove(); undoRestore(snap); };
+    clearTimeout(undoTimer);
+    undoTimer = setTimeout(function(){ if (bar.parentNode) bar.remove(); }, 7000);
+  }
+
+  // ---- Day wins and weekly summary: what you actually got done, shown on the Dashboard ----
+  function dayStartMs(offset){ var d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()+offset); return d.getTime(); }
+  function activityBetween(a, b){
+    var calls = 0, conv = 0;
+    state.prospects.forEach(function(p){
+      (p.followUps||[]).forEach(function(f){ if (f.done && f.doneAt>=a && f.doneAt<b) calls++; });
+      if (p.converted && (p.convertedAt||0)>=a && p.convertedAt<b) conv++;
+    });
+    return {
+      calls: calls, converted: conv,
+      audits: state.history.filter(function(h){ return (h.finishedAt||0)>=a && h.finishedAt<b; }).length,
+      resolved: state.correctiveActions.filter(function(x){ return x.done && (x.resolvedAt||0)>=a && x.resolvedAt<b; }).length,
+      tasks: state.lookups.filter(function(l){ return l.done && (l.doneAt||0)>=a && l.doneAt<b; }).length,
+      workMs: state.workdays.filter(function(w){ return (w.checkInAt||0)>=a && w.checkInAt<b; }).reduce(function(s,w){ return s+workdayWorkElapsed(w); }, 0)
+    };
+  }
+  function activityTotal(x){ return x.calls+x.audits+x.converted+x.resolved+x.tasks; }
+  var ACT_TILES = [['calls','Calls & follow-ups'],['audits','Audits'],['converted','Clients won'],['resolved','Issues fixed'],['tasks','Tasks done']];
+  function fmtHM(ms){ var m = Math.round(ms/60000); return m>=60 ? Math.floor(m/60)+'h '+String(m%60).padStart(2,'0')+'m' : m+'m'; }
+  function renderTodayWins(){
+    var a = activityBetween(dayStartMs(0), dayStartMs(1)), total = activityTotal(a);
+    var open = openWorkday();
+    if (!total && !a.workMs) return '';
+    var finished = !open && state.workdays.some(function(w){ return w.date===todayISO() && w.checkOutAt; });
+    var line = total>=8 ? 'Outstanding — you crushed it today.' : (total>=4 ? 'Strong day — that\'s real momentum.' : (total>=1 ? 'Good progress — every call counts.' : 'You\'re on the clock — let\'s get the first win.'));
+    var tiles = ACT_TILES.filter(function(t){ return a[t[0]]>0; }).map(function(t){ return '<div class="stattile t-good"><div class="v">'+a[t[0]]+'</div><div class="k">'+t[1]+'</div></div>'; });
+    if (a.workMs>0) tiles.push('<div class="stattile t-accent"><div class="v">'+fmtHM(a.workMs)+'</div><div class="k">Time worked</div></div>');
+    return sh(finished ? '🏁' : '🔥', finished ? 'Day complete' : 'Today so far') +
+      '<div class="card winscard"><div class="winsline">'+esc(line)+'</div>' +
+      (tiles.length ? '<div class="statgrid" style="margin:12px 0 0;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));">'+tiles.join('')+'</div>' : '') + '</div>';
+  }
+  function renderWeekSummary(){
+    var t0 = dayStartMs(1), cur = activityBetween(dayStartMs(-6), t0), prev = activityBetween(dayStartMs(-13), dayStartMs(-6));
+    var total = activityTotal(cur), prevTotal = activityTotal(prev);
+    if (!total && !cur.workMs) return '';
+    function delta(k){
+      var d = cur[k]-prev[k]; if (!prevTotal && !prev.workMs) return '';
+      if (k==='workMs'){ var dm = cur.workMs-prev.workMs; return dm ? '<div class="dlt '+(dm>0?'up':'dn')+'">'+(dm>0?'▲ ':'▼ ')+fmtHM(Math.abs(dm))+'</div>' : ''; }
+      return d ? '<div class="dlt '+(d>0?'up':'dn')+'">'+(d>0?'▲ ':'▼ ')+Math.abs(d)+'</div>' : '';
+    }
+    var head = !prevTotal ? 'Here\'s what you got done in the last 7 days.' : (total>prevTotal ? 'Up '+(total-prevTotal)+' on the week before — great momentum.' : (total===prevTotal ? 'Right on pace with the week before.' : 'A quieter week than the one before — a good week to catch up.'));
+    var tiles = ACT_TILES.filter(function(t){ return cur[t[0]]>0 || prev[t[0]]>0; }).map(function(t){ return '<div class="stattile"><div class="v">'+cur[t[0]]+'</div><div class="k">'+t[1]+'</div>'+delta(t[0])+'</div>'; });
+    if (cur.workMs>0) tiles.push('<div class="stattile t-accent"><div class="v">'+fmtHM(cur.workMs)+'</div><div class="k">Time worked</div>'+delta('workMs')+'</div>');
+    return sh('📊','Your last 7 days') +
+      '<div class="card winscard"><div class="winsline">'+esc(head)+'</div>' +
+      '<div class="statgrid" style="margin:12px 0 0;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));">'+tiles.join('')+'</div>' +
+      (prevTotal ? '<div class="helper" style="margin-top:8px;">Arrows compare with the 7 days before.</div>' : '') + '</div>';
+  }
   function renderWeekInReviewLine(){
     var cutoff = last7DaysCutoff();
     var audits = state.history.filter(function(h){ return h.finishedAt>=cutoff.ms; }).length;
@@ -5491,7 +5571,7 @@
         '<h1 style="font-size:25px;">'+esc(greeting)+'</h1>' +
       '</div>' +
       renderDashboardTimeCard() +
-      renderWeekInReviewLine() +
+      renderTodayWins() +
       ((dc.today || dc.overdue || dc.week) ?
       '<button type="button" class="card dayshort" data-action="go-time">' +
         '<span class="ds"><b>'+dc.today+'</b><span>Today</span></span>' +
@@ -5505,6 +5585,7 @@
         '<button class="btn btn-ghost" data-action="go-maps">📞 Calls'+(newCalls?' ('+newCalls+' new)':'')+'</button>' +
       '</div>' +
       renderFollowUpBoard() +
+      renderWeekSummary() +
       renderTargetCard(monthName, revenueMonth, clientsMonth) +
       renderLoopBoard() +
       renderParamsBoard() +
@@ -5619,6 +5700,10 @@
     var d = state.draft;
     if (d && !d.correctiveActions) d.correctiveActions = [];
     if (action.indexOf('go-')===0) state.sidebarOpen = false;
+    if (UNDO_ACTIONS[action]){
+      var uSnap = undoSnap(), uMsg = UNDO_ACTIONS[action];
+      setTimeout(function(){ if (undoChanged(uSnap)) showUndo(uMsg, uSnap); }, 0);
+    }
 
     if (action==='auth-toggle'){ state.authMode = state.authMode==='signup'?'login':'signup'; state.authError=''; render(); }
     else if (action==='auth-submit'){
