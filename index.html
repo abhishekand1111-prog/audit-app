@@ -2911,6 +2911,9 @@
       '<div class="tabs">' +
         editorKeys().map(function(t){ return '<button class="tab '+(tab===t?'on':'')+'" data-action="editor-tab" data-tab="'+t+'">'+(t==='master'?'📚 ':'')+state.templates[t].label+'</button>'; }).join('') +
       '</div>' +
+      (tab==='master' && state.editorMsg ? '<div class="card" style="padding:10px 14px;margin-bottom:12px;border-color:var(--good);">✓ '+esc(state.editorMsg)+'</div>' : '') +
+      (tab==='master' ? '<div style="margin-bottom:12px;"><button class="btn btn-ghost btn-sm" data-action="sync-copies">⟳ Update all copies from General</button></div>'
+        : '<div style="margin-bottom:12px;"><button class="btn btn-primary btn-sm" data-action="start-from-checklist" data-type="'+esc(tab)+'">▶ Start an audit with this checklist</button></div>') +
       (tab==='master' ? '<div class="helper" style="margin-bottom:12px;">General holds every area and question in one place. Build it here, then use <b>⇄ Copy to…</b> on a section (or the ⚙ on a single item) to copy what you need into Dine-In, QSR or Hotel.</div>' : '') +
       tmpl.sections.map(function(sec){
         return '<div class="card edsection">' +
@@ -2919,6 +2922,7 @@
             '<select class="copysel" data-proxy="1" aria-label="Copy this section to another checklist"><option value="">⇄ Copy to…</option>' +
               editorKeys().filter(function(k){ return k!==tab && k!=='master'; }).map(function(k){ return '<option value="'+esc(k)+'" data-action="copy-section-to" data-sec="'+sec.id+'" data-to="'+esc(k)+'">'+esc(state.templates[k].label)+'</option>'; }).join('') +
             '</select>' +
+            (tab==='master' ? '<button class="iconbtn" data-action="sync-copies" data-sec="'+sec.id+'" title="Update the copies of this section">⟳</button>' : '') +
             '<button class="iconbtn" data-action="delete-section" data-sec="'+sec.id+'" title="Delete section">✕</button>' +
           '</div>' +
           sec.items.map(function(it){
@@ -3116,11 +3120,17 @@
 
   // ---------- services catalog page ----------
   function allSectionNames(){
+    // General first, so a package's area list always comes from the master library, then any area only in one checklist.
     var out = [], seen = {};
-    Object.keys(state.templates).forEach(function(k){
-      state.templates[k].sections.forEach(function(sec){ var n = (sec.name||'').trim(); if (n && !seen[norm(n)]){ seen[norm(n)] = true; out.push(n); } });
+    editorKeys().concat(Object.keys(state.templates)).forEach(function(k){
+      ((state.templates[k]||{}).sections||[]).forEach(function(sec){ var n = (sec.name||'').trim(); if (n && !seen[norm(n)]){ seen[norm(n)] = true; out.push(n); } });
     });
     return out;
+  }
+  // Package areas that no longer exist in any checklist (renamed or deleted) — surfaced so the package isn't silently broader than intended.
+  function missingServiceAreas(svc){
+    var have = allSectionNames().map(norm);
+    return (svc.auditAreas||[]).filter(function(a){ return have.indexOf(norm(a))<0; });
   }
   function renderServicesView(){
     var groups = {};
@@ -3160,7 +3170,8 @@
         '</select>' + (visitIntervalOf(s.visitInterval).days ? '<div class="helper" style="margin-top:4px;">Assigning this package to a client — or marking its visit follow-up done — automatically schedules the next one, '+visitIntervalOf(s.visitInterval).days+' days out.</div>' : '') + '</div>' +
         '<div class="field"><label>Areas this package audits</label>' +
           msel('svc-areas-'+s.id, 'None picked — all areas', allSectionNames().map(function(n){ return { label:n, on:(s.auditAreas||[]).map(norm).indexOf(norm(n))>=0, attrs:'data-action="service-area-toggle" data-svc="'+s.id+'" data-name="'+esc(n)+'"' }; })) +
-        '<div class="helper" style="margin-top:4px;">'+((s.auditAreas||[]).length ? 'Linked to your checklist: a New Audit for this package pre-selects just these areas ('+serviceChecklistCounts(s)+').' : 'None picked — a New Audit for this package covers every checklist area.')+'</div></div>' +
+        '<div class="helper" style="margin-top:4px;">'+((s.auditAreas||[]).length ? 'Areas come from General and work for every checklist: a New Audit for this package pre-selects just these ('+serviceChecklistCounts(s)+').' : 'None picked — a New Audit for this package covers every checklist area.')+'</div>' +
+        (missingServiceAreas(s).length ? '<div class="helper" style="margin-top:4px;color:var(--bad);">⚠ Not in any checklist any more: '+esc(missingServiceAreas(s).join(', '))+' — untick or re-add it in General.</div>' : '') + '</div>' +
         '<div class="field"><label>Metrics to follow</label>' +
           (state.paramLibrary.length ? msel('svc-metrics-'+s.id, 'None picked', state.paramLibrary.map(function(l){ return { label:l.name, on:(s.metrics||[]).indexOf(l.id)>=0, attrs:'data-action="service-metric-toggle" data-svc="'+s.id+'" data-lib="'+esc(l.id)+'"' }; })) : '<span class="helper">Add parameters in Settings → Parameter library first.</span>') +
         '<div class="helper" style="margin-top:4px;">Added to the client\'s Analysis parameters when you assign this package.</div></div>' +
@@ -5598,8 +5609,8 @@
       if (r.pct>=80) alerts.push({ tone: r.pct>=90?'bad':'warn', icon:'🗄️', text: r.label+' storage is '+Math.round(r.pct)+'% full — it needs to be moved to separate records soon', action:'go-pricing' });
     });
     var lb = lastBackupAt();
-    if ((state.history.length || state.prospects.length) && (!lb || Date.now()-lb > 30*86400000)){
-      alerts.push({ tone:'warn', icon:'💾', text: lb ? 'No backup in over 30 days — download one in Settings' : 'No backup downloaded yet — take your first one in Settings', action:'go-pricing' });
+    if ((state.history.length || state.prospects.length) && (!lb || Date.now()-lb > 7*86400000)){
+      alerts.push({ tone:'warn', icon:'💾', text: lb ? 'Weekly backup due — last one was '+fmtRelativeTime(lb)+'. Tap to download it now' : 'No backup downloaded yet — tap to download your first one', action:'download-backup' });
     }
     var owAlert = openWorkday();
     if (owAlert){
@@ -6083,6 +6094,15 @@
     else if (action==='week-tab'){ state.weekTab = t.dataset.tab; render(); }
     else if (action==='dash-lookup-tab'){ state.dashLookupTab = t.dataset.tab; render(); }
     else if (action==='go-setup'){ if(!state.draft) { state.view='setup'; render(); } }
+    else if (action==='start-from-checklist'){
+      // Straight from Areas: open New Audit with this checklist already chosen and every area ticked (no package needed).
+      if (!state.draft && state.templates[t.dataset.type]){
+        state.setup.serviceId = '';
+        state.setup.type = t.dataset.type;
+        state.setup.selectedSections = serviceSectionIds(t.dataset.type, null);
+        state.view = 'setup'; window.scrollTo(0,0); render();
+      }
+    }
     else if (action==='go-editor'){ if(!state.draft){ state.view='editor'; render(); } }
     else if (action==='go-pricing'){ if(!state.draft){ state.view='pricing'; render(); } }
     else if (action==='go-services'){ if(!state.draft){ state.view='services'; render(); } }
@@ -6839,13 +6859,38 @@
     }
     else if (action==='view-audit'){ state.viewingAuditId = t.dataset.id; state.summaryReturnView=state.view; state.view='summary'; render(); }
     else if (action==='back-from-summary'){ state.view = state.summaryReturnView; render(); }
-    else if (action==='editor-tab'){ state.editorTab = t.dataset.tab; render(); }
+    else if (action==='editor-tab'){ state.editorTab = t.dataset.tab; state.editorMsg = ''; render(); }
     else if (action==='delete-section'){
       var tmpl = state.templates[state.editorTab];
       var delSec = tmpl.sections.filter(function(s){ return s.id===t.dataset.sec; })[0];
       if (delSec && !window.confirm('Delete the section "'+delSec.name+'" and its '+delSec.items.length+' item'+(delSec.items.length===1?'':'s')+'? This cannot be undone.')) return;
       tmpl.sections = tmpl.sections.filter(function(s){ return s.id!==t.dataset.sec; });
       persistTemplates(); render();
+    }
+    else if (action==='sync-copies'){
+      // Push General's wording/settings onto the copies already in Dine-In, QSR, Hotels (and custom checklists). Never adds or removes items.
+      var scM = state.templates.master, scTouched = {}, scN = 0, scLinked = false, scOnly = t.dataset.sec;
+      if (scM) scM.sections.filter(function(ms){ return !scOnly || ms.id===scOnly; }).forEach(function(ms){
+        templateKeys().forEach(function(k){
+          var tgt = state.templates[k].sections.filter(function(s){ return s.from===ms.id || norm(s.name)===norm(ms.name); })[0];
+          if (!tgt) return;
+          ms.items.forEach(function(mi){
+            var e = tgt.items.filter(function(x){ return x.from===mi.id; })[0] || tgt.items.filter(function(x){ return !x.from && norm(x.text)===norm(mi.text); })[0];
+            if (!e) return;
+            var sig = function(x){ var c = JSON.parse(JSON.stringify(x)); delete c.from; return JSON.stringify(c); };
+            var before = sig(e), keepId = e.id, hadFrom = e.from;
+            ['text','kind','unit','passMin','passMax','critical','requiresInfo','infoLabel','askWho','answers'].forEach(function(f){
+              if (mi[f]===undefined || mi[f]==='') delete e[f]; else e[f] = JSON.parse(JSON.stringify(mi[f]));
+            });
+            e.id = keepId; e.from = mi.id; tgt.from = ms.id;
+            if (sig(e)!==before){ scN++; scTouched[k] = true; }
+            else if (hadFrom!==mi.id) scLinked = true;
+          });
+        });
+      });
+      state.editorMsg = scN ? 'Updated '+scN+' item'+(scN===1?'':'s')+' in '+Object.keys(scTouched).map(function(k){ return state.templates[k].label; }).join(', ')+'.' : 'Copies are already up to date.';
+      if (scN || scLinked) persistTemplates();
+      render();
     }
     else if (action==='copy-item-to'){
       var ciT = state.templates[state.editorTab], ciS = ciT && ciT.sections.filter(function(s){ return s.id===t.dataset.sec; })[0];
@@ -6854,7 +6899,7 @@
         var ciX = ciD.sections.filter(function(s){ return s.name.toLowerCase()===ciS.name.toLowerCase(); })[0];
         if (!ciX){ ciX = { id:uid(), name:ciS.name, items:[] }; ciD.sections.push(ciX); }
         if (!ciX.items.some(function(e){ return e.text.toLowerCase()===ciI.text.toLowerCase(); })){
-          var ciC = JSON.parse(JSON.stringify(ciI)); ciC.id = uid(); ciX.items.push(ciC);
+          var ciC = JSON.parse(JSON.stringify(ciI)); ciC.id = uid(); delete ciC.from; if (state.editorTab==='master') ciC.from = ciI.id; ciX.items.push(ciC);
         }
         persistTemplates(); render();
       }
@@ -6862,6 +6907,7 @@
     else if (action==='copy-section-to'){
       function copyItem(it){
         var c = { id:uid(), text:it.text };
+        if (state.editorTab==='master') c.from = it.id;
         if (it.requiresInfo) c.requiresInfo = true;
         if (it.infoLabel) c.infoLabel = it.infoLabel;
         if ((it.askWho||[]).length) c.askWho = it.askWho.slice();
@@ -6883,7 +6929,7 @@
         });
       } else {
         otherTmpl.sections.push({
-          id:uid(), name:srcSec.name,
+          id:uid(), name:srcSec.name, from:(state.editorTab==='master' ? srcSec.id : undefined),
           items:srcSec.items.map(copyItem)
         });
       }
