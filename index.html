@@ -973,7 +973,8 @@
   function ensureHotelDefaults(){
     if (!state.templates.hotel) state.templates.hotel = seedTemplates(DEFAULT_TEMPLATES).hotel;
     // "All Areas" master library: seeded once from every area across the audit checklists, then edited freely.
-    if (!state.templates.master && state.templates.dinein && state.templates.qsr){
+    // Only when Dine-In still holds real questions: an empty or stale copy must never create (and save) an empty General over real data.
+    if (!state.templates.master && state.templates.dinein && state.templates.qsr && state.templates.dinein.sections.some(function(s){ return (s.items||[]).length; })){
       var mSecs = [], mByName = {};
       ['dinein','qsr','hotel'].forEach(function(k){
         ((state.templates[k]||{}).sections||[]).forEach(function(s){
