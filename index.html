@@ -1258,10 +1258,15 @@
       if (snap.exists){
         var data = snap.data();
         if (isConfig){
-          if (data.templates) state.templates = data.templates;
+          if (data.templates){
+            // Keep a copy of what this device had before another device's version replaces it.
+            if (tmplDropBig(tmplCount(state.templates), tmplCount(data.templates))) snapshotTemplates('before a smaller version arrived', state.templates);
+            state.templates = data.templates;
+          }
           if (data.pricing) state.pricing = data.pricing;
           if (data.schedule) state.schedule = data.schedule;
           ensureHotelDefaults();
+          tmplMark();
           if (masterMigrated){ masterMigrated = false; setTimeout(persistTemplates, 0); }
           if (data.services) state.services = data.services;
           ensureServiceDefaults();
@@ -1338,7 +1343,46 @@
     RECORD_SETS.forEach(function(rs){ clearTimeout(rs.retry); rs.ready = false; rs.busy = false; rs.synced = {}; });
   }
 
-  function persistTemplates(){ saveJSON(LS_T, state.templates); fsSyncConfig('templates', state.templates); }
+  // ---- Checklist safety: rolling local snapshots, plus a guard against a save that wipes out most of the questions ----
+  var LS_TB = 'diagnosisroom_tmplbackups_v1';
+  var tmplBase = 0, tmplGoodJSON = '', tmplLastSnap = 0;
+  function tmplCount(t){ var n = 0; Object.keys(t||{}).forEach(function(k){ ((t[k]||{}).sections||[]).forEach(function(s){ n += (s.items||[]).length; }); }); return n; }
+  function tmplDropBig(from, to){ return from>=5 && to < from*0.7 && from-to>=5; }
+  function tmplBackups(){ var l = loadJSON(LS_TB, []); return Array.isArray(l) ? l : []; }
+  function snapshotTemplates(why, tmpl, quiet){
+    var t = tmpl || state.templates, n = tmplCount(t); if (!n) return;
+    var js = JSON.stringify(t), list = tmplBackups();
+    if (list.length && list[0].json===js) return;
+    list.unshift({ at:Date.now(), n:n, why:why, json:js, quiet:!!quiet }); list = list.slice(0, 8);
+    for (var tries=0; tries<4; tries++){ try{ localStorage.setItem(LS_TB, JSON.stringify(list)); return; }catch(e){ list = list.slice(0, Math.max(1, list.length-2)); } }
+  }
+  function tmplQuietAll(){ var l = tmplBackups(); l.forEach(function(b){ b.quiet = true; }); try{ localStorage.setItem(LS_TB, JSON.stringify(l)); }catch(e){} }
+  function tmplMark(){ tmplBase = tmplCount(state.templates); try{ tmplGoodJSON = JSON.stringify(state.templates); }catch(e){} }
+  // A backup is "unseen" when it holds far more questions than you have now and you did not choose to cut them.
+  function tmplLostBackup(){
+    var cur = tmplCount(state.templates), best = null;
+    tmplBackups().forEach(function(b){ if (!b.quiet && tmplDropBig(b.n, cur) && (!best || b.n>best.n)) best = b; });
+    return best;
+  }
+  function persistTemplates(force){
+    var n = tmplCount(state.templates);
+    if (force!==true && tmplDropBig(tmplBase, n)){
+      if (!window.confirm('This change would cut your checklists from '+tmplBase+' questions down to '+n+'.\n\nOK = save it anyway (the earlier version stays restorable in Back end).\nCancel = keep the last saved version.')){
+        try{ if (tmplGoodJSON){ state.templates = JSON.parse(tmplGoodJSON); saveJSON(LS_T, state.templates); } }catch(e){}
+        render(); return;
+      }
+      try{ snapshotTemplates('before a large cut', JSON.parse(tmplGoodJSON), true); }catch(e){}
+      tmplQuietAll();
+    } else if (force===true && tmplDropBig(tmplBase, n)){
+      try{ snapshotTemplates('before you removed content', JSON.parse(tmplGoodJSON), true); }catch(e){}
+      tmplQuietAll();
+    } else if (Date.now()-tmplLastSnap > 30*60000){
+      tmplLastSnap = Date.now(); snapshotTemplates('auto', state.templates);
+    }
+    saveJSON(LS_T, state.templates); fsSyncConfig('templates', state.templates);
+    tmplMark();
+  }
+  tmplMark();
   function persistHistory(){ saveJSON(LS_H, state.history); fsSyncRecords(RS.history); }
   function persistPricing(){ saveJSON(LS_P, state.pricing); fsSyncConfig('pricing', state.pricing); }
   function persistTargets(){ saveJSON(LS_TG, state.targets); fsSyncConfig('targets', state.targets); }
@@ -2857,7 +2901,7 @@
     var known = ['templates','history','pricing','correctiveActions','schedule','services','deliverables','paramLibrary','readings','prospects','lookups','contentIdeas','reauditOverrides','targets','workdays'];
     var found = known.some(function(k){ return data[k]!==undefined; });
     if (!found) return false;
-    if (data.templates) state.templates = data.templates;
+    if (data.templates){ snapshotTemplates('before a backup restore', state.templates, true); state.templates = data.templates; tmplBase = tmplCount(data.templates); }
     if (data.history) state.history = data.history;
     if (data.pricing) state.pricing = data.pricing;
     if (data.correctiveActions) state.correctiveActions = data.correctiveActions;
@@ -3065,6 +3109,7 @@
       '</div>' +
 
       renderRemindersCard() +
+      renderChecklistSafetyCard() +
       '<h1 style="font-size:20px;margin:0 0 4px;">Follow-up planner</h1>' +
       '<div class="helper" style="margin-bottom:12px;margin-top:6px;">Used by the “Re-plan follow-ups” button: overdue follow-ups are moved forward and any day over the limit rolls to the next day, within these hours.</div>' +
       (function(){ var c = planCfg(); return '<div class="card" style="padding:14px 16px;margin-bottom:28px;"><div style="display:flex;gap:10px;flex-wrap:wrap;">' +
@@ -4062,6 +4107,19 @@
   setTimeout(checkReminders, 5000);
   setInterval(checkReminders, 60000);
   document.addEventListener('visibilitychange', function(){ if (document.visibilityState==='visible') setTimeout(checkReminders, 800); });
+  function renderChecklistSafetyCard(){
+    var list = tmplBackups(), lost = tmplLostBackup(), cur = tmplCount(state.templates);
+    return '<h1 style="font-size:20px;margin:0 0 4px;">Checklist safety</h1>' +
+      '<div class="helper" style="margin-bottom:10px;">Your checklist ('+cur+' question'+(cur===1?'':'s')+') is saved to the cloud as one record, so a stale copy of the app on another device could overwrite it. The app keeps recent snapshots on this device, warns before a save that would remove most of your questions, and lets you go back to any snapshot below.</div>' +
+      (lost ? '<div class="card" style="border-color:var(--bad);padding:10px 14px;margin-bottom:10px;">⚠ A snapshot from '+esc(fmtDateShort(lost.at))+' has <b>'+lost.n+'</b> questions, far more than the '+cur+' you have now. If you didn\'t remove them, restore that snapshot.</div>' : '') +
+      '<div class="card" style="padding:4px 16px 8px;margin-bottom:28px;">' +
+        (list.length ? list.map(function(b, i){
+          return '<div style="display:flex;align-items:center;gap:8px;padding:9px 0;'+(i?'border-top:1px solid var(--line);':'')+'">' +
+            '<div style="flex:1;min-width:0;"><div style="font-weight:700;">'+b.n+' questions</div><div class="histmeta">'+esc(fmtDateShort(b.at))+' '+esc(fmtClock(b.at))+' · '+esc(b.why||'auto')+'</div></div>' +
+            '<button class="btn btn-ghost btn-sm" data-action="restore-templates" data-i="'+i+'">Restore</button></div>';
+        }).join('') : '<div class="helper" style="padding:10px 0;">No snapshots yet — one is taken automatically as you edit.</div>') +
+      '</div>';
+  }
   function renderRemindersCard(){
     var c = remCfg(), perm = remPermission(), on = c.on && perm==='granted';
     var status = perm==='unsupported' ? 'This browser can\'t show notifications. On iPhone, add the app to your Home Screen first.'
@@ -5609,6 +5667,8 @@
     storageReport(false).rows.forEach(function(r){
       if (r.pct>=80) alerts.push({ tone: r.pct>=90?'bad':'warn', icon:'🗄️', text: r.label+' storage is '+Math.round(r.pct)+'% full — it needs to be moved to separate records soon', action:'go-pricing' });
     });
+    var lostTm = tmplLostBackup();
+    if (lostTm) alerts.push({ tone:'bad', icon:'🛡️', text:'Your checklist dropped from '+lostTm.n+' to '+tmplCount(state.templates)+' questions. If that wasn\'t you, restore the earlier snapshot in Back end', action:'go-pricing' });
     var lb = lastBackupAt();
     if ((state.history.length || state.prospects.length) && (!lb || Date.now()-lb > 7*86400000)){
       alerts.push({ tone:'warn', icon:'💾', text: lb ? 'Weekly backup due — last one was '+fmtRelativeTime(lb)+'. Tap to download it now' : 'No backup downloaded yet — tap to download your first one', action:'download-backup' });
@@ -6866,7 +6926,7 @@
       var delSec = tmpl.sections.filter(function(s){ return s.id===t.dataset.sec; })[0];
       if (delSec && !window.confirm('Delete the section "'+delSec.name+'" and its '+delSec.items.length+' item'+(delSec.items.length===1?'':'s')+'? This cannot be undone.')) return;
       tmpl.sections = tmpl.sections.filter(function(s){ return s.id!==t.dataset.sec; });
-      persistTemplates(); render();
+      persistTemplates(true); render();
     }
     else if (action==='sync-copies'){
       // Push General's wording/settings onto the copies already in Dine-In, QSR, Hotels (and custom checklists). Never adds or removes items.
@@ -7026,14 +7086,23 @@
         if (fsDb && state.authUser){
           try{ var delUpd = {}; delUpd['templates.'+delKey] = firebase.firestore.FieldValue.delete(); fsUserDataDoc('config').update(delUpd); }catch(e){}
         }
-        persistTemplates(); render();
+        persistTemplates(true); render();
+      }
+    }
+    else if (action==='restore-templates'){
+      var rtList = tmplBackups(), rt = rtList[Number(t.dataset.i)];
+      if (rt && window.confirm('Restore the checklists saved '+fmtDateShort(rt.at)+' '+fmtClock(rt.at)+' ('+rt.n+' questions)?\n\nWhat you have now is kept as a snapshot, so you can come back to it.')){
+        snapshotTemplates('before a restore', state.templates, true);
+        try{ state.templates = JSON.parse(rt.json); }catch(e){ return; }
+        ensureHotelDefaults();
+        persistTemplates(true); tmplQuietAll(); render();
       }
     }
     else if (action==='reset-template'){
       if (window.confirm('Reset the '+state.templates[state.editorTab].label+' checklist to the built-in defaults? Custom sections and items will be lost.')){
         var seeded = seedTemplates(DEFAULT_TEMPLATES);
         state.templates[state.editorTab] = seeded[state.editorTab];
-        persistTemplates(); render();
+        persistTemplates(true); render();
       }
     }
     else if (action==='set-pricing-type'){
