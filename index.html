@@ -1060,7 +1060,7 @@
   };
   // Remember where the user was, so a refresh or reopening the app lands on the same page.
   var LS_NAV = 'diagnosisroom_nav_v1';
-  var NAV_VIEWS = ['dashboard','week','editor','pricing','actions','prospects','lookup','search','summary','time','maps','services'];
+  var NAV_VIEWS = ['dashboard','week','editor','pricing','actions','prospects','params','lookup','search','summary','time','maps','services'];
   var navScrollY = 0;
   ensureHotelDefaults();
   ensureServiceDefaults();
@@ -1721,6 +1721,7 @@
     if (state.summaryReturnView==='week' || state.summaryReturnView==='actions') state.summaryReturnView = 'time';
     if (state.summaryReturnView==='maps') state.summaryReturnView = 'prospects';
     var v = state.view;
+    if (v!=='prospects') state.costEntry = null;
     var html = '';
     if (v==='setup') html = renderSetup();
     else if (v==='audit') html = state.draft ? renderAudit(state.draft) : renderSetup();
@@ -1730,6 +1731,7 @@
     else if (v==='actions') html = renderActionsView();
     else if (v==='prospects') html = renderProspects();
     else if (v==='lookup') html = renderLookup();
+    else if (v==='params') html = renderParamsView();
     else if (v==='search') html = renderSearch();
     else if (v==='dashboard') html = renderDashboard();
     else if (v==='week') html = renderWeekView();
@@ -1788,6 +1790,7 @@
         })()) +
         item('editor','go-editor','Areas') +
         item('prospects','go-prospects','Clients', (function(){ var n=smNewCount(); return n?String(n):''; })()) +
+        item('params','go-params','Parameters') +
         item('lookup','go-lookup','Tasks', (function(){ var n=state.lookups.filter(function(l){ return !l.done; }).length; return n?String(n):''; })()) +
         item('services','go-services','Packages', state.services.length?String(state.services.length):'') +
         item('pricing','go-pricing','Back end') +
@@ -3565,7 +3568,190 @@
       );
   }
 
+  // ---------- Parameters: each client's monthly cost structure (food cost, wastage, staff, rent, electricity, capex…) ----------
+  var COST_DEFAULTS = ['Food cost','Wastage','Staff cost','Rent','Electricity','Capital expenses','Gas & fuel','Packaging','Marketing & commissions','Maintenance','Other expenses'];
+  var COST_COLORS = ['#e8833a','#3b82c4','#3aa876','#c0508a','#8b6ad1','#d4b23a','#2fa5a5','#d1523f','#7a8a9a','#6aa84f','#b07a4a','#9c6ade'];
+  function costParams(){
+    var t = state.targets || {};
+    if (Array.isArray(t.costParams) && t.costParams.length) return t.costParams;
+    return COST_DEFAULTS.map(function(n, i){ return { id:'c'+i, name:n }; });
+  }
+  function costParamsEditable(){
+    if (!state.targets) state.targets = {};
+    if (!Array.isArray(state.targets.costParams) || !state.targets.costParams.length) state.targets.costParams = costParams().map(function(c){ return { id:c.id, name:c.name }; });
+    return state.targets.costParams;
+  }
+  function costNum(v){ if (v===undefined || v===null || v==='') return null; var n = parseFloat(v); return isNaN(n) ? null : n; }
+  function clientCostEntries(p){
+    return (p.costEntries||[]).slice().sort(function(a,b){ return (b.date||'').localeCompare(a.date||'') || (b.createdAt||0)-(a.createdAt||0); });
+  }
+  // [{id,name,val,color}] for the parameters that have a value above zero, biggest first
+  function costRows(values){
+    return costParams().map(function(c, i){ return { id:c.id, name:c.name||'Parameter', val:costNum((values||{})[c.id]), color:COST_COLORS[i%COST_COLORS.length] }; })
+      .filter(function(r){ return r.val!==null && r.val>0; })
+      .sort(function(a,b){ return b.val-a.val; });
+  }
+  // The latest entry of every client, averaged per parameter (a parameter averages only over clients that filled it in).
+  function costAverage(){
+    var sums = {}, cnt = {}, clients = 0;
+    state.prospects.forEach(function(p){
+      var e = clientCostEntries(p)[0]; if (!e) return;
+      var any = false;
+      costParams().forEach(function(c){ var n = costNum((e.values||{})[c.id]); if (n!==null && n>0){ sums[c.id] = (sums[c.id]||0)+n; cnt[c.id] = (cnt[c.id]||0)+1; any = true; } });
+      if (any) clients++;
+    });
+    var values = {}; Object.keys(sums).forEach(function(k){ values[k] = sums[k]/cnt[k]; });
+    return { values:values, clients:clients };
+  }
+  // Every parameter is a percentage (of monthly sales). The pie shows each one's % and, when they add up to less than 100, the remainder.
+  function fmtPct(n){ return (Math.round(Number(n)*10)/10)+'%'; }
+  function costSum(rows){ return rows.reduce(function(a, r){ return a+r.val; }, 0); }
+  function costPieHtml(rows, caption){
+    var sum = costSum(rows);
+    if (!sum) return '';
+    var slices = rows.slice();
+    if (sum<100) slices.push({ name:'Remaining (profit & other)', val:100-sum, color:'#9aa3ad' });
+    var total = costSum(slices);
+    var cx = 100, cy = 100, R = 92, a0 = -Math.PI/2, paths = '';
+    if (slices.length===1) paths = '<circle cx="100" cy="100" r="92" fill="'+slices[0].color+'"/>';
+    else slices.forEach(function(r){
+      var a1 = a0 + r.val/total*2*Math.PI, large = (a1-a0)>Math.PI ? 1 : 0;
+      var x0 = cx+R*Math.cos(a0), y0 = cy+R*Math.sin(a0), x1 = cx+R*Math.cos(a1), y1 = cy+R*Math.sin(a1);
+      paths += '<path d="M'+cx+','+cy+' L'+x0.toFixed(2)+','+y0.toFixed(2)+' A'+R+','+R+' 0 '+large+' 1 '+x1.toFixed(2)+','+y1.toFixed(2)+' Z" fill="'+r.color+'" stroke="var(--surface)" stroke-width="2"><title>'+esc(r.name)+' '+fmtPct(r.val)+'</title></path>';
+      a0 = a1;
+    });
+    return '<div class="card" style="padding:16px;margin-bottom:16px;">' +
+      '<div style="display:flex;flex-wrap:wrap;gap:18px;align-items:center;justify-content:center;">' +
+        '<svg viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="'+esc(caption||'Cost split')+'" style="flex:none;max-width:100%;">'+paths+'</svg>' +
+        '<div style="flex:1;min-width:210px;">' +
+          slices.map(function(r){
+            return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);">' +
+              '<span style="width:12px;height:12px;border-radius:3px;background:'+r.color+';flex:none;"></span>' +
+              '<span style="flex:1;min-width:0;font-weight:600;overflow-wrap:anywhere;">'+esc(r.name)+'</span>' +
+              '<span style="font-weight:800;text-align:right;">'+fmtPct(r.val)+'</span></div>';
+          }).join('') +
+          '<div style="display:flex;justify-content:space-between;padding-top:8px;font-weight:700;"><span>All parameters</span><span>'+fmtPct(sum)+' of sales</span></div>' +
+          (sum>100 ? '<div class="helper" style="margin:6px 0 0;color:var(--bad);">These add up to more than 100% — worth re-checking the numbers.</div>' : '') +
+        '</div>' +
+      '</div>' +
+      (caption ? '<div class="helper" style="margin:10px 0 0;text-align:center;">'+esc(caption)+'</div>' : '') +
+    '</div>';
+  }
+  function costBlank(clientId, flow, auditId){ return { clientId:clientId, entryId:null, flow:flow||'', auditId:auditId||'', date:todayISO(), values:{}, note:'' }; }
+  function renderCostForm(){
+    var ce = state.costEntry, p = findProspect(ce.clientId);
+    if (!p){ state.costEntry = null; return renderProspects(); }
+    var last = clientCostEntries(p).filter(function(e){ return e.id!==ce.entryId; })[0];
+    var step = ce.flow==='new' ? 'Step 2 of 2 · Parameters' : (ce.flow==='audit' ? 'Audit saved · now the parameters' : 'Parameters');
+    function total(){ return costParams().reduce(function(a, c){ var n = costNum(ce.values[c.id]); return a+(n>0?n:0); }, 0); }
+    var totalNow = total();
+    return '<main>' +
+      '<div class="eyebrow">'+esc(step)+'</div>' +
+      '<h1 style="font-size:24px;margin-top:6px;margin-bottom:4px;">'+esc(p.name||'Unnamed client')+'</h1>' +
+      '<div class="helper" style="margin:0 0 14px;">Enter each one as a <b>% of monthly sales</b> (e.g. food cost 32). Fill in what you have — blanks are left out of the split.'+(last ? ' Greyed hints show the last entry ('+esc(fmtDateShort(new Date((last.date||todayISO())+'T00:00:00').getTime()))+').' : '')+'</div>' +
+      '<div class="card" style="padding:14px 16px;">' +
+        '<div class="field"><label for="costDate">Date of these figures</label><input id="costDate" type="date" data-cost-date="1" value="'+esc(ce.date||'')+'"></div>' +
+        costParams().map(function(c){
+          var v = ce.values[c.id], lv = last && last.values ? last.values[c.id] : '';
+          return '<div class="field" style="margin-bottom:10px;"><label for="cost_'+esc(c.id)+'">'+esc(c.name||'Parameter')+' (%)</label>' +
+            '<input id="cost_'+esc(c.id)+'" type="number" inputmode="decimal" min="0" max="100" step="any" data-cost-val="'+esc(c.id)+'" value="'+esc(v===undefined?'':v)+'" placeholder="'+esc(lv!==undefined && lv!=='' ? String(lv)+'%' : '%')+'"></div>';
+        }).join('') +
+        '<div style="display:flex;justify-content:space-between;font-weight:700;padding:6px 0 10px;"><span>All parameters</span><span data-cost-total>'+fmtPct(totalNow)+' of sales</span></div>' +
+        '<div class="field"><label for="costNote">Note (optional)</label><textarea id="costNote" rows="2" data-cost-note="1" placeholder="Anything worth remembering about these numbers">'+esc(ce.note||'')+'</textarea></div>' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;">' +
+        '<button class="btn btn-primary" data-action="cost-save">Save parameters</button>' +
+        '<button class="btn btn-ghost" data-action="cost-skip">'+(ce.flow ? 'Skip for now' : 'Cancel')+'</button>' +
+      '</div>' +
+    '</main>';
+  }
+  function renderCostCard(p){
+    var es = clientCostEntries(p), e = es[0];
+    var body;
+    if (!e){
+      body = '<div class="helper" style="margin:0 0 10px;">Nothing recorded yet. Add this client\'s monthly food cost, wastage, staff cost, rent, electricity and more.</div>';
+    } else {
+      var rows = costRows(e.values), total = costSum(rows);
+      body = '<div class="histmeta" style="margin:0 0 6px;">Latest · '+esc(fmtDateShort(new Date((e.date||todayISO())+'T00:00:00').getTime()))+(es.length>1 ? ' · '+es.length+' entries' : '')+' · '+fmtPct(total)+' of sales</div>' +
+        rows.map(function(r){ return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;"><span style="width:10px;height:10px;border-radius:3px;background:'+r.color+';flex:none;"></span><span style="flex:1;">'+esc(r.name)+'</span><b style="text-align:right;">'+fmtPct(r.val)+'</b></div>'; }).join('') +
+        (e.note ? '<div class="helper" style="margin:8px 0 0;">📝 '+esc(e.note)+'</div>' : '');
+    }
+    return sh('📊','Parameters') +
+      '<div class="card" style="padding:14px 16px;margin-bottom:20px;">' + body +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">' +
+          '<button class="btn btn-primary btn-sm" data-action="cost-open" data-id="'+p.id+'" data-flow="tab">＋ '+(e ? 'New entry' : 'Add parameters')+'</button>' +
+          (e ? '<button class="btn btn-ghost btn-sm" data-action="cost-open" data-id="'+p.id+'" data-entry="'+e.id+'" data-flow="tab">✎ Edit latest</button>' +
+               '<button class="btn btn-ghost btn-sm" data-action="cost-view" data-id="'+p.id+'">Pie chart &amp; history →</button>' : '') +
+        '</div>' +
+      '</div>';
+  }
+  function renderParamsTab(){
+    var sel = state.paramsClient || 'all';
+    var p = sel!=='all' ? findProspect(sel) : null;
+    if (sel!=='all' && !p) sel = 'all';
+    var named = state.prospects.filter(function(x){ return (x.name||'').trim(); }).sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
+    var picker = '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin:14px 0;">' +
+      '<div class="field" style="flex:1;min-width:200px;margin-bottom:0;"><label>Show</label><select data-params-client="1"><option value="all">All clients — average</option>' +
+        named.map(function(x){ return '<option value="'+esc(x.id)+'" '+(sel===x.id?'selected':'')+'>'+esc(x.name)+(x.location?' · '+esc(x.location):'')+(clientCostEntries(x).length?'':' — no data')+'</option>'; }).join('') +
+      '</select></div>' +
+      '<button class="btn btn-ghost btn-sm" data-action="cost-edit-list">⚙ Edit parameters</button>' +
+    '</div>';
+    var editor = '';
+    if (state.costListOpen){
+      editor = '<div class="card" style="padding:12px 14px;margin-bottom:14px;"><div class="answerlabel" style="margin-bottom:6px;">Parameters you track</div>' +
+        costParams().map(function(c){ return '<div style="display:flex;gap:6px;margin-bottom:6px;align-items:center;"><input type="text" class="iteminfolabel" style="flex:1;min-width:0;" data-cost-pname="'+esc(c.id)+'" value="'+esc(c.name||'')+'" aria-label="Parameter name"><button type="button" class="iconbtn" data-action="cost-del-param" data-pid="'+esc(c.id)+'" aria-label="Remove parameter">✕</button></div>'; }).join('') +
+        '<button type="button" class="btn btn-ghost btn-sm" data-action="cost-add-param">+ Add parameter</button>' +
+        '<div class="helper" style="margin-top:6px;">Removing a parameter hides it from charts; numbers already saved for it are kept.</div></div>';
+    }
+    var body;
+    if (!p){
+      var avg = costAverage();
+      if (!avg.clients){
+        body = '<div class="empty"><div class="big">📊</div>No parameters recorded yet. Add them when you create a client, or right after finishing an audit — the pie chart of the average shows up here.</div>';
+      } else {
+        var rows = costRows(avg.values);
+        body = '<div class="statgrid" style="margin-top:0;"><div class="stattile t-accent"><div class="v">'+avg.clients+'</div><div class="k">Clients with data</div></div>' +
+            '<div class="stattile"><div class="v">'+fmtPct(costSum(rows))+'</div><div class="k">Avg of all parameters</div></div></div>' +
+          costPieHtml(rows, 'Average of each client\'s latest entry') +
+          sh('👥','Clients with data') +
+          '<div class="cardstack">' + named.filter(function(x){ return clientCostEntries(x).length; }).map(function(x){
+            var e = clientCostEntries(x)[0], tot = costSum(costRows(e.values));
+            return '<button type="button" class="card histcard" style="text-align:left;width:100%;" data-action="cost-view" data-id="'+x.id+'"><div style="font-weight:700;">'+esc(x.name)+'</div><div class="histmeta">'+esc(fmtDateShort(new Date((e.date||todayISO())+'T00:00:00').getTime()))+' · '+fmtPct(tot)+' of sales</div></button>';
+          }).join('') + '</div>';
+      }
+    } else {
+      var es = clientCostEntries(p);
+      if (!es.length){
+        body = '<div class="empty"><div class="big">📊</div>'+esc(p.name)+' has no parameters yet.</div>' +
+          '<button class="btn btn-primary" style="width:100%;" data-action="cost-open" data-id="'+p.id+'" data-flow="tab">＋ Add parameters</button>';
+      } else {
+        var cur = es.filter(function(e){ return e.id===state.paramsEntry; })[0] || es[0];
+        var crow = costRows(cur.values);
+        body = (es.length>1 ? '<div class="field"><label>Entry</label><select data-params-entry="1">' + es.map(function(e){ return '<option value="'+esc(e.id)+'" '+(e.id===cur.id?'selected':'')+'>'+esc(fmtDateShort(new Date((e.date||todayISO())+'T00:00:00').getTime()))+(e.auditId?' · with audit':'')+'</option>'; }).join('') + '</select></div>' : '') +
+          (crow.length ? costPieHtml(crow, (p.name||'Client')+' · '+fmtDateShort(new Date((cur.date||todayISO())+'T00:00:00').getTime())) : '<div class="empty">No amounts in this entry.</div>') +
+          (cur.note ? '<div class="card" style="padding:10px 14px;margin-bottom:14px;">📝 '+esc(cur.note)+'</div>' : '') +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+            '<button class="btn btn-primary btn-sm" data-action="cost-open" data-id="'+p.id+'" data-flow="tab">＋ New entry</button>' +
+            '<button class="btn btn-ghost btn-sm" data-action="cost-open" data-id="'+p.id+'" data-entry="'+cur.id+'" data-flow="tab">✎ Edit this entry</button>' +
+            '<button class="btn btn-ghost btn-sm" data-action="goto-prospect" data-id="'+p.id+'">Open client →</button>' +
+            '<button class="btn btn-text btn-danger btn-sm" data-action="cost-delete" data-id="'+p.id+'" data-entry="'+cur.id+'">Delete entry</button>' +
+          '</div>';
+      }
+    }
+    return picker + editor + body;
+  }
+
+  function renderParamsView(){
+    return '<main>' +
+      '<div class="eyebrow">Clients</div>' +
+      '<h1 style="font-size:26px;margin-top:6px;margin-bottom:0;">Parameters</h1>' +
+      '<div class="helper" style="margin:4px 0 0;">Each client\'s monthly cost structure. The chart shows the average of all clients, or one client at a time.</div>' +
+      renderParamsTab() +
+    '</main>';
+  }
+
   function renderProspects(){
+    if (state.costEntry) return renderCostForm();
     if (state.activeProspectId) return renderProspectDetail();
     if (state.activeCallId){
       var openCall = state.systemMaps.filter(function(m){ return m._id===state.activeCallId; })[0];
@@ -4441,7 +4627,7 @@
       '<h1 style="font-size:24px;margin-top:6px;margin-bottom:4px;">'+esc(p.name||'Unnamed client')+serviceBadgeHtml(p)+'</h1>' +
       (p.updatedAt ? '<div class="helper" style="margin:0 0 12px;">Updated '+fmtRelativeTime(p.updatedAt)+'</div>' : '') +
       '<div class="jumpbar">' +
-        [['Contact','Point of Contact'],['Follow-ups','Follow-ups']].concat(audits.length ? [['Timeline','Timeline'],['Next actions','Recommended Next Actions'],['Proposal','Proposal & conversion']] : [])
+        [['Contact','Point of Contact'],['Parameters','Parameters'],['Follow-ups','Follow-ups']].concat(audits.length ? [['Timeline','Timeline'],['Next actions','Recommended Next Actions'],['Proposal','Proposal & conversion']] : [])
           .map(function(j){ return '<button type="button" data-action="jump" data-target="'+esc(j[1])+'">'+j[0]+'</button>'; }).join('') +
       '</div>' +
       renderClientHealthCard(p, audits) +
@@ -4467,6 +4653,8 @@
         '<div class="helper" data-pmobile-err style="margin-top:-6px;color:var(--bad);">'+esc(mobileErrorText(p.contactMobile))+'</div>' +
         '<div class="contactrow blockrow" data-contact-btns>'+contactButtons(p)+'</div>' +
       '</div>' +
+      (state.newClientFlow===p.id ? '<div class="card" style="border-color:var(--accent);background:var(--accent-soft);padding:14px 16px;margin-bottom:18px;"><div style="font-weight:700;">Step 1 of 2 — client details</div><div class="helper" style="margin:4px 0 10px;">Next, add this client\'s monthly parameters (food cost, wastage, staff, rent, electricity…). You can skip and do it later.</div><button class="btn btn-primary" data-action="cost-open" data-id="'+p.id+'" data-flow="new">Next: Parameters →</button></div>' : '') +
+      renderCostCard(p) +
       renderFollowUps(p) +
       renderBillingCard(p) +
       renderMeetingTimerCard(p) +
@@ -6168,7 +6356,8 @@
     else if (action==='go-pricing'){ if(!state.draft){ state.view='pricing'; render(); } }
     else if (action==='go-services'){ if(!state.draft){ state.view='services'; render(); } }
     else if (action==='go-actions'){ if(!state.draft){ if (t.dataset.tab) state.actionsTab = t.dataset.tab; state.dayTab = 'actions'; state.view='time'; window.scrollTo(0,0); render(); } }
-    else if (action==='go-prospects'){ if(!state.draft){ state.activeProspectId=null; state.activeCallId=null; state.view='prospects'; render(); } }
+    else if (action==='go-params'){ if(!state.draft){ state.activeProspectId=null; state.costEntry=null; state.newClientFlow=null; state.view='params'; state.sidebarOpen=false; window.scrollTo(0,0); render(); } }
+    else if (action==='go-prospects'){ if(!state.draft){ state.activeProspectId=null; state.activeCallId=null; state.costEntry=null; state.newClientFlow=null; state.view='prospects'; render(); } }
     else if (action==='go-lookup'){ if(!state.draft){ state.view='lookup'; render(); } }
     else if (action==='go-maps'){ if(!state.draft){ state.activeProspectId = null; state.prospectsTab = 'calls'; state.view='prospects'; window.scrollTo(0,0); render(); } }
     else if (action==='maps-tab'){ state.mapsTab = t.dataset.tab; render(); }
@@ -6453,6 +6642,7 @@
         servicesOffered:'', pricingType:'', proposalStatus:'', proposalMeetingDate:'', auditsPerMonth:'',
         contactName:'', contactDesignation:'', contactMobile:'' };
       state.prospects.push(newP); persistProspects();
+      state.newClientFlow = newP.id;
       state.activeProspectId = newP.id; render();
     }
     else if (action==='open-prospect'){ state.activeProspectId = t.dataset.id; render(); }
@@ -6461,7 +6651,55 @@
       var btpP = findProspect(state.activeProspectId);
       var btpProblems = btpP ? prospectProblems(btpP) : [];
       if (btpProblems.length && !window.confirm('This client is still missing: '+btpProblems.join(', ')+'.\n\nLeave anyway? Tap Cancel to keep filling it in.')) return;
-      state.activeProspectId = null; render();
+      state.activeProspectId = null; state.newClientFlow = null; render();
+    }
+    else if (action==='cost-open'){
+      var cop = findProspect(t.dataset.id);
+      if (cop && !state.draft){
+        var ce0 = costBlank(cop.id, t.dataset.flow||'', '');
+        if (t.dataset.entry){
+          var ee = (cop.costEntries||[]).filter(function(x){ return x.id===t.dataset.entry; })[0];
+          if (ee){ ce0.entryId = ee.id; ce0.date = ee.date||ce0.date; ce0.values = JSON.parse(JSON.stringify(ee.values||{})); ce0.note = ee.note||''; ce0.auditId = ee.auditId||''; }
+        }
+        state.costEntry = ce0; state.activeProspectId = cop.id; state.view = 'prospects'; window.scrollTo(0,0); render();
+      }
+    }
+    else if (action==='cost-save'){
+      var cs = state.costEntry, csp = cs && findProspect(cs.clientId);
+      if (cs && csp){
+        var cvals = {}, cany = false;
+        Object.keys(cs.values||{}).forEach(function(k){ var n = costNum(cs.values[k]); if (n!==null){ n = Math.min(100, Math.max(0, n)); cvals[k] = n; if (n>0) cany = true; } });
+        if (cany || (cs.note||'').trim()){
+          csp.costEntries = csp.costEntries || [];
+          var cex = cs.entryId ? csp.costEntries.filter(function(x){ return x.id===cs.entryId; })[0] : null;
+          if (cex){ cex.date = cs.date||todayISO(); cex.values = cvals; cex.note = (cs.note||'').trim(); }
+          else csp.costEntries.push({ id: uid(), date: cs.date||todayISO(), auditId: cs.auditId||'', values: cvals, note: (cs.note||'').trim(), createdAt: Date.now() });
+          csp.updatedAt = Date.now(); persistProspects();
+        }
+        var cflow = cs.flow;
+        state.costEntry = null; state.newClientFlow = null;
+        if (cflow==='tab'){ state.paramsClient = csp.id; state.paramsEntry = ''; state.activeProspectId = null; state.view = 'params'; }
+        window.scrollTo(0,0); render();
+      }
+    }
+    else if (action==='cost-skip'){ state.costEntry = null; state.newClientFlow = null; window.scrollTo(0,0); render(); }
+    else if (action==='cost-view'){
+      state.paramsClient = t.dataset.id; state.paramsEntry = ''; state.activeProspectId = null; state.costEntry = null; state.view = 'params'; window.scrollTo(0,0); render();
+    }
+    else if (action==='cost-delete'){
+      var cdp = findProspect(t.dataset.id);
+      if (cdp && window.confirm('Delete this parameters entry? This cannot be undone.')){
+        cdp.costEntries = (cdp.costEntries||[]).filter(function(x){ return x.id!==t.dataset.entry; });
+        state.paramsEntry = ''; cdp.updatedAt = Date.now(); persistProspects(); render();
+      }
+    }
+    else if (action==='cost-edit-list'){ state.costListOpen = !state.costListOpen; render(); }
+    else if (action==='cost-add-param'){ costParamsEditable().push({ id: uid(), name:'New parameter' }); persistTargets(); render(); }
+    else if (action==='cost-del-param'){
+      var cdl = costParamsEditable();
+      if (cdl.length>1 && window.confirm('Remove this parameter from the list? Amounts already saved for it are kept.')){
+        state.targets.costParams = cdl.filter(function(c){ return c.id!==t.dataset.pid; }); persistTargets(); render();
+      }
     }
     else if (action==='delete-prospect'){
       if (window.confirm('Delete this client? This cannot be undone.')){
@@ -6875,7 +7113,8 @@
         persistProspects();
         if (d.metrics && d.metrics.length) persistReadings();
         state.activeProspectId = linkedP.id;
-        state.view = 'prospects'; render();
+        state.costEntry = costBlank(linkedP.id, 'audit', rec.id);
+        state.view = 'prospects'; window.scrollTo(0,0); render();
       } else {
         state.viewingAuditId = rec.id; state.summaryReturnView='setup';
         state.view='summary'; render();
@@ -7546,6 +7785,21 @@
       var clk = state.lookups.filter(function(l){ return l.id===el.dataset.id; })[0];
       if (clk){ clk.category = el.value; persistLookups(); render(); }
     }
+    else if (el.dataset.costVal){
+      if (state.costEntry){
+        state.costEntry.values[el.dataset.costVal] = el.value;
+        var ctEl = app.querySelector('[data-cost-total]');
+        if (ctEl) ctEl.textContent = fmtPct(costParams().reduce(function(a, c){ var n = costNum(state.costEntry.values[c.id]); return a+(n>0?n:0); }, 0))+' of sales';
+      }
+    }
+    else if (el.dataset.costNote){ if (state.costEntry) state.costEntry.note = el.value; }
+    else if (el.dataset.costDate){ if (state.costEntry) state.costEntry.date = el.value; }
+    else if (el.dataset.costPname){
+      var cpn = costParamsEditable().filter(function(c){ return c.id===el.dataset.costPname; })[0];
+      if (cpn){ cpn.name = el.value; persistTargets(); }
+    }
+    else if (el.dataset.paramsClient){ state.paramsClient = el.value; state.paramsEntry = ''; render(); }
+    else if (el.dataset.paramsEntry){ state.paramsEntry = el.value; render(); }
     else if (el.dataset.prospectFilter==='location'){ state.prospectsFilterLocation = el.value; render(); }
     else if (el.dataset.prospectFilter==='category'){ state.prospectsFilterCategory = el.value; render(); }
     else if (el.dataset.schedule){
