@@ -7384,7 +7384,8 @@
     }
     else if (el.dataset.lkDue){
       var lkd = state.lookups.filter(function(l){ return l.id===el.dataset.lkDue; })[0];
-      if (lkd){ lkd.dueDate = el.value; persistLookups(); render(); }
+      // Save as you type but don't redraw: a redraw swaps the input out mid-year and drops the cursor. It redraws on blur.
+      if (lkd){ lkd.dueDate = el.value; persistLookups(); }
     }
     else if (el.dataset.caEditField){
       var caEdit = state.correctiveActions.filter(function(a){ return a.id===el.dataset.caEditId; })[0];
@@ -7392,7 +7393,6 @@
         caEdit[el.dataset.caEditField] = el.value;
         persistActions();
         if (el.tagName==='TEXTAREA'){ el.style.height = 'auto'; el.style.height = el.scrollHeight+'px'; }
-        if (el.dataset.caEditField==='dueDate') render();
       }
     }
     else if (el.dataset.bindIssue && state.draft){
@@ -7487,7 +7487,11 @@
     if (state.view==='setup') updateSetupGate();
   });
 
-  app.addEventListener('focusout', function(){ if (state.view==='setup') updateSetupGate(); });
+  app.addEventListener('focusout', function(e){
+    if (state.view==='setup') updateSetupGate();
+    var f = e.target;
+    if (f && f.type==='date' && (f.dataset.lkDue || f.dataset.caEditField==='dueDate')) render();
+  });
 
   app.addEventListener('change', function(e){
     var el = e.target;
