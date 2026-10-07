@@ -2592,6 +2592,16 @@
         return '<div style="break-inside:avoid;"><b>'+esc(s.name)+'</b><ul>'+s.items.map(function(it){ return '<li>'+esc(it.text)+' — '+whoLines(it).concat(ansLines(it)).map(esc).join('; ')+'</li>'; }).join('')+'</ul></div>';
       }).join('');
     }
+    // The client's cost structure (Parameters), next to the average of all clients.
+    var costP = state.prospects.filter(function(p){ return p.auditId===rec.id || (rec.storeName && norm(p.name)===norm(rec.storeName)); })[0];
+    var costE = costP ? clientCostEntries(costP)[0] : null, costR = costE ? costRows(costE.values) : [];
+    if (costR.length){
+      var costAvg = costAverage('all').values;
+      h += '<h2>Cost structure (% of monthly sales)</h2>' + costR.map(function(r){
+        var hasAvg = costAvg[r.id]!==undefined, over = r.target!==null && r.target!==undefined && r.val>r.target;
+        return '<div class="rp-row"><span class="nm">'+esc(r.name)+'</span><span class="bar"><i style="width:'+Math.min(100, r.val)+'%;background:'+(over ? '#dc2626' : '#2563eb')+';"></i></span><span class="pc">'+fmtPct(r.val)+(hasAvg ? ' · avg '+fmtPct(costAvg[r.id]) : '')+(r.target!==null && r.target!==undefined ? ' · target '+fmtPct(r.target) : '')+'</span></div>';
+      }).join('') + (costE.note ? '<div class="rp-box"><div class="s">'+esc(costE.note)+'</div></div>' : '');
+    }
     if (recs.length){
       h += '<h2>Recommended next steps</h2>' + recs.map(function(r){
         return '<div class="rp-box"><div class="t">'+esc(r.name)+' <span style="font-weight:400;color:#6b7280;">— currently '+r.pct+'%</span></div><div class="s">'+esc(r.suggestion)+'</div></div>';
@@ -3587,14 +3597,17 @@
   }
   // [{id,name,val,color}] for the parameters that have a value above zero, biggest first
   function costRows(values){
-    return costParams().map(function(c, i){ return { id:c.id, name:c.name||'Parameter', val:costNum((values||{})[c.id]), color:COST_COLORS[i%COST_COLORS.length] }; })
+    return costParams().map(function(c, i){ return { id:c.id, name:c.name||'Parameter', val:costNum((values||{})[c.id]), target:costNum(c.target), color:COST_COLORS[i%COST_COLORS.length] }; })
       .filter(function(r){ return r.val!==null && r.val>0; })
       .sort(function(a,b){ return b.val-a.val; });
   }
+  function costColorOf(id){ var ps = costParams(); for (var i=0;i<ps.length;i++) if (ps[i].id===id) return COST_COLORS[i%COST_COLORS.length]; return COST_COLORS[0]; }
   // The latest entry of every client, averaged per parameter (a parameter averages only over clients that filled it in).
-  function costAverage(){
+  // Pass a checklist type (dinein, qsr, hotel…) to average only that kind of client.
+  function costAverage(typeKey){
     var sums = {}, cnt = {}, clients = 0;
     state.prospects.forEach(function(p){
+      if (typeKey && typeKey!=='all' && p.category!==typeKey) return;
       var e = clientCostEntries(p)[0]; if (!e) return;
       var any = false;
       costParams().forEach(function(c){ var n = costNum((e.values||{})[c.id]); if (n!==null && n>0){ sums[c.id] = (sums[c.id]||0)+n; cnt[c.id] = (cnt[c.id]||0)+1; any = true; } });
@@ -3628,6 +3641,7 @@
             return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);">' +
               '<span style="width:12px;height:12px;border-radius:3px;background:'+r.color+';flex:none;"></span>' +
               '<span style="flex:1;min-width:0;font-weight:600;overflow-wrap:anywhere;">'+esc(r.name)+'</span>' +
+              (r.target!==undefined && r.target!==null ? '<span class="histmeta" style="margin:0;white-space:nowrap;'+(r.val>r.target?'color:var(--bad);font-weight:700;':'')+'">'+(r.val>r.target ? '▲ '+fmtPct(r.val-r.target)+' over · ' : '')+'target '+fmtPct(r.target)+'</span>' : '') +
               '<span style="font-weight:800;text-align:right;">'+fmtPct(r.val)+'</span></div>';
           }).join('') +
           '<div style="display:flex;justify-content:space-between;padding-top:8px;font-weight:700;"><span>All parameters</span><span>'+fmtPct(sum)+' of sales</span></div>' +
@@ -3672,7 +3686,8 @@
       body = '<div class="helper" style="margin:0 0 10px;">Nothing recorded yet. Add this client\'s monthly food cost, wastage, staff cost, rent, electricity and more.</div>';
     } else {
       var rows = costRows(e.values), total = costSum(rows);
-      body = '<div class="histmeta" style="margin:0 0 6px;">Latest · '+esc(fmtDateShort(new Date((e.date||todayISO())+'T00:00:00').getTime()))+(es.length>1 ? ' · '+es.length+' entries' : '')+' · '+fmtPct(total)+' of sales</div>' +
+      var overN = rows.filter(function(r){ return r.target!==null && r.target!==undefined && r.val>r.target; }).length;
+      body = '<div class="histmeta" style="margin:0 0 6px;">Latest · '+esc(fmtDateShort(new Date((e.date||todayISO())+'T00:00:00').getTime()))+(es.length>1 ? ' · '+es.length+' entries' : '')+' · '+fmtPct(total)+' of sales'+(overN ? ' · <span style="color:var(--bad);font-weight:700;">'+overN+' over target</span>' : '')+'</div>' +
         rows.map(function(r){ return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;"><span style="width:10px;height:10px;border-radius:3px;background:'+r.color+';flex:none;"></span><span style="flex:1;">'+esc(r.name)+'</span><b style="text-align:right;">'+fmtPct(r.val)+'</b></div>'; }).join('') +
         (e.note ? '<div class="helper" style="margin:8px 0 0;">📝 '+esc(e.note)+'</div>' : '');
     }
@@ -3685,6 +3700,53 @@
         '</div>' +
       '</div>';
   }
+  // Parameters above their target % become one-tap fixes (Tasks & Fixes).
+  function costFixKey(p, pid){ return p.id+':'+pid; }
+  function renderCostOver(p, rows){
+    var over = rows.filter(function(r){ return r.target!==null && r.target!==undefined && r.val>r.target; });
+    if (!over.length) return '';
+    return sh('🎯','Over target') + '<div class="card" style="padding:12px 14px;margin-bottom:16px;">' +
+      over.map(function(r){
+        var made = state.correctiveActions.some(function(a){ return a.sourceCost===costFixKey(p, r.id) && !a.done; });
+        return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);">' +
+          '<div style="flex:1;min-width:0;"><div style="font-weight:700;">'+esc(r.name)+' '+fmtPct(r.val)+'</div><div class="histmeta" style="margin:0;">target '+fmtPct(r.target)+' · '+fmtPct(r.val-r.target)+' over</div></div>' +
+          (made ? '<span class="pill good">In Fixes</span>' : '<button class="btn btn-ghost btn-sm" data-action="cost-make-fix" data-id="'+p.id+'" data-pid="'+esc(r.id)+'">＋ Add as fix</button>') + '</div>';
+      }).join('') + '</div>';
+  }
+  // Each parameter's % across a client's entries over time (oldest to newest), with how far it has moved.
+  function renderCostTrend(es){
+    var list = es.slice().sort(function(a,b){ return (a.date||'').localeCompare(b.date||'') || (a.createdAt||0)-(b.createdAt||0); }).slice(-12);
+    if (list.length<2) return '';
+    var latest = costRows(list[list.length-1].values);
+    var ids = costParams().map(function(c){ return c.id; }).filter(function(id){ return list.some(function(e){ var n = costNum((e.values||{})[id]); return n!==null && n>0; }); });
+    ids = ids.sort(function(a,b){ var la = costNum((list[list.length-1].values||{})[a])||0, lb = costNum((list[list.length-1].values||{})[b])||0; return lb-la; }).slice(0, 8);
+    if (!ids.length) return '';
+    var maxV = 10; list.forEach(function(e){ ids.forEach(function(id){ var n = costNum((e.values||{})[id]); if (n!==null && n>maxV) maxV = n; }); });
+    maxV = Math.ceil(maxV/10)*10;
+    var W = 320, H = 150, padL = 28, padR = 8, padT = 8, padB = 18;
+    var xs = function(i){ return padL + (list.length===1 ? 0 : i/(list.length-1))*(W-padL-padR); };
+    var ys = function(v){ return padT + (1 - v/maxV)*(H-padT-padB); };
+    var svg = '';
+    [0, maxV/2, maxV].forEach(function(g){ svg += '<line x1="'+padL+'" x2="'+(W-padR)+'" y1="'+ys(g).toFixed(1)+'" y2="'+ys(g).toFixed(1)+'" stroke="var(--line)" stroke-width="1"/><text x="'+(padL-4)+'" y="'+(ys(g)+3).toFixed(1)+'" font-size="9" text-anchor="end" fill="var(--ink-400)">'+g+'%</text>'; });
+    ids.forEach(function(id){
+      var col = costColorOf(id), pts = [];
+      list.forEach(function(e, i){ var n = costNum((e.values||{})[id]); if (n!==null && n>0) pts.push([xs(i), ys(n)]); });
+      if (pts.length>1) svg += '<polyline fill="none" stroke="'+col+'" stroke-width="2" points="'+pts.map(function(q){ return q[0].toFixed(1)+','+q[1].toFixed(1); }).join(' ')+'"/>';
+      pts.forEach(function(q){ svg += '<circle cx="'+q[0].toFixed(1)+'" cy="'+q[1].toFixed(1)+'" r="3" fill="'+col+'"/>'; });
+    });
+    var d0 = fmtDateShort(new Date((list[0].date||todayISO())+'T00:00:00').getTime()), d1 = fmtDateShort(new Date((list[list.length-1].date||todayISO())+'T00:00:00').getTime());
+    svg += '<text x="'+padL+'" y="'+(H-4)+'" font-size="9" fill="var(--ink-400)">'+esc(d0)+'</text><text x="'+(W-padR)+'" y="'+(H-4)+'" font-size="9" text-anchor="end" fill="var(--ink-400)">'+esc(d1)+'</text>';
+    return sh('📈','Trend') + '<div class="card" style="padding:14px;margin-bottom:16px;">' +
+      '<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Parameters over time" style="max-width:520px;display:block;margin:0 auto;">'+svg+'</svg>' +
+      '<div style="margin-top:8px;">' + ids.map(function(id){
+        var first = null, last = null;
+        list.forEach(function(e){ var n = costNum((e.values||{})[id]); if (n!==null && n>0){ if (first===null) first = n; last = n; } });
+        var dlt = (first!==null && last!==null) ? last-first : 0, nm = (costParams().filter(function(c){ return c.id===id; })[0]||{}).name||'Parameter';
+        return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;"><span style="width:10px;height:10px;border-radius:3px;background:'+costColorOf(id)+';flex:none;"></span><span style="flex:1;">'+esc(nm)+'</span><span class="histmeta" style="margin:0;">'+fmtPct(first)+' → '+fmtPct(last)+'</span><b style="min-width:62px;text-align:right;color:'+(dlt<0?'var(--good)':(dlt>0?'var(--bad)':'var(--ink-400)'))+';">'+(dlt===0?'no change':(dlt<0?'▼ ':'▲ ')+fmtPct(Math.abs(dlt)))+'</b></div>';
+      }).join('') + '</div>' +
+      '<div class="helper" style="margin:8px 0 0;">Costs coming down (green) is the good direction.</div></div>';
+  }
+
   function renderParamsTab(){
     var sel = state.paramsClient || 'all';
     var p = sel!=='all' ? findProspect(sel) : null;
@@ -3699,22 +3761,26 @@
     var editor = '';
     if (state.costListOpen){
       editor = '<div class="card" style="padding:12px 14px;margin-bottom:14px;"><div class="answerlabel" style="margin-bottom:6px;">Parameters you track</div>' +
-        costParams().map(function(c){ return '<div style="display:flex;gap:6px;margin-bottom:6px;align-items:center;"><input type="text" class="iteminfolabel" style="flex:1;min-width:0;" data-cost-pname="'+esc(c.id)+'" value="'+esc(c.name||'')+'" aria-label="Parameter name"><button type="button" class="iconbtn" data-action="cost-del-param" data-pid="'+esc(c.id)+'" aria-label="Remove parameter">✕</button></div>'; }).join('') +
+        costParams().map(function(c){ return '<div style="display:flex;gap:6px;margin-bottom:6px;align-items:center;"><input type="text" class="iteminfolabel" style="flex:1;min-width:0;" data-cost-pname="'+esc(c.id)+'" value="'+esc(c.name||'')+'" aria-label="Parameter name"><input type="number" min="0" max="100" step="any" class="iteminfolabel" style="width:78px;flex:none;" data-cost-ptarget="'+esc(c.id)+'" value="'+esc(c.target===undefined||c.target===null?'':c.target)+'" placeholder="Target %" aria-label="Target % of sales"><button type="button" class="iconbtn" data-action="cost-del-param" data-pid="'+esc(c.id)+'" aria-label="Remove parameter">✕</button></div>'; }).join('') +
         '<button type="button" class="btn btn-ghost btn-sm" data-action="cost-add-param">+ Add parameter</button>' +
-        '<div class="helper" style="margin-top:6px;">Removing a parameter hides it from charts; numbers already saved for it are kept.</div></div>';
+        '<div class="helper" style="margin-top:6px;">The optional target % is the most you want that cost to be. A client above it is flagged and you can send it to Tasks &amp; Fixes. Removing a parameter hides it from charts; numbers already saved for it are kept.</div></div>';
     }
     var body;
     if (!p){
-      var avg = costAverage();
+      var ptype = state.paramsType || 'all';
+      if (ptype!=='all' && !state.templates[ptype]) ptype = 'all';
+      var avg = costAverage(ptype);
+      var typePicker = '<div class="field" style="max-width:260px;"><label>Type of business</label><select data-params-type="1"><option value="all">All types</option>' +
+        templateKeys().map(function(k){ return '<option value="'+esc(k)+'" '+(ptype===k?'selected':'')+'>'+esc(state.templates[k].label)+'</option>'; }).join('') + '</select></div>';
       if (!avg.clients){
-        body = '<div class="empty"><div class="big">📊</div>No parameters recorded yet. Add them when you create a client, or right after finishing an audit — the pie chart of the average shows up here.</div>';
+        body = typePicker + '<div class="empty"><div class="big">📊</div>'+(ptype==='all' ? 'No parameters recorded yet. Add them when you create a client, or right after finishing an audit — the pie chart of the average shows up here.' : 'No '+esc(state.templates[ptype].label)+' clients have parameters yet.')+'</div>';
       } else {
         var rows = costRows(avg.values);
-        body = '<div class="statgrid" style="margin-top:0;"><div class="stattile t-accent"><div class="v">'+avg.clients+'</div><div class="k">Clients with data</div></div>' +
+        body = typePicker + '<div class="statgrid" style="margin-top:0;"><div class="stattile t-accent"><div class="v">'+avg.clients+'</div><div class="k">Clients with data</div></div>' +
             '<div class="stattile"><div class="v">'+fmtPct(costSum(rows))+'</div><div class="k">Avg of all parameters</div></div></div>' +
-          costPieHtml(rows, 'Average of each client\'s latest entry') +
+          costPieHtml(rows, (ptype==='all' ? 'Average of each client\'s latest entry' : 'Average of '+state.templates[ptype].label+' clients\' latest entries')) +
           sh('👥','Clients with data') +
-          '<div class="cardstack">' + named.filter(function(x){ return clientCostEntries(x).length; }).map(function(x){
+          '<div class="cardstack">' + named.filter(function(x){ return clientCostEntries(x).length && (ptype==='all' || x.category===ptype); }).map(function(x){
             var e = clientCostEntries(x)[0], tot = costSum(costRows(e.values));
             return '<button type="button" class="card histcard" style="text-align:left;width:100%;" data-action="cost-view" data-id="'+x.id+'"><div style="font-weight:700;">'+esc(x.name)+'</div><div class="histmeta">'+esc(fmtDateShort(new Date((e.date||todayISO())+'T00:00:00').getTime()))+' · '+fmtPct(tot)+' of sales</div></button>';
           }).join('') + '</div>';
@@ -3730,6 +3796,8 @@
         body = (es.length>1 ? '<div class="field"><label>Entry</label><select data-params-entry="1">' + es.map(function(e){ return '<option value="'+esc(e.id)+'" '+(e.id===cur.id?'selected':'')+'>'+esc(fmtDateShort(new Date((e.date||todayISO())+'T00:00:00').getTime()))+(e.auditId?' · with audit':'')+'</option>'; }).join('') + '</select></div>' : '') +
           (crow.length ? costPieHtml(crow, (p.name||'Client')+' · '+fmtDateShort(new Date((cur.date||todayISO())+'T00:00:00').getTime())) : '<div class="empty">No amounts in this entry.</div>') +
           (cur.note ? '<div class="card" style="padding:10px 14px;margin-bottom:14px;">📝 '+esc(cur.note)+'</div>' : '') +
+          renderCostOver(p, crow) +
+          renderCostTrend(es) +
           '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
             '<button class="btn btn-primary btn-sm" data-action="cost-open" data-id="'+p.id+'" data-flow="tab">＋ New entry</button>' +
             '<button class="btn btn-ghost btn-sm" data-action="cost-open" data-id="'+p.id+'" data-entry="'+cur.id+'" data-flow="tab">✎ Edit this entry</button>' +
@@ -6693,6 +6761,17 @@
         state.paramsEntry = ''; cdp.updatedAt = Date.now(); persistProspects(); render();
       }
     }
+    else if (action==='cost-make-fix'){
+      var cmp = findProspect(t.dataset.id);
+      if (cmp){
+        var cmr = costRows((clientCostEntries(cmp)[0]||{}).values).filter(function(r){ return r.id===t.dataset.pid; })[0];
+        if (cmr && cmr.target!==null && cmr.target!==undefined && cmr.val>cmr.target && !state.correctiveActions.some(function(a){ return a.sourceCost===costFixKey(cmp, cmr.id) && !a.done; })){
+          state.correctiveActions.push({ id: uid(), auditId:'', storeName: cmp.name||'', storeLocation: cmp.location||'', type: cmp.category||'',
+            description: cmr.name+' is '+fmtPct(cmr.val)+' of sales vs a '+fmtPct(cmr.target)+' target', dueDate:'', sourceCost: costFixKey(cmp, cmr.id), done:false, createdAt: Date.now() });
+          persistActions(); render();
+        }
+      }
+    }
     else if (action==='cost-edit-list'){ state.costListOpen = !state.costListOpen; render(); }
     else if (action==='cost-add-param'){ costParamsEditable().push({ id: uid(), name:'New parameter' }); persistTargets(); render(); }
     else if (action==='cost-del-param'){
@@ -7798,6 +7877,11 @@
       var cpn = costParamsEditable().filter(function(c){ return c.id===el.dataset.costPname; })[0];
       if (cpn){ cpn.name = el.value; persistTargets(); }
     }
+    else if (el.dataset.costPtarget){
+      var cpt = costParamsEditable().filter(function(c){ return c.id===el.dataset.costPtarget; })[0];
+      if (cpt){ var tv = costNum(el.value); if (tv===null) delete cpt.target; else cpt.target = Math.min(100, Math.max(0, tv)); persistTargets(); }
+    }
+    else if (el.dataset.paramsType){ state.paramsType = el.value; render(); }
     else if (el.dataset.paramsClient){ state.paramsClient = el.value; state.paramsEntry = ''; render(); }
     else if (el.dataset.paramsEntry){ state.paramsEntry = el.value; render(); }
     else if (el.dataset.prospectFilter==='location'){ state.prospectsFilterLocation = el.value; render(); }
