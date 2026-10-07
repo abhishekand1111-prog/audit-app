@@ -1716,15 +1716,15 @@
       '<nav class="sidebar '+(state.sidebarOpen?'open':'')+'">' +
         '<div class="sidebar-brand">'+logoImg()+'<span class="name">Diagnosis Room</span></div>' +
         item('dashboard','go-dashboard','Dashboard') +
-        item('time','go-time','The Day', (function(){
+        item('time','go-time','The One', (function(){
           var ow=openWorkday(), ak=ow?workdayActiveAway(ow):null, c=dayCounts(), n=c.today+c.overdue;
           return [ow ? (ak?awayCatOf(ak).icon:'🟢') : '', n ? String(n) : ''].filter(Boolean).join(' ');
         })()) +
-        item('editor','go-editor','Checklist') +
+        item('editor','go-editor','Areas') +
         item('prospects','go-prospects','Clients', (function(){ var n=smNewCount(); return n?String(n):''; })()) +
-        item('lookup','go-lookup','Lookup', (function(){ var n=state.lookups.filter(function(l){ return !l.done; }).length; return n?String(n):''; })()) +
-        item('services','go-services','Services', state.services.length?String(state.services.length):'') +
-        item('pricing','go-pricing','Settings') +
+        item('lookup','go-lookup','Tasks', (function(){ var n=state.lookups.filter(function(l){ return !l.done; }).length; return n?String(n):''; })()) +
+        item('services','go-services','Packages', state.services.length?String(state.services.length):'') +
+        item('pricing','go-pricing','Back end') +
       '</nav>';
   }
 
@@ -3009,7 +3009,7 @@
   function renderPricingSettings(){
     return '<main>' +
       '<div class="eyebrow">Settings</div>' +
-      '<h1 style="font-size:26px;margin-top:6px;margin-bottom:0;">Settings</h1>' +
+      '<h1 style="font-size:26px;margin-top:6px;margin-bottom:0;">Back end</h1>' +
       '<div class="seg jumpbar" style="margin:12px 0 0;">' + [['Monthly Targets','Targets'],['Tracking prices','Tracking prices'],['Reminders','Reminders'],['Follow-up planner','Planner'],['Parameter library','Parameters'],['Backup & Restore','Backup']].map(function(j){ return '<button type="button" data-action="settings-jump" data-to="'+esc(j[0])+'">'+j[1]+'</button>'; }).join('') + '</div>' +
       '<div class="card" style="padding:14px 16px;margin:14px 0 24px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">' +
         '<div><div style="font-weight:700;">'+esc(state.authUser?state.authUser.email:'')+'</div><div class="histmeta">Signed in</div></div>' +
@@ -3171,58 +3171,49 @@
   }
 
   function renderActionsView(){
-    var tab = state.actionsTab;
+    var tab = ({schedule:1, lookup:1})[state.actionsTab] ? state.actionsTab : 'task';
     return '<main>' +
       '<div class="eyebrow">Actions</div>' +
       '<h1 style="font-size:26px;margin-top:6px;margin-bottom:14px;">Follow-ups &amp; schedule</h1>' +
       '<div class="tabs">' +
-        '<button class="tab '+(tab==='corrective'?'on':'')+'" data-action="actions-tab" data-tab="corrective">Corrective Actions</button>' +
+        '<button class="tab '+(tab==='task'?'on':'')+'" data-action="actions-tab" data-tab="task">Tasks &amp; Fixes</button>' +
         '<button class="tab '+(tab==='schedule'?'on':'')+'" data-action="actions-tab" data-tab="schedule">Re-audit Due</button>' +
-        '<button class="tab '+(tab==='task'?'on':'')+'" data-action="actions-tab" data-tab="task">Tasks</button>' +
         '<button class="tab '+(tab==='lookup'?'on':'')+'" data-action="actions-tab" data-tab="lookup">Lookups</button>' +
       '</div>' +
-      (tab==='schedule' ? renderDueList() : (tab==='task' || tab==='lookup') ? lookupInner(tab) : renderCorrectiveList()) +
+      (tab==='schedule' ? renderDueList() : lookupInner(tab)) +
     '</main>';
   }
 
-  function renderCorrectiveList(){
-    var showDone = !!state.actionsShowDone;
-    var all = state.correctiveActions.slice().sort(function(a,b){
-      var ad = a.dueDate ? new Date(a.dueDate+'T00:00:00').getTime() : Infinity;
-      var bd = b.dueDate ? new Date(b.dueDate+'T00:00:00').getTime() : Infinity;
-      return ad-bd;
-    });
-    var open = all.filter(function(a){ return !a.done; });
-    var done = all.filter(function(a){ return a.done; });
-    var todayStr = todayISO();
-    var overdueCount = open.filter(function(a){ return a.dueDate && a.dueDate < todayStr; }).length;
-
-    function row(a, isDone){
-      var overdue = !isDone && a.dueDate && a.dueDate < todayStr;
-      return '<div class="card cacard2">' +
-        '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">' +
-          '<textarea rows="1" class="lookuptext" data-ca-edit-field="description" data-ca-edit-id="'+a.id+'" placeholder="What needs fixing?" style="font-weight:700;">'+esc(a.description||'')+'</textarea>' +
-          '<button class="btn btn-ghost btn-sm" style="flex:none;" data-action="'+(isDone?'reopen-action':'resolve-action')+'" data-id="'+a.id+'">'+(isDone?'Reopen':'Mark done')+'</button>' +
-        '</div>' +
-        '<div class="histmeta">'+esc(a.storeName||'Unnamed store')+(a.storeLocation?' · '+esc(a.storeLocation):'')+'</div>' +
-        '<div style="display:flex; align-items:center; gap:8px; margin-top:6px; flex-wrap:wrap;">' +
-          '<input type="date" data-ca-edit-field="dueDate" data-ca-edit-id="'+a.id+'" value="'+esc(a.dueDate||'')+'" style="border:1px solid var(--line-strong); border-radius:var(--r-s); padding:5px 7px; font-size:12.5px; background:var(--surface); color:var(--ink);">' +
-          (overdue?'<span class="pill bad">OVERDUE</span>':'') +
-          (!isDone ? '<button type="button" class="btn btn-text btn-sm" style="margin-left:auto;" data-action="snooze-action" data-id="'+a.id+'">Snooze +3d</button>' : '') +
-        '</div>' +
-      '</div>';
-    }
-
-    return '<div class="statgrid">' +
-        '<div class="stattile t-accent"><div class="v">'+open.length+'</div><div class="k">Open</div></div>' +
-        '<div class="stattile'+(overdueCount?' t-bad':'')+'"><div class="v">'+overdueCount+'</div><div class="k">Overdue</div></div>' +
-        '<div class="stattile t-good"><div class="v">'+done.length+'</div><div class="k">Resolved</div></div>' +
+  // Corrective actions now live inside Tasks: same list, same date field. Lookups stay dateless.
+  function dateInputHtml(attrs, val){
+    return '<input type="date" '+attrs+' value="'+esc(val||'')+'" style="border:1px solid var(--line-strong); border-radius:var(--r-s); padding:5px 7px; font-size:12.5px; background:var(--surface); color:var(--ink);">';
+  }
+  function fixRow(a){
+    var overdue = !a.done && a.dueDate && a.dueDate < todayISO();
+    return '<div class="card lkcard '+(a.done?'done':'')+'">' +
+      '<div class="lkmain">' +
+        '<button class="chk '+(a.done?'checked':'')+'" data-action="'+(a.done?'reopen-action':'resolve-action')+'" data-id="'+a.id+'" aria-label="Toggle done">'+(a.done?'✓':'')+'</button>' +
+        '<textarea rows="1" class="lookuptext" data-ca-edit-field="description" data-ca-edit-id="'+a.id+'" placeholder="What needs fixing?">'+esc(a.description||'')+'</textarea>' +
       '</div>' +
-      (open.length===0 ? '<div class="empty"><div class="big">✅</div>No open corrective actions.</div>' : open.map(function(a){ return row(a,false); }).join('')) +
-      (done.length ? (
-        '<button class="btn btn-text" style="margin-top:10px;" data-action="toggle-show-done">'+(showDone?'Hide':'Show')+' '+done.length+' resolved</button>' +
-        (showDone ? done.map(function(a){ return row(a,true); }).join('') : '')
-      ) : '');
+      '<div class="lkmeta">' +
+        '<span class="pill warn">🛠️ Fix</span>' +
+        '<span class="histmeta" style="margin:0;">'+esc(a.storeName||'Unnamed store')+(a.storeLocation?' · '+esc(a.storeLocation):'')+'</span>' +
+        dateInputHtml('data-ca-edit-field="dueDate" data-ca-edit-id="'+a.id+'"', a.dueDate) +
+        (overdue?'<span class="pill bad">OVERDUE</span>':'') +
+        (!a.done ? '<button type="button" class="btn btn-text btn-sm" style="margin-left:auto;" data-action="snooze-action" data-id="'+a.id+'">Snooze +3d</button>' : '') +
+      '</div>' +
+    '</div>';
+  }
+  function taskDueKey(x){ return x.dueDate || '9999-99'; }
+  // Open items soonest-date first; undated ones after, newest first.
+  function taskSort(a,b){
+    var ka = taskDueKey(a), kb = taskDueKey(b);
+    if (ka!==kb) return ka<kb ? -1 : 1;
+    return (b.createdAt||0)-(a.createdAt||0);
+  }
+  function openTaskCount(){
+    return state.lookups.filter(function(l){ return !l.done && lookupGroup(l)==='task'; }).length +
+      state.correctiveActions.filter(function(a){ return !a.done; }).length;
   }
 
   function renderScheduledAudits(){
@@ -4836,8 +4827,11 @@
     if (cl) meta += '<button type="button" class="lkchip" data-action="goto-prospect" data-id="'+esc(cl.id)+'" title="Open client">👤 '+esc(cl.name||'Client')+'</button>';
     if (l.source==='solution') meta += '<span class="pill">Solution</span>';
     if (l.source==='request') meta += '<span class="pill warn">Client request</span>';
-    var when = l.done && l.doneAt ? 'Done '+fmtDateShort(l.doneAt) : (l.createdAt ? 'Added '+fmtDateShort(l.createdAt) : '');
-    if (when) meta += '<span class="histmeta" style="margin:0;">'+esc(when)+'</span>';
+    // Tasks carry a due date only; lookups carry no date at all.
+    if (group==='task'){
+      meta += dateInputHtml('data-lk-due="'+l.id+'"', l.dueDate);
+      if (!l.done && l.dueDate && l.dueDate<todayISO()) meta += '<span class="pill bad">OVERDUE</span>';
+    }
     if (!l.source) meta += '<button type="button" class="btn btn-text btn-sm" style="margin-left:auto;" data-action="move-lookup" data-id="'+l.id+'">Move to '+(group==='task'?'Lookup':'Tasks')+'</button>';
     return '<div class="card lkcard '+(l.done?'done':'')+'">' +
       '<div class="lkmain">' +
@@ -4853,25 +4847,32 @@
   // so the week's shape is visible without opening Actions, Clients, Content and The Day separately.
   // ---- Dashboard: open tasks, lookups and corrective actions in one tabbed card ----
   function renderWorkBoard(){
-    var tasks = state.lookups.filter(function(l){ return !l.done && lookupGroup(l)==='task'; }).sort(function(a,b){ return (b.createdAt||0)-(a.createdAt||0); });
+    // Corrective actions are folded into Tasks (each with its date); Lookups stay separate and dateless.
+    var tasks = state.lookups.filter(function(l){ return !l.done && lookupGroup(l)==='task'; })
+      .map(function(l){ return { kind:'task', o:l, dueDate:l.dueDate, createdAt:l.createdAt }; })
+      .concat(state.correctiveActions.filter(function(a){ return !a.done; }).map(function(a){ return { kind:'fix', o:a, dueDate:a.dueDate, createdAt:a.createdAt }; }))
+      .sort(taskSort);
     var looks = state.lookups.filter(function(l){ return !l.done && lookupGroup(l)==='lookup'; }).sort(function(a,b){ return (b.createdAt||0)-(a.createdAt||0); });
-    var fixes = state.correctiveActions.filter(function(a){ return !a.done; }).sort(function(a,b){ return (a.dueDate||'9999')<(b.dueDate||'9999') ? -1 : 1; });
-    if (!tasks.length && !looks.length && !fixes.length) return '';
+    if (!tasks.length && !looks.length) return '';
     var today = todayISO(), weekAgo = Date.now()-7*86400000;
-    var tabs = [['fix','🛠️ Fixes',fixes],['task','✅ Tasks',tasks],['lookup','🔎 Lookups',looks]];
+    var tabs = [['task','✅ Tasks & fixes',tasks],['lookup','🔎 Lookups',looks]];
     var cur = state.dashLookupTab;
     if (!cur || !tabs.some(function(x){ return x[0]===cur; })) cur = (tabs.filter(function(x){ return x[2].length; })[0] || tabs[0])[0];
     var sel = tabs.filter(function(x){ return x[0]===cur; })[0], items = sel[2];
-    var overdueFixes = fixes.filter(function(a){ return a.dueDate && a.dueDate<today; }).length;
+    var overdueFixes = tasks.filter(function(x){ return x.dueDate && x.dueDate<today; }).length;
     var resolvedWeek = state.correctiveActions.filter(function(a){ return a.done && (a.resolvedAt||0)>=weekAgo; }).length;
     var body;
     if (!items.length){
       body = '<div class="empty" style="padding:22px 10px;"><div class="big">✅</div>Nothing open here — nice.</div>';
-    } else if (cur==='fix'){
-      body = items.slice(0,5).map(function(a){
-        var over = a.dueDate && a.dueDate<today;
-        return '<div class="workrow"><button class="chk" data-action="resolve-action" data-id="'+a.id+'" aria-label="Mark resolved"></button>' +
-          '<div class="wr-main"><div class="wr-text">'+esc(a.description||'(unspecified)')+'</div><div class="histmeta">'+esc(a.storeName||'Unnamed store')+(a.dueDate ? ' · '+(over?'was due ':'due ')+esc(fmtDateShort(new Date(a.dueDate+'T00:00:00').getTime())) : '')+'</div></div>' +
+    } else if (cur==='task'){
+      body = items.slice(0,5).map(function(x){
+        var over = x.dueDate && x.dueDate<today;
+        var isFix = x.kind==='fix', o = x.o;
+        var cl = !isFix && o.clientId ? state.prospects.filter(function(p){ return p.id===o.clientId; })[0] : null;
+        var sub = isFix ? '🛠️ '+esc(o.storeName||'Unnamed store') : (cl ? '👤 '+esc(cl.name||'Client') : '');
+        var when = x.dueDate ? (over?'was due ':'due ')+esc(fmtDateShort(new Date(x.dueDate+'T00:00:00').getTime())) : '';
+        return '<div class="workrow"><button class="chk" data-action="'+(isFix?'resolve-action':'toggle-lookup-done')+'" data-id="'+o.id+'" aria-label="Mark done"></button>' +
+          '<div class="wr-main"><div class="wr-text">'+esc((isFix ? o.description : o.text)||'(unspecified)')+'</div>'+((sub||when) ? '<div class="histmeta">'+sub+(sub&&when?' · ':'')+when+'</div>' : '')+'</div>' +
           (over ? '<span class="pill bad">Overdue</span>' : '') + '</div>';
       }).join('');
     } else {
@@ -4883,12 +4884,12 @@
     }
     return sh('🗂️','Tasks & fixes') +
       '<div class="card" style="padding:12px 16px 14px;margin-bottom:20px;">' +
-        '<div class="tabs tabs-auto" style="margin:0 0 8px;">' + tabs.map(function(x){ return '<button class="tab '+(cur===x[0]?'on':'')+'" data-action="dash-lookup-tab" data-tab="'+x[0]+'">'+x[1]+'<span class="tabcount'+(x[0]==='fix' && overdueFixes ? ' bad' : '')+'">'+x[2].length+'</span></button>'; }).join('') + '</div>' +
+        '<div class="tabs tabs-auto" style="margin:0 0 8px;">' + tabs.map(function(x){ return '<button class="tab '+(cur===x[0]?'on':'')+'" data-action="dash-lookup-tab" data-tab="'+x[0]+'">'+x[1]+'<span class="tabcount'+(x[0]==='task' && overdueFixes ? ' bad' : '')+'">'+x[2].length+'</span></button>'; }).join('') + '</div>' +
         body +
         (items.length>5 ? '<div class="helper" style="margin:8px 0 0;">+'+(items.length-5)+' more</div>' : '') +
         '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px;">' +
-          '<span class="helper" style="margin:0;">'+(cur==='fix' ? (overdueFixes ? overdueFixes+' overdue · ' : '')+resolvedWeek+' resolved this week' : '')+'</span>' +
-          '<button type="button" class="btn btn-text btn-sm" data-action="go-actions" data-tab="'+(cur==='fix'?'corrective':cur)+'">See all →</button>' +
+          '<span class="helper" style="margin:0;">'+(cur==='task' ? (overdueFixes ? overdueFixes+' overdue · ' : '')+resolvedWeek+' fixes resolved this week' : '')+'</span>' +
+          '<button type="button" class="btn btn-text btn-sm" data-action="go-actions" data-tab="'+cur+'">See all →</button>' +
         '</div>' +
       '</div>';
   }
@@ -5085,21 +5086,20 @@
         : '<div class="empty"><div class="big">✅</div>Nothing overdue — you\'re all caught up.</div>';
     }
     else if (tab==='actions'){
-      var at = ({schedule:1, task:1, lookup:1})[state.actionsTab] ? state.actionsTab : 'corrective';
+      var at = ({schedule:1, lookup:1})[state.actionsTab] ? state.actionsTab : 'task';
       body = '<div class="seg">' +
-          '<button class="'+(at==='corrective'?'on':'')+'" data-action="actions-tab" data-tab="corrective">🛠️ Corrective</button>' +
+          '<button class="'+(at==='task'?'on':'')+'" data-action="actions-tab" data-tab="task">✅ Tasks &amp; Fixes ('+openTaskCount()+')</button>' +
           '<button class="'+(at==='schedule'?'on':'')+'" data-action="actions-tab" data-tab="schedule">🗓️ Re-audit</button>' +
-          '<button class="'+(at==='task'?'on':'')+'" data-action="actions-tab" data-tab="task">✅ Tasks ('+lookupOpenN('task')+')</button>' +
           '<button class="'+(at==='lookup'?'on':'')+'" data-action="actions-tab" data-tab="lookup">🔎 Lookups ('+lookupOpenN('lookup')+')</button>' +
         '</div>' +
-        (at==='schedule' ? renderDueList() : (at==='task' || at==='lookup') ? lookupInner(at) : renderCorrectiveList());
+        (at==='schedule' ? renderDueList() : lookupInner(at));
     }
     else body = renderDayTimeLog();
     if (tab==='today' || tab==='week' || tab==='overdue') body = renderReplanButton().replace('margin-top:10px;','margin:0 0 12px;') + body;
     var todayLabel = new Date().toLocaleDateString(undefined,{weekday:'long', month:'short', day:'numeric'});
     return '<main>' +
       '<div class="eyebrow">'+esc(todayLabel)+'</div>' +
-      '<h1 style="font-size:26px;margin-top:6px;margin-bottom:14px;">The Day</h1>' +
+      '<h1 style="font-size:26px;margin-top:6px;margin-bottom:14px;">The One</h1>' +
       '<div class="tabs tabs-scroll">' +
         tabs.map(function(t){
           return '<button class="tab '+(tab===t.key?'on':'')+'" data-action="day-tab" data-tab="'+t.key+'">'+t.label+(t.n===null ? '' : '<span class="tabcount'+(t.bad && t.n ? ' bad' : '')+'">'+t.n+'</span>')+'</button>';
@@ -5496,21 +5496,30 @@
   function lookupInner(tab){
     var groups = lookupGroups();
     var items = groups[tab];
+    if (tab==='task'){
+      // Fold corrective actions in: wrap each so it can sit in the same sorted list.
+      items = items.map(function(l){ return { kind:'task', o:l, dueDate:l.dueDate, createdAt:l.createdAt, done:l.done }; })
+        .concat(state.correctiveActions.map(function(a){ return { kind:'fix', o:a, dueDate:a.dueDate, createdAt:a.createdAt, done:a.done }; }));
+    }
     var open = items.filter(function(l){ return !l.done; });
     var done = items.filter(function(l){ return l.done; });
+    if (tab==='task'){ open.sort(taskSort); done.sort(function(a,b){ return ((b.o.doneAt||b.o.resolvedAt)||0)-((a.o.doneAt||a.o.resolvedAt)||0); }); }
+    var cardFn = tab==='task' ? function(x){ return x.kind==='fix' ? fixRow(x.o) : lookupCard(x.o); } : lookupCard;
+    var overdueN = tab==='task' ? open.filter(function(x){ return x.dueDate && x.dueDate<todayISO(); }).length : 0;
     var showDone = !!state.lookupShowDone;
     var noun = tab==='task' ? 'task' : 'lookup';
     return '<div class="statgrid" style="margin-top:0;">' +
         '<div class="stattile t-accent"><div class="v">'+open.length+'</div><div class="k">Open</div></div>' +
+        (tab==='task' ? '<div class="stattile'+(overdueN?' t-bad':'')+'"><div class="v">'+overdueN+'</div><div class="k">Overdue</div></div>' : '') +
         '<div class="stattile t-good"><div class="v">'+done.length+'</div><div class="k">Done</div></div>' +
       '</div>' +
       '<button class="btn btn-primary" style="width:100%;margin-bottom:14px;" data-action="add-lookup" data-cat="'+tab+'">+ Add '+noun+'</button>' +
       (open.length===0
         ? '<div class="empty" style="padding:22px 14px;"><div class="big">'+(tab==='task'?'✅':'🔎')+'</div>'+(items.length===0 ? 'No '+noun+'s yet.' : 'Everything\'s cleared — nice work.')+'</div>'
-        : '<div class="cardstack">'+open.map(lookupCard).join('')+'</div>') +
+        : '<div class="cardstack">'+open.map(cardFn).join('')+'</div>') +
       (done.length ? (
         '<button class="btn btn-text" style="margin-top:12px;" data-action="toggle-lookup-showdone">'+(showDone?'Hide':'Show')+' '+done.length+' done</button>' +
-        (showDone ? '<div class="cardstack" style="margin-top:8px;">'+done.map(lookupCard).join('')+'</div>' : '')
+        (showDone ? '<div class="cardstack" style="margin-top:8px;">'+done.map(cardFn).join('')+'</div>' : '')
       ) : '');
   }
 
@@ -5883,11 +5892,12 @@
     else if (overdueActions>0) greeting = overdueActions+' corrective action'+(overdueActions>1?'s':'')+' overdue';
     else if (openActionsNow>0) greeting = openActionsNow+' open issue'+(openActionsNow>1?'s':'')+' to resolve';
     var hr = new Date().getHours();
-    var todayLabel = (hr<12 ? 'Good morning' : (hr<17 ? 'Good afternoon' : 'Good evening'))+' · '+new Date().toLocaleDateString(undefined,{weekday:'long', month:'short', day:'numeric'});
+    var todayLabel = 'ॐ नमः पार्वती पतये हर हर महादेव';
     // Order: what needs doing now → quick actions → business numbers → history.
     return '<main>' +
       '<div class="dashhero">' +
-        '<span class="datepill">📅 '+esc(todayLabel)+'</span>' +
+        '<span class="datepill">'+esc(todayLabel)+'</span>' +
+        '<div style="margin:8px 2px 0;font-size:13px;font-weight:600;color:var(--ink-400);">📅 '+esc(new Date().toLocaleDateString(undefined,{weekday:'long', day:'numeric', month:'long', year:'numeric'}))+'</div>' +
         '<h1 style="font-size:25px;">'+esc(greeting)+'</h1>' +
       '</div>' +
       renderDashboardTimeCard() +
@@ -7288,6 +7298,10 @@
       var eanW = openWorkday();
       var eanLast = eanW && eanW.entries && eanW.entries[eanW.entries.length-1];
       if (eanLast && !eanLast.endAt){ eanLast.note = el.value; persistWorkdays(); }
+    }
+    else if (el.dataset.lkDue){
+      var lkd = state.lookups.filter(function(l){ return l.id===el.dataset.lkDue; })[0];
+      if (lkd){ lkd.dueDate = el.value; persistLookups(); render(); }
     }
     else if (el.dataset.caEditField){
       var caEdit = state.correctiveActions.filter(function(a){ return a.id===el.dataset.caEditId; })[0];
