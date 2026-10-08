@@ -4060,6 +4060,18 @@
       if (nda!==ndb) return nda<ndb ? -1 : 1;
       return (b.createdAt||0)-(a.createdAt||0);
     });
+    // Search (name, area, address, contact, phone, type) and an alternative sort order, for both Pipeline and Converted.
+    var pq = (state.pipelineQuery||'').trim().toLowerCase(), psort = state.pipelineSort||'follow';
+    if (pq) list = list.filter(function(p){ return [p.name, p.location, p.address, p.contactName, p.contactMobile, prospectCategoryLabel(p)].join(' ').toLowerCase().indexOf(pq)>=0; });
+    if (psort!=='follow'){
+      var pval = function(p){ return Math.max(Number(p.finalPrice)||0, Number(p.priceMax)||0, Number(p.priceMin)||0); };
+      list = list.slice().sort(function(a,b){
+        if (!!a.declined !== !!b.declined) return a.declined ? 1 : -1;
+        if (psort==='name') return (a.name||'').localeCompare(b.name||'');
+        if (psort==='value') return pval(b)-pval(a) || (b.createdAt||0)-(a.createdAt||0);
+        return (b.createdAt||0)-(a.createdAt||0);
+      });
+    }
 
     var pipelineList = list.filter(function(p){ return !p.converted; });
     var clientsList = list.filter(function(p){ return p.converted; });
@@ -4109,6 +4121,10 @@
         '<button class="tab '+(pTab==='daily'?'on':'')+'" data-action="prospects-tab" data-tab="daily">Daily Activity</button>' +
       '</div>' +
       (pTab==='calls' ? renderCallRequestsBody() : pTab==='daily' ? renderProspectsDaily() : (
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 0;">' +
+        '<div class="field" style="flex:2;min-width:180px;margin-bottom:0;"><label for="pSearch">Search</label><input id="pSearch" type="search" data-pipeline-search="1" value="'+esc(state.pipelineQuery||'')+'" placeholder="Name, area, contact, phone…" autocomplete="off"></div>' +
+        '<div class="field" style="flex:1;min-width:140px;margin-bottom:0;"><label>Sort by</label><select data-pipeline-sort="1">' + [['follow','Next follow-up'],['newest','Newest first'],['name','Name A–Z'],['value','Value (high first)']].map(function(o){ return '<option value="'+o[0]+'" '+(psort===o[0]?'selected':'')+'>'+o[1]+'</option>'; }).join('') + '</select></div>' +
+      '</div>' +
       (locs.length || cats.length ? (
         '<div style="display:flex; gap:12px; flex-wrap:wrap; margin:14px 0;">' +
           (locs.length ? '<div class="field" style="flex:1; min-width:150px; margin-bottom:0;"><label>Location</label><select data-prospect-filter="location"><option value="all">All locations</option>'+locs.map(function(l){ return '<option value="'+esc(l)+'" '+(fl===l?'selected':'')+'>'+esc(l)+'</option>'; }).join('')+'</select></div>' : '') +
@@ -8126,6 +8142,11 @@
       var clk = state.lookups.filter(function(l){ return l.id===el.dataset.id; })[0];
       if (clk){ clk.category = el.value; persistLookups(); render(); }
     }
+    else if (el.dataset.pipelineSearch){
+      state.pipelineQuery = el.value; var psPos = el.selectionStart; render();
+      var psEl = app.querySelector('[data-pipeline-search]'); if (psEl){ psEl.focus(); try{ psEl.setSelectionRange(psPos, psPos); }catch(e){} }
+    }
+    else if (el.dataset.pipelineSort){ state.pipelineSort = el.value; render(); }
     else if (el.dataset.costVal){
       if (state.costEntry){
         state.costEntry.values[el.dataset.costVal] = el.value;
