@@ -1122,7 +1122,7 @@
   function writeDone(err){
     if (pendingWriteCount>0) pendingWriteCount--;
     if (pendingWriteCount===0) state.syncPending = false;
-    if (err) syncFail(err); else syncOk();
+    if (err) syncFail(err); else { state.lastSyncAt = Date.now(); syncOk(); }
     renderSoon();
   }
   function fsSyncConfig(fieldName, value){
@@ -1710,7 +1710,13 @@
     '</div></div>';
   }
 
+  // While a date field has focus, redraws are held back (a redraw swaps the field out mid-typing and drops the cursor) and done once it loses focus.
+  var dateEditing = false, dateDirty = false;
   function render(){
+    if (dateEditing){
+      if (document.activeElement && document.activeElement.type==='date' && app.contains(document.activeElement)){ dateDirty = true; return; }
+      dateEditing = false;
+    }
     memoVer++;
     if (!state.authReady){ app.innerHTML = '<div class="authwrap"><div class="authloading">Loading…</div></div>'; return; }
     if (!state.authUser){ app.innerHTML = renderAuthGate(); return; }
@@ -1757,13 +1763,13 @@
 
   function renderSyncPill(){
     if (!state.authUser) return '';
-    var tone = 'good', label = '✓ Synced';
+    var tone = 'good', label = '✓ Synced'+(state.lastSyncAt ? ' · '+fmtClock(state.lastSyncAt) : '');
     if (!state.online){ tone = 'bad'; label = '⚠ Offline'; }
     else if (state.syncError){ tone = 'bad'; label = '⚠ Not saved'; }
     else if (state.syncPending){ tone = 'accent'; label = '↻ Syncing'; }
     var tip = !state.online ? 'No connection — changes are saved on this device and will sync once you\'re back online'
       : (state.syncError ? 'Some changes could not be saved to the cloud ('+state.syncError+'). They are still on this device — download a backup from Settings.'
-      : (state.syncPending ? 'Saving changes to the cloud…' : 'All changes saved to the cloud'));
+      : (state.syncPending ? 'Saving changes to the cloud…' : 'All changes saved to the cloud'+(state.lastSyncAt ? ' (last save '+fmtClock(state.lastSyncAt)+')' : '')));
     return '<span class="syncpill sp-'+tone+'" style="margin-left:auto;" title="'+esc(tip)+'">'+label+'</span>';
   }
 
@@ -2285,7 +2291,7 @@
             (kind==='number' && !(it.askWho||[]).length ? '<div class="answerblock"><label class="answerlabel">'+esc(it.infoLabel||'Reading')+(it.unit?' ('+esc(it.unit)+')':'')+(rangeHint?' · '+esc(rangeHint):'')+'</label><input type="number" step="any" inputmode="decimal" class="itemvalue" data-bind-item="numvalue" data-sec="'+sec.id+'" data-item="'+it.id+'" placeholder="Enter reading" value="'+esc(it.value||'')+'"></div>' : '') +
             (kind==='score' ? '<div class="scorerow">'+[1,2,3,4,5].map(function(n){ return '<button type="button" class="scorebtn '+(String(it.value)===String(n)?'on':'')+'" data-action="set-score" data-sec="'+sec.id+'" data-item="'+it.id+'" data-val="'+n+'">'+n+'</button>'; }).join('')+'</div><div class="histmeta">Score 4–5 passes · 1–3 is flagged</div>' : '') +
             (it.requiresInfo && kind==='tick' ? '<div class="answerblock"><label class="answerlabel">📝 '+esc(it.infoLabel||'Recorded answer')+'</label><input type="text" class="itemvalue" data-bind-item="value" data-sec="'+sec.id+'" data-item="'+it.id+'" placeholder="'+esc(it.infoLabel||'Enter value')+'" value="'+esc(it.value||'')+'"></div>' : '') +
-            (failed ? '<div class="failblock"><input type="text" class="itemvalue" data-bind-item="failNote" data-sec="'+sec.id+'" data-item="'+it.id+'" placeholder="What is wrong?" value="'+esc(it.failNote||'')+'"><label class="answerlabel">Fix by</label><input type="date" class="itemvalue" data-bind-item="failDue" data-sec="'+sec.id+'" data-item="'+it.id+'" value="'+esc(it.failDue||'')+'"><div class="histmeta">Becomes a corrective action when you complete the audit.</div></div>' : '') +
+            (failed ? '<div class="failblock"><input type="text" class="itemvalue" data-bind-item="failNote" data-sec="'+sec.id+'" data-item="'+it.id+'" placeholder="What is wrong?" value="'+esc(it.failNote||'')+'"><label class="answerlabel">Fix by</label><input type="date" class="itemvalue" data-bind-item="failDue" data-sec="'+sec.id+'" data-item="'+it.id+'" value="'+esc(it.failDue||'')+'"><label class="answerlabel" style="margin-top:8px;display:block;">Root cause</label><div class="itemrow-sub" style="margin-top:4px;">'+FAIL_CAUSES.map(function(c){ return '<button type="button" class="naBtn '+(it.cause===c[0]?'on':'')+'" data-action="set-fail-cause" data-sec="'+sec.id+'" data-item="'+it.id+'" data-val="'+c[0]+'">'+c[1]+'</button>'; }).join('')+'</div><div class="histmeta">Becomes a corrective action when you complete the audit.</div></div>' : '') +
           '</div>' +
           '<div style="display:flex;flex-direction:column;gap:4px;">' +
             '<button class="naBtn '+(failed?'on':'')+'" data-action="toggle-fail" data-sec="'+sec.id+'" data-item="'+it.id+'" title="Mark as failed — asks what is wrong and by when it will be fixed">✗ Fail</button>' +
@@ -2575,6 +2581,8 @@
     if (issues.length){
       h += '<h2>What we found</h2>' + issues.map(function(s){ return '<div class="rp-issue"><b>'+esc(s.name)+':</b> '+esc(s.issue)+'</div>'; }).join('');
     }
+    var causeHtml = causeRowsHtml(causeCounts([rec]), true);
+    if (causeHtml) h += '<h2>Why things are failing</h2>' + causeHtml;
     if (inq.length){
       h += '<h2>Problems reported by the team</h2>' + inq.map(function(e){
         return '<div class="rp-box"><div class="t">'+esc(e.problem)+'</div>' +
@@ -3576,6 +3584,117 @@
           '</div>';
         }).join('')
       );
+  }
+
+  // ---------- Root causes: why items fail (no system / no owner / not followed / not reviewed) ----------
+  var FAIL_CAUSES = [['nosys','No system'],['noowner','No owner'],['notfollowed','Not followed'],['notreviewed','Not reviewed']];
+  function causeCounts(recs){
+    var c = {};
+    recs.forEach(function(rec){ (rec.sections||[]).forEach(function(s){ (s.items||[]).forEach(function(it){ if (it.state==='fail' && it.cause) c[it.cause] = (c[it.cause]||0)+1; }); }); });
+    return c;
+  }
+  function causeRowsHtml(counts, forPrint){
+    var total = FAIL_CAUSES.reduce(function(a, c){ return a+(counts[c[0]]||0); }, 0);
+    if (!total) return '';
+    var top = FAIL_CAUSES.slice().sort(function(a,b){ return (counts[b[0]]||0)-(counts[a[0]]||0); })[0];
+    return FAIL_CAUSES.map(function(c){
+      var n = counts[c[0]]||0, pct = Math.round(n/total*100), isTop = c[0]===top[0];
+      return forPrint
+        ? '<div class="rp-row"><span class="nm">'+c[1]+'</span><span class="bar"><i style="width:'+pct+'%;background:'+(isTop?'#dc2626':'#2563eb')+';"></i></span><span class="pc">'+n+' · '+pct+'%</span></div>'
+        : '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;"><span style="width:110px;font-weight:'+(isTop?'800':'600')+';">'+c[1]+'</span><span style="flex:1;height:8px;background:var(--line);border-radius:6px;overflow:hidden;"><i style="display:block;height:100%;width:'+pct+'%;background:'+(isTop?'var(--bad)':'var(--accent)')+';"></i></span><span class="histmeta" style="margin:0;width:62px;text-align:right;">'+n+' · '+pct+'%</span></div>';
+    }).join('') + (forPrint ? '' : '<div class="helper" style="margin:8px 0 0;">Most failures here: <b>'+top[1]+'</b> ('+(counts[top[0]]||0)+' of '+total+').</div>');
+  }
+  function renderCauseCard(audits){
+    var counts = causeCounts(audits);
+    var rows = causeRowsHtml(counts, false);
+    if (!rows) return '';
+    return sh('🧭','Why things fail') + '<div class="card" style="padding:12px 16px;margin-bottom:20px;">'+rows+'</div>';
+  }
+
+  // ---------- Client report: one printable pack for a client ----------
+  function buildClientPackHtml(p){
+    var audits = prospectAudits(p).slice().sort(function(a,b){ return (b.finishedAt||0)-(a.finishedAt||0); });
+    var latest = audits[0], tone = function(v){ return v>=85 ? ['#15803d','Excellent'] : (v>=70 ? ['#16a34a','Good'] : (v>=40 ? ['#d97706','Needs improvement'] : ['#dc2626','Critical attention needed'])); };
+    var barColor = function(v){ return v>=70 ? '#16a34a' : (v>=40 ? '#d97706' : '#dc2626'); };
+    var h = '<div class="rp-top"><div class="rp-brand"><img src="'+LOGO_SRC+'" alt="">Diagnosis Room</div><div class="rp-kind">Client Report</div></div>';
+    h += '<h1>'+esc(p.name||'Client')+'</h1>';
+    h += '<div class="rp-sub">'+esc(prospectCategoryLabel(p))+(p.location?' · '+esc(p.location):'')+'</div>';
+    h += '<div class="rp-meta">' + (p.contactName ? '<span><b>Contact:</b> '+esc(p.contactName)+(p.contactDesignation?' ('+esc(p.contactDesignation)+')':'')+'</span>' : '') +
+      (p.address ? '<span><b>Address:</b> '+esc(p.address)+'</span>' : '') + '<span><b>Prepared:</b> '+esc(new Date().toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}))+'</span></div>';
+    if (latest){
+      var pct = latest.completionPct, tn = tone(pct), prev = audits[1], delta = prev ? pct-prev.completionPct : null;
+      var secs = (latest.sections||[]).filter(sectionWasAudited);
+      h += '<h2>Latest audit — '+esc(fmtAuditWhen(latest.auditDate, latest.auditTime))+'</h2>';
+      h += '<div class="rp-score"><div class="rp-big" style="background:'+tn[0]+';"><div class="n">'+pct+'%</div><div class="l">'+tn[1]+'</div></div>' +
+        '<div class="rp-tile"><div class="n">'+audits.length+'</div><div class="l">Audit'+(audits.length===1?'':'s')+' done</div></div>' +
+        '<div class="rp-tile"><div class="n">'+(delta===null ? '—' : (delta>0?'▲ +':(delta<0?'▼ ':''))+(delta===0?'0':delta)+' pts')+'</div><div class="l">'+(delta===null?'First audit':'vs previous')+'</div></div></div>';
+      if (secs.length) h += '<h2>Area scorecard</h2>' + secs.map(function(s){ var v = s.total ? Math.round(s.checked/s.total*100) : 100; return '<div class="rp-row"><span class="nm">'+esc(s.name)+'</span><span class="bar"><i style="width:'+v+'%;background:'+barColor(v)+';"></i></span><span class="pc">'+v+'%</span></div>'; }).join('');
+      var found = secs.filter(function(s){ return s.issue; });
+      if (found.length) h += '<h2>What we found</h2>' + found.map(function(s){ return '<div class="rp-issue"><b>'+esc(s.name)+':</b> '+esc(s.issue)+'</div>'; }).join('');
+      if (audits.length>1) h += '<h2>Audit history</h2>' + audits.slice(0,8).map(function(a){ return '<div class="rp-row"><span class="nm">'+esc(fmtAuditWhen(a.auditDate,a.auditTime))+'</span><span class="bar"><i style="width:'+a.completionPct+'%;background:'+barColor(a.completionPct)+';"></i></span><span class="pc">'+a.completionPct+'%</span></div>'; }).join('');
+    }
+    var cc = causeRowsHtml(causeCounts(audits), true);
+    if (cc) h += '<h2>Why things are failing</h2>' + cc;
+    var es = clientCostEntries(p), ce = es[0], cr = ce ? costRows(ce.values) : [];
+    if (cr.length){
+      var avg = costAverage('all').values, oldest = es.length>1 ? es[es.length-1] : null;
+      h += '<h2>Cost structure (% of monthly sales) — '+esc(fmtDateShort(new Date((ce.date||todayISO())+'T00:00:00').getTime()))+'</h2>' + cr.map(function(r){
+        var over = r.target!==null && r.target!==undefined && r.val>r.target, was = oldest ? costNum((oldest.values||{})[r.id]) : null;
+        return '<div class="rp-row"><span class="nm">'+esc(r.name)+'</span><span class="bar"><i style="width:'+Math.min(100,r.val)+'%;background:'+(over?'#dc2626':'#2563eb')+';"></i></span><span class="pc">'+fmtPct(r.val)+(avg[r.id]!==undefined?' · avg '+fmtPct(avg[r.id]):'')+(r.target!==null&&r.target!==undefined?' · target '+fmtPct(r.target):'')+(was!==null&&was>0&&was!==r.val?' · was '+fmtPct(was):'')+'</span></div>';
+      }).join('') + (ce.note ? '<div class="rp-box"><div class="s">'+esc(ce.note)+'</div></div>' : '');
+    }
+    var key = norm(p.name);
+    var fixes = state.correctiveActions.filter(function(a){ return !a.done && (audits.some(function(x){ return x.id===a.auditId; }) || (key && norm(a.storeName)===key)); });
+    if (fixes.length) h += '<h2>Open fixes</h2>' + fixes.slice(0,14).map(function(a){ return '<div class="rp-box"><div class="t">'+esc(a.description||'')+'</div><div class="s">'+(a.dueDate?'Due '+esc(fmtDateShort(new Date(a.dueDate+'T00:00:00').getTime())):'Open')+(a.cause?' · '+esc((FAIL_CAUSES.filter(function(c){ return c[0]===a.cause; })[0]||[0,''])[1]):'')+'</div></div>'; }).join('');
+    var svc = p.servicesOffered ? findService(p.servicesOffered) : null;
+    if (svc){
+      var q = quoteFor(p), suf = q ? (q.isRet ? ' / month' : ' one-time') : '';
+      h += '<h2>Recommended package</h2><div class="rp-box"><div class="t">'+esc(svc.name)+'</div>' +
+        (q ? '<div class="s">'+esc(quoteRange(q.dlo, q.dhi)+suf)+(q.opt ? ' · includes '+esc(trackingMethodOf(q.opt.key).label)+' tracking' : '')+(q.discounted ? ' · after discount' : '')+'</div>' : '') +
+        (svc.priceNote ? '<div class="s">'+esc(svc.priceNote)+'</div>' : '') + '</div>';
+      var steps = (svc.steps||[]).filter(function(x){ return (x||'').trim(); });
+      if (steps.length) h += '<div style="break-inside:avoid;"><b>How we will work</b><ol>'+steps.map(function(x){ return '<li>'+esc(x)+'</li>'; }).join('')+'</ol></div>';
+    }
+    h += '<div class="rp-foot">Prepared by Diagnosis Room · '+esc(new Date().toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}))+'</div>';
+    return h;
+  }
+
+  // ---------- Dashboard: clients that need attention most, ranked ----------
+  function attentionList(){
+    var today = todayISO(), nowMin = nowHHMM(), dueKeys = {};
+    computeDueList().forEach(function(x){ if (x.dueAt < Date.now()) dueKeys[x.key] = true; });
+    var out = [];
+    state.prospects.forEach(function(p){
+      if (p.declined || p.engagementEnded || !(p.name||'').trim()) return;
+      var score = 0, why = [], key = norm(p.name);
+      var ov = (p.followUps||[]).filter(function(f){ return !f.done && f.date && (f.date<today || (f.date===today && f.time && f.time<nowMin)); }).length;
+      if (ov){ score += Math.min(ov,3)*3; why.push(ov+' overdue follow-up'+(ov>1?'s':'')); }
+      var inv = (p.invoices||[]).filter(function(i){ return !i.paid && invDue(i) && invDue(i)<today; }).length;
+      if (inv){ score += Math.min(inv,3)*3; why.push(inv+' invoice'+(inv>1?'s':'')+' overdue'); }
+      var fx = state.correctiveActions.filter(function(a){ return !a.done && norm(a.storeName)===key && a.dueDate && a.dueDate<today; }).length;
+      if (fx){ score += Math.min(fx,3)*2; why.push(fx+' fix'+(fx>1?'es':'')+' overdue'); }
+      var e = clientCostEntries(p)[0];
+      if (e){
+        var oc = costRows(e.values).filter(function(r){ return r.target!==null && r.target!==undefined && r.val>r.target; }).length;
+        if (oc){ score += Math.min(oc,3)*2; why.push(oc+' cost'+(oc>1?'s':'')+' over target'); }
+        var age = Math.floor((Date.now()-new Date((e.date||today)+'T00:00:00').getTime())/86400000);
+        if (age>=60){ score += 1; why.push('parameters '+age+' days old'); }
+      } else if (p.converted){ score += 1; why.push('no parameters yet'); }
+      if (dueKeys[key]){ score += 2; why.push('re-audit overdue'); }
+      if (score) out.push({ p:p, score:score, why:why });
+    });
+    return out.sort(function(a,b){ return b.score-a.score; });
+  }
+  function renderAttentionBoard(){
+    var list = attentionList();
+    if (!list.length) return '';
+    var top = list.slice(0,5);
+    return sh('🚨','Clients needing attention') +
+      '<div class="cardstack" style="margin-bottom:20px;">' + top.map(function(x, i){
+        return '<button type="button" class="card histcard" style="text-align:left;width:100%;" data-action="goto-prospect" data-id="'+x.p.id+'">' +
+          '<div style="display:flex;align-items:center;gap:8px;"><span class="pill '+(i===0?'bad':'warn')+'">'+(i+1)+'</span><span style="font-weight:700;flex:1;min-width:0;">'+esc(x.p.name)+(x.p.location?' · '+esc(x.p.location):'')+'</span></div>' +
+          '<div class="histmeta" style="margin-top:4px;">'+esc(x.why.join(' · '))+'</div></button>';
+      }).join('') + (list.length>top.length ? '<div class="helper" style="margin:0;">+'+(list.length-top.length)+' more clients with open issues</div>' : '') + '</div>';
   }
 
   // ---------- Parameters: each client's monthly cost structure (food cost, wastage, staff, rent, electricity, capex…) ----------
@@ -4694,6 +4813,7 @@
       '<div class="eyebrow">Client</div>' +
       '<h1 style="font-size:24px;margin-top:6px;margin-bottom:4px;">'+esc(p.name||'Unnamed client')+serviceBadgeHtml(p)+'</h1>' +
       (p.updatedAt ? '<div class="helper" style="margin:0 0 12px;">Updated '+fmtRelativeTime(p.updatedAt)+'</div>' : '') +
+      ((audits.length || clientCostEntries(p).length) ? '<div style="margin:0 0 12px;"><button class="btn btn-ghost btn-sm" data-action="print-client-pack" data-id="'+p.id+'">📦 Client pack (PDF)</button></div>' : '') +
       '<div class="jumpbar">' +
         [['Contact','Point of Contact'],['Parameters','Parameters'],['Follow-ups','Follow-ups']].concat(audits.length ? [['Timeline','Timeline'],['Next actions','Recommended Next Actions'],['Proposal','Proposal & conversion']] : [])
           .map(function(j){ return '<button type="button" data-action="jump" data-target="'+esc(j[1])+'">'+j[0]+'</button>'; }).join('') +
@@ -4723,6 +4843,7 @@
       '</div>' +
       (state.newClientFlow===p.id ? '<div class="card" style="border-color:var(--accent);background:var(--accent-soft);padding:14px 16px;margin-bottom:18px;"><div style="font-weight:700;">Step 1 of 2 — client details</div><div class="helper" style="margin:4px 0 10px;">Next, add this client\'s monthly parameters (food cost, wastage, staff, rent, electricity…). You can skip and do it later.</div><button class="btn btn-primary" data-action="cost-open" data-id="'+p.id+'" data-flow="new">Next: Parameters →</button></div>' : '') +
       renderCostCard(p) +
+      renderCauseCard(audits) +
       renderFollowUps(p) +
       renderBillingCard(p) +
       renderMeetingTimerCard(p) +
@@ -6267,6 +6388,7 @@
         '<button class="btn btn-primary" data-action="go-setup">+ New audit</button>' +
         '<button class="btn btn-ghost" data-action="go-maps">📞 Calls'+(newCalls?' ('+newCalls+' new)':'')+'</button>' +
       '</div>' +
+      renderAttentionBoard() +
       renderFollowUpBoard() +
       renderWeekSummary() +
       renderInvoicesBoard() +
@@ -6993,6 +7115,15 @@
       itF.state = itF.state==='fail' ? 'unchecked' : 'fail';
       persistDraft(); render();
     }
+    else if (action==='set-fail-cause'){
+      var secC = d.sections.filter(function(s){return s.id===t.dataset.sec;})[0];
+      var itC = secC && secC.items.filter(function(i){return i.id===t.dataset.item;})[0];
+      if (itC){ itC.cause = itC.cause===t.dataset.val ? '' : t.dataset.val; persistDraft(); render(); }
+    }
+    else if (action==='print-client-pack'){
+      var pcp = findProspect(t.dataset.id);
+      if (pcp) printHtmlReport(buildClientPackHtml(pcp), (pcp.name||'Client')+' - Client Pack '+todayISO());
+    }
     else if (action==='set-score'){
       var secS = d.sections.filter(function(s){return s.id===t.dataset.sec;})[0];
       var itS = secS.items.filter(function(i){return i.id===t.dataset.item;})[0];
@@ -7124,14 +7255,14 @@
         s.items.forEach(function(it){
           if (it.state!=='fail') return;
           var reading = (it.kind==='number' && it.value!=='') ? ' ('+it.value+(it.unit?' '+it.unit:'')+')' : (it.kind==='score' && it.value ? ' (scored '+it.value+'/5)' : '');
-          d.correctiveActions.push({ id: uid(), description: s.name+': '+it.text+reading+((it.failNote||'').trim() ? ' — '+it.failNote.trim() : ''), dueDate: it.failDue||'', sourceItemId: it.id });
+          d.correctiveActions.push({ id: uid(), description: s.name+': '+it.text+reading+((it.failNote||'').trim() ? ' — '+it.failNote.trim() : ''), dueDate: it.failDue||'', sourceItemId: it.id, cause: it.cause||'' });
         });
       });
       (d.correctiveActions||[]).forEach(function(ca){
         state.correctiveActions.push({
           id: ca.id, auditId: rec.id, storeName: d.storeName, storeLocation: d.storeLocation,
           type: d.type, description: (ca.description||'').trim() || '(unspecified)', dueDate: ca.dueDate||'',
-          sourceItemId: ca.sourceItemId||null, done: false, createdAt: Date.now()
+          sourceItemId: ca.sourceItemId||null, cause: ca.cause||'', done: false, createdAt: Date.now()
         });
       });
       d.sections.forEach(function(s){
@@ -7629,6 +7760,7 @@
 
   app.addEventListener('input', function(e){
     var el = e.target;
+    if (el.type==='date') dateEditing = true;
     if (el.dataset.bind === 'storeName'){ state.setup.storeName = el.value; }
     else if (el.dataset.bind === 'storeLocation'){ state.setup.storeLocation = el.value; }
     else if (el.dataset.bind === 'contactName'){ state.setup.contactName = el.value; }
@@ -7898,7 +8030,7 @@
   app.addEventListener('focusout', function(e){
     if (state.view==='setup') updateSetupGate();
     var f = e.target;
-    if (f && f.type==='date' && (f.dataset.lkDue || f.dataset.caEditField==='dueDate')) render();
+    if (f && f.type==='date' && dateEditing){ dateEditing = false; if (dateDirty){ dateDirty = false; setTimeout(function(){ if (!isTypingInApp()) render(); }, 250); } }
   });
 
   app.addEventListener('change', function(e){
