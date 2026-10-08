@@ -3124,6 +3124,12 @@
         '<div class="field" style="flex:1;"><label>Clients to onboard</label><input type="number" min="0" data-target="clients" value="'+(state.targets.clients||0)+'"></div>' +
       '</div>' +
       '<div class="field" style="max-width:150px;margin-bottom:28px;"><label>Currency symbol</label><input type="text" maxlength="3" data-pricing="currency" value="'+esc(state.pricing.currency)+'"></div>' +
+      '<h1 style="font-size:20px;margin:0 0 4px;">Travel</h1>' +
+      '<div class="helper" style="margin-bottom:12px;margin-top:6px;">Your home or office address is the starting point for Directions on each client. The rate per km turns your driving into an estimated cost on the Dashboard.</div>' +
+      '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:28px;">' +
+        '<div class="field" style="flex:2;min-width:220px;"><label>Base address</label><input type="text" data-travel="base" value="'+esc(travelCfg().base)+'" placeholder="e.g. Sector 5, Gurugram"></div>' +
+        '<div class="field" style="flex:1;min-width:120px;"><label>Cost per km ('+esc(state.pricing.currency)+')</label><input type="number" min="0" step="any" data-travel="perKm" value="'+esc(travelCfg().perKm||'')+'" placeholder="e.g. 8"></div>' +
+      '</div>' +
 
       '<h1 style="font-size:20px;margin:0 0 4px;">Tracking prices</h1>' +
       '<div class="helper" style="margin-bottom:12px;margin-top:6px;">What each tracking method costs on top of a package. When a client opts for tracking, this is added to their quote and final price. You can override it for a single package on the Services page.</div>' +
@@ -3593,6 +3599,68 @@
           '</div>';
         }).join('')
       );
+  }
+
+  // ---------- Travel: distance to each client, visits driven, and monthly totals ----------
+  function travelCfg(){ var t = (state.targets && state.targets.travel) || {}; return { base:(t.base||'').trim(), perKm:Number(t.perKm)||0 }; }
+  function travelNum(v){ var n = parseFloat(v); return (isNaN(n) || n<0) ? 0 : n; }
+  function fmtKm(n){ return (Math.round(n*10)/10)+' km'; }
+  function fmtDur(min){ min = Math.round(min); if (min<60) return min+' min'; return Math.floor(min/60)+' h '+(min%60 ? (min%60)+' min' : ''); }
+  // Opens Google Maps with your base address as the start and the client as the destination (nothing is sent until you tap it).
+  function mapsDirUrl(p){
+    var dest = (p.address||'').trim() || [p.name, p.location].filter(Boolean).join(', ');
+    var u = 'https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(dest);
+    var base = travelCfg().base;
+    if (base) u += '&origin='+encodeURIComponent(base);
+    return u;
+  }
+  function travelSum(trips){
+    var km = 0, min = 0; trips.forEach(function(t){ km += travelNum(t.km); min += travelNum(t.min); });
+    return { km:km, min:min, cost:km*travelCfg().perKm, n:trips.length };
+  }
+  function travelMonthTrips(ym){ var out = []; state.prospects.forEach(function(p){ (p.trips||[]).forEach(function(t){ if ((t.date||'').slice(0,7)===ym) out.push({ p:p, t:t }); }); }); return out; }
+  function renderTravelCard(p){
+    var cfg = travelCfg(), trips = (p.trips||[]).slice().sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
+    var tot = travelSum(trips), has = travelNum(p.travelKm)>0;
+    return sh('🚗','Travel') + '<div class="card" style="padding:14px 16px;margin-bottom:20px;">' +
+      '<div style="display:flex;gap:12px;flex-wrap:wrap;">' +
+        '<div class="field" style="flex:1;min-width:130px;margin-bottom:8px;"><label for="tKm">One way (km)</label><input id="tKm" type="number" inputmode="decimal" min="0" step="any" data-bind-prospect="travelKm" value="'+esc(p.travelKm===undefined?'':p.travelKm)+'" placeholder="e.g. 12"></div>' +
+        '<div class="field" style="flex:1;min-width:130px;margin-bottom:8px;"><label for="tMin">One way (minutes)</label><input id="tMin" type="number" inputmode="numeric" min="0" step="1" data-bind-prospect="travelMin" value="'+esc(p.travelMin===undefined?'':p.travelMin)+'" placeholder="e.g. 35"></div>' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+        '<a class="btn btn-ghost btn-sm" href="'+esc(mapsDirUrl(p))+'" target="_blank" rel="noopener">🧭 Directions'+(cfg.base?' from base':'')+'</a>' +
+        '<button type="button" class="btn btn-primary btn-sm" data-action="trip-add" data-id="'+p.id+'">＋ Log a visit'+(has ? ' ('+fmtKm(travelNum(p.travelKm)*2)+' round trip)' : '')+'</button>' +
+      '</div>' +
+      (cfg.base ? '' : '<div class="helper" style="margin:8px 0 0;">Add your base address in Back end → Travel so Directions starts from home or office. Visits after audits are logged automatically once the one-way distance is filled in.</div>') +
+      (trips.length ? (
+        '<div class="histmeta" style="margin:12px 0 6px;font-weight:700;">'+tot.n+' visit'+(tot.n===1?'':'s')+' · '+fmtKm(tot.km)+' · '+fmtDur(tot.min)+(cfg.perKm ? ' · '+fmtMoney(tot.cost) : '')+'</div>' +
+        trips.slice(0,8).map(function(t){
+          return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-top:1px solid var(--line);">' +
+            '<input type="date" class="iteminfolabel" style="flex:none;width:150px;" data-trip-field="date" data-pid="'+p.id+'" data-tid="'+t.id+'" value="'+esc(t.date||'')+'" aria-label="Visit date">' +
+            '<input type="number" class="iteminfolabel" style="width:76px;flex:none;" min="0" step="any" data-trip-field="km" data-pid="'+p.id+'" data-tid="'+t.id+'" value="'+esc(t.km===undefined?'':t.km)+'" aria-label="Kilometres">' +
+            '<span class="histmeta" style="margin:0;flex:1;">km'+(t.note?' · '+esc(t.note):'')+'</span>' +
+            '<button type="button" class="iconbtn" data-action="trip-del" data-pid="'+p.id+'" data-tid="'+t.id+'" aria-label="Remove visit">✕</button></div>';
+        }).join('') + (trips.length>8 ? '<div class="helper" style="margin:6px 0 0;">+'+(trips.length-8)+' older visits</div>' : '')
+      ) : '') +
+    '</div>';
+  }
+  function renderTravelBoard(){
+    var now = new Date(), ym = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+    var pv = new Date(now.getFullYear(), now.getMonth()-1, 1), pym = pv.getFullYear()+'-'+String(pv.getMonth()+1).padStart(2,'0');
+    var cur = travelMonthTrips(ym), prev = travelMonthTrips(pym);
+    if (!cur.length && !prev.length) return '';
+    var ct = travelSum(cur.map(function(x){ return x.t; })), pt = travelSum(prev.map(function(x){ return x.t; })), cfg = travelCfg();
+    var per = {}; cur.forEach(function(x){ per[x.p.id] = per[x.p.id] || { p:x.p, km:0, n:0 }; per[x.p.id].km += travelNum(x.t.km); per[x.p.id].n++; });
+    var top = Object.keys(per).map(function(k){ return per[k]; }).sort(function(a,b){ return b.km-a.km; }).slice(0,3);
+    return sh('🚗','Travel') + '<div class="card" style="padding:14px 16px;margin-bottom:20px;">' +
+      '<div class="statgrid" style="margin:0 0 8px;">' +
+        '<div class="stattile t-accent"><div class="v">'+fmtKm(ct.km)+'</div><div class="k">This month</div></div>' +
+        '<div class="stattile"><div class="v">'+ct.n+'</div><div class="k">Visits</div></div>' +
+        '<div class="stattile"><div class="v">'+(cfg.perKm ? fmtMoney(ct.cost) : fmtDur(ct.min))+'</div><div class="k">'+(cfg.perKm ? 'Est. cost' : 'Time on road')+'</div></div>' +
+      '</div>' +
+      '<div class="helper" style="margin:0 0 6px;">'+(cfg.perKm ? fmtDur(ct.min)+' on the road · ' : '')+'Last month: '+fmtKm(pt.km)+' over '+pt.n+' visit'+(pt.n===1?'':'s')+(cfg.perKm && pt.n ? ' · '+fmtMoney(pt.cost) : '')+'</div>' +
+      top.map(function(x){ return '<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px solid var(--line);"><button type="button" class="btn btn-text btn-sm" style="padding:0;font-weight:700;text-align:left;" data-action="goto-prospect" data-id="'+x.p.id+'">'+esc(x.p.name||'Client')+'</button><span class="histmeta" style="margin:0;">'+x.n+' visit'+(x.n===1?'':'s')+' · '+fmtKm(x.km)+'</span></div>'; }).join('') +
+    '</div>';
   }
 
   // ---------- Root causes: why items fail (no system / no owner / not followed / not reviewed) ----------
@@ -4853,6 +4921,7 @@
       (state.newClientFlow===p.id ? '<div class="card" style="border-color:var(--accent);background:var(--accent-soft);padding:14px 16px;margin-bottom:18px;"><div style="font-weight:700;">Step 1 of 2 — client details</div><div class="helper" style="margin:4px 0 10px;">Next, add this client\'s monthly parameters (food cost, wastage, staff, rent, electricity…). You can skip and do it later.</div><button class="btn btn-primary" data-action="cost-open" data-id="'+p.id+'" data-flow="new">Next: Parameters →</button></div>' : '') +
       renderCostCard(p) +
       renderCauseCard(audits) +
+      renderTravelCard(p) +
       renderFollowUps(p) +
       renderBillingCard(p) +
       renderMeetingTimerCard(p) +
@@ -6401,6 +6470,7 @@
       renderFollowUpBoard() +
       renderWeekSummary() +
       renderInvoicesBoard() +
+      renderTravelBoard() +
       renderWorkBoard() +
       renderTargetCard(monthName, revenueMonth, clientsMonth) +
       renderLoopBoard() +
@@ -6881,6 +6951,18 @@
         window.scrollTo(0,0); render();
       }
     }
+    else if (action==='trip-add'){
+      var tap = findProspect(t.dataset.id);
+      if (tap){
+        tap.trips = tap.trips || [];
+        tap.trips.push({ id: uid(), date: todayISO(), km: travelNum(tap.travelKm)*2, min: travelNum(tap.travelMin)*2, note:'' });
+        tap.updatedAt = Date.now(); persistProspects(); render();
+      }
+    }
+    else if (action==='trip-del'){
+      var tdp = findProspect(t.dataset.pid);
+      if (tdp && window.confirm('Remove this visit?')){ tdp.trips = (tdp.trips||[]).filter(function(x){ return x.id!==t.dataset.tid; }); tdp.updatedAt = Date.now(); persistProspects(); render(); }
+    }
     else if (action==='cost-skip'){ state.costEntry = null; state.newClientFlow = null; window.scrollTo(0,0); render(); }
     else if (action==='cost-view'){
       state.paramsClient = t.dataset.id; state.paramsEntry = ''; state.activeProspectId = null; state.costEntry = null; state.view = 'params'; window.scrollTo(0,0); render();
@@ -7319,6 +7401,11 @@
           if (!prm){ prm = { id: uid(), name:m.name, unit:m.unit||'', better:m.better||'lower', target:'', createdAt: Date.now() }; linkedP.parameters.push(prm); }
           state.readings.push({ id: uid(), clientId: linkedP.id, paramId: prm.id, value: mv, date: d.auditDate || todayISO(), note: 'From audit', createdAt: Date.now() });
         });
+      }
+      // A finished audit is a visit: log the round trip automatically when the client's one-way distance is known.
+      if (linkedP && travelNum(linkedP.travelKm)>0){
+        linkedP.trips = linkedP.trips || [];
+        if (!linkedP.trips.some(function(x){ return x.auditId===rec.id; })) linkedP.trips.push({ id: uid(), date: d.auditDate||todayISO(), km: travelNum(linkedP.travelKm)*2, min: travelNum(linkedP.travelMin)*2, auditId: rec.id, note:'Audit visit' });
       }
       if (linkedP && state.setup.serviceId && !linkedP.servicesOffered){
         linkedP.servicesOffered = state.setup.serviceId;
@@ -7900,6 +7987,15 @@
       state.targets.trackingPrices[tpp[0]] = state.targets.trackingPrices[tpp[0]] || { oneTime:0, retainer:0 };
       state.targets.trackingPrices[tpp[0]][tpp[1]] = tpn;
       persistTargets();
+    }
+    else if (el.dataset.travel){
+      state.targets.travel = state.targets.travel || {};
+      state.targets.travel[el.dataset.travel] = el.dataset.travel==='perKm' ? (parseFloat(el.value)||0) : el.value;
+      persistTargets();
+    }
+    else if (el.dataset.tripField){
+      var tp = findProspect(el.dataset.pid), tr = tp && (tp.trips||[]).filter(function(x){ return x.id===el.dataset.tid; })[0];
+      if (tr){ tr[el.dataset.tripField] = el.dataset.tripField==='km' ? travelNum(el.value) : el.value; tp.updatedAt = Date.now(); persistProspects(); }
     }
     else if (el.dataset.target){
       var tnum = parseFloat(el.value); if (isNaN(tnum)) tnum = 0;
