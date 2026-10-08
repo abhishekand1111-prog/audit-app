@@ -621,6 +621,10 @@
   .dashmain .cardstack{gap:14px;}
   .dashmain .workrow, .dashmain .pbrow{padding-top:12px; padding-bottom:12px;}
   .dashmain .statgrid{gap:12px;}
+  .nextup{display:flex; flex-direction:column; gap:2px; width:100%; text-align:left; margin-bottom:14px; padding:12px 14px; border-left:4px solid var(--accent); cursor:pointer; font:inherit; color:inherit;}
+  .nextup .nu-k{font-size:11px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--accent-ink);}
+  .nextup .nu-t{font-weight:700; font-size:15.5px;}
+  .nextup .nu-s{font-size:12.5px; color:var(--ink-400);}
   /* Tappable stat tiles (Pipeline filters) */
   button.stattile{font:inherit; color:inherit; text-align:left; cursor:pointer; width:100%;}
   button.stattile:active{transform:scale(.98);}
@@ -3001,6 +3005,7 @@
             '<select class="copysel" data-proxy="1" aria-label="Copy this section to another checklist"><option value="">⇄ Copy to…</option>' +
               editorKeys().filter(function(k){ return k!==tab && k!=='master'; }).map(function(k){ return '<option value="'+esc(k)+'" data-action="copy-section-to" data-sec="'+sec.id+'" data-to="'+esc(k)+'">'+esc(state.templates[k].label)+'</option>'; }).join('') +
             '</select>' +
+            '<button class="iconbtn" data-action="move-section" data-dir="up" data-sec="'+sec.id+'" title="Move section up" aria-label="Move section up">▲</button><button class="iconbtn" data-action="move-section" data-dir="down" data-sec="'+sec.id+'" title="Move section down" aria-label="Move section down">▼</button>' +
             (tab==='master' ? '<button class="iconbtn" data-action="sync-copies" data-sec="'+sec.id+'" title="Update the copies of this section">⟳</button>' : '') +
             '<button class="iconbtn" data-action="delete-section" data-sec="'+sec.id+'" title="Delete section">✕</button>' +
           '</div>' +
@@ -3012,6 +3017,8 @@
             if (it.critical) tags.push('🔴 Critical');
             if (it.requiresInfo) tags.push('📝 Needs an answer');
             if ((it.askWho||[]).length) tags.push('👤 Ask: '+it.askWho.join(', '));
+            if (tab==='master'){ var usedIn = questionUsedIn(it); tags.push(usedIn.length ? '📚 In: '+usedIn.join(', ') : '📚 Not copied anywhere yet'); }
+            var failN = questionFailCounts()[norm(it.text)]||0; if (failN) tags.push('⚠ Failed '+failN+'× in audits');
             if ((it.answers||[]).length) tags.push('📝 '+it.answers.length+' answer field'+(it.answers.length===1?'':'s'));
             var ansEdHtml = '<div style="margin-top:8px;"><div class="answerlabel" style="margin-bottom:4px;">📝 Answer fields (up to '+MAX_ANSWERS+')</div>' +
                 (it.answers||[]).map(function(a, i){ return '<div style="display:flex;gap:6px;margin-bottom:6px;align-items:center;"><input type="text" class="iteminfolabel" style="flex:1;min-width:0;" data-answer-label="'+i+'" data-sec="'+sec.id+'" data-item="'+it.id+'" value="'+esc(a.label||'')+'" placeholder="e.g. Brand name">' +
@@ -3023,7 +3030,8 @@
                 msel('ask-'+it.id, 'Nobody specific', allAskRoles().map(function(r){ return { label:r, on:(it.askWho||[]).indexOf(r)>=0, attrs:'data-action="toggle-ask-role" data-sec="'+sec.id+'" data-item="'+it.id+'" data-role="'+esc(r)+'"' }; })) +
                 '<div style="display:flex;gap:8px;margin-top:6px;"><input type="text" class="iteminfolabel" style="flex:1;min-width:0;" placeholder="Add another person, e.g. Store keeper" aria-label="Add a person to ask"><button type="button" class="btn btn-ghost btn-sm" data-action="add-ask-role" data-sec="'+sec.id+'" data-item="'+it.id+'">Add</button></div>' +
                 '<div class="helper" style="margin-top:4px;">In the audit, each person you pick gets their own answer box'+((it.kind||'tick')==='number' ? ' (a number — the item fails if anyone is out of range)' : '')+'.</div></div>';
-            var optsHtml = '<div class="itemrow-sub">' +
+            var moveHtml = '<div class="itemrow-sub" style="margin-top:6px;"><button type="button" class="naBtn" data-action="move-item" data-dir="up" data-sec="'+sec.id+'" data-item="'+it.id+'">▲ Move up</button><button type="button" class="naBtn" data-action="move-item" data-dir="down" data-sec="'+sec.id+'" data-item="'+it.id+'">▼ Move down</button></div>';
+            var optsHtml = moveHtml + '<div class="itemrow-sub">' +
                 [['tick','✓ Tick'],['number','# Number'],['score','★ Score 1–5']].map(function(k){ return '<button type="button" class="naBtn '+((it.kind||'tick')===k[0]?'on':'')+'" data-action="item-kind" data-sec="'+sec.id+'" data-item="'+it.id+'" data-val="'+k[0]+'">'+k[1]+'</button>'; }).join('') +
                 '<button type="button" class="naBtn '+(it.critical?'on':'')+'" data-action="toggle-critical" data-sec="'+sec.id+'" data-item="'+it.id+'">🔴 Critical</button>' +
                 ((it.kind||'tick')==='tick' ? '<button type="button" class="naBtn '+(it.requiresInfo?'on':'')+'" data-action="toggle-requires-info" data-sec="'+sec.id+'" data-item="'+it.id+'">📝 Requires an answer</button>' : '') +
@@ -3200,6 +3208,7 @@
         '<input type="file" accept="application/json" id="restoreBackupInput" data-action="restore-backup-file" style="display:none;">' +
       '</div>' +
 
+      renderSystemHealthCard() +
       renderStorageMeter() +
     '</main>';
   }
@@ -3619,6 +3628,92 @@
           '</div>';
         }).join('')
       );
+  }
+
+  // ---------- The One: what's next, and today's stops grouped by area ----------
+  function renderNextUpBar(items){
+    var nowMin = hhmmToMin(nowHHMM());
+    var next = items.filter(function(e){ return e.time && hhmmToMin(e.time) > nowMin; })[0];
+    if (!next) return '';
+    var mins = hhmmToMin(next.time) - nowMin;
+    var cd = mins<60 ? mins+' min' : Math.floor(mins/60)+' h'+(mins%60 ? ' '+(mins%60)+' min' : '');
+    return '<button type="button" class="card nextup" data-action="'+next.action+'"'+(next.id?' data-id="'+esc(next.id)+'"':'')+(next.tab?' data-tab="'+next.tab+'"':'')+'>' +
+      '<span class="nu-k">Next up · in '+esc(cd)+'</span>' +
+      '<span class="nu-t">'+next.icon+' '+esc(next.title)+'</span>' +
+      '<span class="nu-s">'+esc(fmtTime12(next.time))+(next.sub ? ' · '+esc(next.sub) : '')+'</span></button>';
+  }
+  function renderDayAreas(items){
+    var byLoc = {}, clients = {}, total = 0;
+    items.forEach(function(e){
+      if (e.action!=='goto-prospect' || !e.id) return;
+      var p = findProspect(e.id); if (!p) return;
+      var loc = (p.location||'').trim() || 'No area';
+      byLoc[loc] = (byLoc[loc]||0)+1; total++; clients[p.id] = p;
+    });
+    if (!total) return '';
+    var km = 0; Object.keys(clients).forEach(function(id){ km += travelNum(clients[id].travelKm)*2; });
+    var locs = Object.keys(byLoc).sort(function(a,b){ return byLoc[b]-byLoc[a]; });
+    return '<div class="card" style="padding:12px 14px;margin-bottom:14px;">' +
+      '<div class="histmeta" style="margin:0 0 6px;font-weight:700;">'+total+' stop'+(total===1?'':'s')+' in '+locs.length+' area'+(locs.length===1?'':'s')+(km ? ' · about '+fmtKm(km)+' of round trips' : '')+'</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;">' + locs.map(function(l){ return '<span class="pill warn">📍 '+esc(l)+' · '+byLoc[l]+'</span>'; }).join('') + '</div>' +
+    '</div>';
+  }
+
+  // ---------- Converted client: the package they bought, at a glance ----------
+  function renderPackageDetailsCard(p){
+    var svc = p.converted && p.servicesOffered ? findService(p.servicesOffered) : null;
+    if (!svc) return '';
+    var q = quoteFor(p), cur = state.pricing.currency||'₹';
+    var rows = [];
+    if (svc.category) rows.push(['Category', svc.category]);
+    var price = Number(p.finalPrice)||0;
+    if (price) rows.push(['Agreed price', cur+fmtCompact(price)+(p.pricingType==='retainer' ? ' / month' : (p.pricingType==='onetime' ? ' one-time' : ''))]);
+    else if (q) rows.push(['Quote', quoteRange(q.dlo, q.dhi)+(q.isRet ? ' / month' : ' one-time')]);
+    if (q && q.opt) rows.push(['Tracking', trackingMethodOf(q.opt.key).label]);
+    if (q && q.discounted) rows.push(['Discount', p.discountType==='pct' ? String(p.discountValue)+'%' : cur+fmtCompact(Number(p.discountValue))]);
+    rows.push(['Areas audited', (svc.auditAreas && svc.auditAreas.length) ? svc.auditAreas.join(', ') : 'All areas']);
+    var mets = serviceMetricNames(svc); if (mets.length) rows.push(['Tracks', mets.join(', ')]);
+    return sh('📦','Package') + '<div class="card" style="padding:14px 16px;margin-bottom:20px;">' +
+      '<div style="font-weight:800;font-size:16px;">'+esc(svc.name)+'</div>' +
+      (svc.priceNote ? '<div class="helper" style="margin:2px 0 8px;">'+esc(svc.priceNote)+'</div>' : '<div style="height:6px;"></div>') +
+      rows.map(function(r){ return '<div class="sumrow"><span class="k">'+esc(r[0])+'</span><span class="v">'+esc(r[1])+'</span></div>'; }).join('') +
+      ((svc.steps||[]).filter(function(x){ return (x||'').trim(); }).length ? '<div class="answerlabel" style="margin:10px 0 2px;">How we work</div>'+serviceStepsHtml(svc) : '') +
+    '</div>';
+  }
+
+  // ---------- Back end: one place to see that everything is saved ----------
+  function renderSystemHealthCard(){
+    var lb = lastBackupAt(), snaps = tmplBackups(), cur = tmplCount(state.templates);
+    var sync = !state.authUser ? 'Not signed in' : (!state.online ? 'Offline — changes are kept on this device' : (state.syncError ? 'Problem saving ('+state.syncError+')' : (state.syncPending ? 'Saving…' : 'All saved'+(state.lastSyncAt ? ' · last '+fmtClock(state.lastSyncAt) : ''))));
+    var tone = (!state.online || state.syncError) ? 'bad' : 'good';
+    function row(k, v, bad){ return '<div class="sumrow"><span class="k">'+k+'</span><span class="v"'+(bad?' style="color:var(--bad);"':'')+'>'+v+'</span></div>'; }
+    return '<h1 style="font-size:20px;margin:0 0 4px;">System health</h1>' +
+      '<div class="helper" style="margin-bottom:10px;">A quick check that your work is safe.</div>' +
+      '<div class="card" style="padding:4px 16px 12px;margin-bottom:28px;">' +
+        row('Cloud sync', esc(sync), tone==='bad') +
+        row('Last backup download', lb ? esc(fmtRelativeTime(lb)) : 'Never', !lb) +
+        row('Checklist', cur+' question'+(cur===1?'':'s')+' · '+snaps.length+' snapshot'+(snaps.length===1?'':'s')+(snaps[0] ? ' (latest '+esc(fmtRelativeTime(snaps[0].at))+')' : '')) +
+        row('Records', state.history.length+' audits · '+state.prospects.length+' clients · '+state.correctiveActions.length+' fixes · '+state.lookups.length+' tasks & lookups') +
+        '<div style="margin-top:10px;"><button class="btn btn-primary btn-sm" data-action="download-backup">⬇ Download a backup now</button></div>' +
+      '</div>';
+  }
+
+  // ---------- Checklist editor: where a question is used and how often it fails ----------
+  function questionFailCounts(){
+    return memo('qfail', function(){
+      var m = {};
+      state.history.forEach(function(rec){ (rec.sections||[]).forEach(function(s){ (s.items||[]).forEach(function(it){ if (it.state==='fail'){ var k = norm(it.text); m[k] = (m[k]||0)+1; } }); }); });
+      return m;
+    });
+  }
+  function questionUsedIn(it){
+    var out = [];
+    ['dinein','qsr','hotel'].concat(Object.keys(state.templates).filter(function(k){ return ['dinein','qsr','hotel','master'].indexOf(k)<0; })).forEach(function(k){
+      var t = state.templates[k]; if (!t) return;
+      var hit = t.sections.some(function(s){ return (s.items||[]).some(function(x){ return x.from===it.id || norm(x.text)===norm(it.text); }); });
+      if (hit) out.push(t.label);
+    });
+    return out;
   }
 
   // ---------- Travel: distance to each client, visits driven, and monthly totals ----------
@@ -4959,6 +5054,7 @@
         '<div class="contactrow blockrow" data-contact-btns>'+contactButtons(p)+'</div>' +
       '</div>' +
       (state.newClientFlow===p.id ? '<div class="card" style="border-color:var(--accent);background:var(--accent-soft);padding:14px 16px;margin-bottom:18px;"><div style="font-weight:700;">Step 1 of 2 — client details</div><div class="helper" style="margin:4px 0 10px;">Next, add this client\'s monthly parameters (food cost, wastage, staff, rent, electricity…). You can skip and do it later.</div><button class="btn btn-primary" data-action="cost-open" data-id="'+p.id+'" data-flow="new">Next: Parameters →</button></div>' : '') +
+      renderPackageDetailsCard(p) +
       renderCostCard(p) +
       renderCauseCard(audits) +
       renderTravelCard(p) +
@@ -5420,6 +5516,7 @@
     // Tasks carry a due date only; lookups carry no date at all.
     if (group==='task'){
       meta += dateInputHtml('data-lk-due="'+l.id+'"', l.dueDate);
+      if (!l.source) meta += '<select class="copysel" data-lk-repeat="'+l.id+'" aria-label="Repeat this task">'+[['','Doesn\'t repeat'],['weekly','Every week'],['biweekly','Every 2 weeks'],['monthly','Every month']].map(function(o){ return '<option value="'+o[0]+'" '+((l.repeat||'')===o[0]?'selected':'')+'>'+o[1]+'</option>'; }).join('')+'</select>';
       if (!l.done && l.dueDate && l.dueDate<todayISO()) meta += '<span class="pill bad">OVERDUE</span>';
     }
     if (!l.source) meta += '<button type="button" class="btn btn-text btn-sm" style="margin-left:auto;" data-action="move-lookup" data-id="'+l.id+'">Move to '+(group==='task'?'Lookup':'Tasks')+'</button>';
@@ -5661,7 +5758,7 @@
       { key:'actions', label:'Actions', n:c.actions }
     ];
     var body;
-    if (tab==='today') body = renderDayToday(g);
+    if (tab==='today') body = renderNextUpBar(g.days[0].items) + renderDayAreas(g.days[0].items) + renderDayToday(g);
     else if (tab==='week'){
       var firstBusy = g.days.filter(function(d){ return d.items.length; })[0];
       body = '<div class="helper" style="margin:0 0 12px;">Follow-ups, audits, re-audits, meetings and fixes for the next 7 days. Tap a day to open it.</div>' +
@@ -6936,7 +7033,21 @@
     }
     else if (action==='toggle-lookup-done'){
       var lk = state.lookups.filter(function(l){ return l.id===t.dataset.id; })[0];
-      if (lk){ lk.done = !lk.done; lk.doneAt = lk.done ? Date.now() : null; persistLookups(); render(); }
+      if (lk){
+        lk.done = !lk.done; lk.doneAt = lk.done ? Date.now() : null;
+        // A repeating task creates its next one when done (once), and takes it back if you untick it before touching it.
+        if (lk.done && lk.repeat && !lk.spawnedId){
+          var rb = lk.dueDate || todayISO(), rn = rb, rstep = function(d){ return lk.repeat==='monthly' ? addMonthsISO(d,1) : addDaysISO(d, lk.repeat==='biweekly' ? 14 : 7); };
+          rn = rstep(rn); var guard = 0; while (rn<=todayISO() && guard++<60) rn = rstep(rn);
+          var nxt = { id: uid(), text: lk.text, category:'task', done:false, createdAt: Date.now(), dueDate: rn, repeat: lk.repeat };
+          state.lookups.unshift(nxt); lk.spawnedId = nxt.id;
+        } else if (!lk.done && lk.spawnedId){
+          var ch = state.lookups.filter(function(x){ return x.id===lk.spawnedId; })[0];
+          if (ch && !ch.done) state.lookups = state.lookups.filter(function(x){ return x.id!==lk.spawnedId; });
+          lk.spawnedId = '';
+        }
+        persistLookups(); render();
+      }
     }
     else if (action==='delete-lookup'){
       var dlk = state.lookups.filter(function(l){ return l.id===t.dataset.id; })[0];
@@ -7514,6 +7625,16 @@
       tmpl.sections = tmpl.sections.filter(function(s){ return s.id!==t.dataset.sec; });
       persistTemplates(true); render();
     }
+    else if (action==='move-section' || action==='move-item'){
+      var mvT = state.templates[state.editorTab], mvDir = t.dataset.dir==='up' ? -1 : 1;
+      if (mvT){
+        var mvArr = mvT.sections, mvIdx;
+        if (action==='move-item'){ var mvSec = mvT.sections.filter(function(s){ return s.id===t.dataset.sec; })[0]; mvArr = mvSec ? mvSec.items : []; mvIdx = mvArr.findIndex(function(x){ return x.id===t.dataset.item; }); }
+        else mvIdx = mvArr.findIndex(function(x){ return x.id===t.dataset.sec; });
+        var mvTo = mvIdx+mvDir;
+        if (mvIdx>=0 && mvTo>=0 && mvTo<mvArr.length){ var mvX = mvArr[mvIdx]; mvArr[mvIdx] = mvArr[mvTo]; mvArr[mvTo] = mvX; persistTemplates(); render(); }
+      }
+    }
     else if (action==='sync-copies'){
       // Push General's wording/settings onto the copies already in Dine-In, QSR, Hotels (and custom checklists). Never adds or removes items.
       var scM = state.templates.master, scTouched = {}, scN = 0, scLinked = false, scOnly = t.dataset.sec;
@@ -8047,6 +8168,10 @@
       var eanW = openWorkday();
       var eanLast = eanW && eanW.entries && eanW.entries[eanW.entries.length-1];
       if (eanLast && !eanLast.endAt){ eanLast.note = el.value; persistWorkdays(); }
+    }
+    else if (el.dataset.lkRepeat){
+      var lkr = state.lookups.filter(function(l){ return l.id===el.dataset.lkRepeat; })[0];
+      if (lkr){ lkr.repeat = el.value; persistLookups(); }
     }
     else if (el.dataset.lkDue){
       var lkd = state.lookups.filter(function(l){ return l.id===el.dataset.lkDue; })[0];
