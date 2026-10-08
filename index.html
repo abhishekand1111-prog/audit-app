@@ -612,6 +612,15 @@
   .stattile.t-accent{background:var(--accent-soft);} .stattile.t-good{background:var(--good-soft);} .stattile.t-bad{background:var(--bad-soft);}  .sumrow .v, .dayshort .ds b, .pv, .bar-val, .donut-val{font-family:var(--font-d); font-variant-numeric:tabular-nums;}
   .dayshort .ds b{font-weight:800; font-size:21px;}
   .sechead2{margin:26px 0 10px;}
+  /* Dashboard breathing room: more space between the stacked cards and sections, and inside the lists */
+  .dashmain > :not(.sechead2){margin-bottom:28px !important;}
+  .dashmain > .dashhero{margin-bottom:28px !important;}
+  .dashmain > .dashquick{margin-bottom:36px !important; gap:12px;}
+  .dashmain > .sechead2{margin:40px 0 14px !important;}
+  .dashmain > .sechead2 + *{margin-top:0 !important;}
+  .dashmain .cardstack{gap:14px;}
+  .dashmain .workrow, .dashmain .pbrow{padding-top:12px; padding-bottom:12px;}
+  .dashmain .statgrid{gap:12px;}
   .sechead2 h2{font-size:12.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-600);}
   .sechead2 .ic{background:var(--surface-2) !important; width:26px; height:26px; border-radius:8px; font-size:13px;}
   .pill{padding:3px 8px; font-weight:800;}
@@ -6368,7 +6377,7 @@
     var hr = new Date().getHours();
     var todayLabel = 'ॐ नमः पार्वती पतये हर हर महादेव';
     // Order: what needs doing now → quick actions → business numbers → history.
-    return '<main>' +
+    return '<main class="dashmain">' +
       '<div class="dashhero">' +
         '<span class="datepill">'+esc(todayLabel)+'</span>' +
         '<div style="margin:8px 2px 0;font-size:13px;font-weight:600;color:var(--ink-400);">📅 '+esc(new Date().toLocaleDateString(undefined,{weekday:'long', day:'numeric', month:'long', year:'numeric'}))+'</div>' +
