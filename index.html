@@ -621,6 +621,10 @@
   .dashmain .cardstack{gap:14px;}
   .dashmain .workrow, .dashmain .pbrow{padding-top:12px; padding-bottom:12px;}
   .dashmain .statgrid{gap:12px;}
+  /* Tappable stat tiles (Pipeline filters) */
+  button.stattile{font:inherit; color:inherit; text-align:left; cursor:pointer; width:100%;}
+  button.stattile:active{transform:scale(.98);}
+  button.stattile.on{box-shadow:0 0 0 2px var(--accent) inset;}
   .sechead2 h2{font-size:12.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-600);}
   .sechead2 .ic{background:var(--surface-2) !important; width:26px; height:26px; border-radius:8px; font-size:13px;}
   .pill{padding:3px 8px; font-weight:800;}
@@ -3574,26 +3578,42 @@
       var dayStart = dd.getTime(), dayEnd = dayStart + 24*60*60*1000;
       var audits = state.history.filter(function(h){ return h.finishedAt>=dayStart && h.finishedAt<dayEnd; })
         .sort(function(a,b){ return b.finishedAt-a.finishedAt; });
-      days.push({ iso: dayStart, label: dd.toLocaleDateString(undefined,{weekday:'short'}).slice(0,2), dayNum: dd.getDate(), audits: audits });
+      // Follow-ups marked done that day, newest first.
+      var fus = [];
+      state.prospects.forEach(function(p){ (p.followUps||[]).forEach(function(f){ if (f.done && f.doneAt && f.doneAt>=dayStart && f.doneAt<dayEnd) fus.push({ p:p, f:f }); }); });
+      fus.sort(function(a,b){ return b.f.doneAt-a.f.doneAt; });
+      days.push({ iso: dayStart, label: dd.toLocaleDateString(undefined,{weekday:'short'}).slice(0,2), dayNum: dd.getDate(), audits: audits, fus: fus });
     }
-    var maxBar = Math.max.apply(null, days.map(function(d){ return d.audits.length; })) || 1;
-    var barChartHtml = '<div class="barchart">' + days.map(function(d){
-      var h = d.audits.length===0 ? 0 : Math.max(10, Math.round((d.audits.length/maxBar)*100));
-      return '<div class="bar-col"><div class="bar-track"><div class="bar-fill" style="height:'+h+'%"></div></div><div class="bar-val">'+d.audits.length+'</div><div class="bar-lbl">'+d.label+' '+d.dayNum+'</div></div>';
-    }).join('') + '</div>';
+    function barsHtml(key){
+      var maxBar = Math.max.apply(null, days.map(function(d){ return d[key].length; })) || 1;
+      return '<div class="barchart">' + days.map(function(d){
+        var h = d[key].length===0 ? 0 : Math.max(10, Math.round((d[key].length/maxBar)*100));
+        return '<div class="bar-col"><div class="bar-track"><div class="bar-fill" style="height:'+h+'%"></div></div><div class="bar-val">'+d[key].length+'</div><div class="bar-lbl">'+d.label+' '+d.dayNum+'</div></div>';
+      }).join('') + '</div>';
+    }
+    var totA = days.reduce(function(a, d){ return a+d.audits.length; }, 0), totF = days.reduce(function(a, d){ return a+d.fus.length; }, 0);
+    var activeDays = days.slice().reverse().filter(function(d){ return d.audits.length || d.fus.length; });
 
-    var daysWithAudits = days.slice().reverse().filter(function(d){ return d.audits.length>0; });
-
-    return '<div class="card dashcard" style="margin-bottom:20px;"><div class="dashcard-title">Audits per day (last 14 days)</div>'+barChartHtml+'</div>' +
-      (daysWithAudits.length===0 ? '<div class="empty"><div class="big">📅</div>No audits logged in the last 14 days.</div>' :
-        daysWithAudits.map(function(d){
-          return '<h2 style="font-size:13px;margin-bottom:6px;color:var(--ink-400);">'+new Date(d.iso).toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'})+' · '+d.audits.length+' audit'+(d.audits.length>1?'s':'')+'</h2>' +
+    return '<div class="statgrid" style="margin-top:0;"><div class="stattile t-accent"><div class="v">'+totA+'</div><div class="k">Audits · 14 days</div></div><div class="stattile t-good"><div class="v">'+totF+'</div><div class="k">Follow-ups done</div></div><div class="stattile"><div class="v">'+activeDays.length+'</div><div class="k">Active days</div></div></div>' +
+      '<div class="card dashcard" style="margin-bottom:20px;"><div class="dashcard-title">Audits per day (last 14 days)</div>'+barsHtml('audits')+'</div>' +
+      '<div class="card dashcard" style="margin-bottom:20px;"><div class="dashcard-title">Follow-ups done per day (last 14 days)</div>'+barsHtml('fus')+'</div>' +
+      (activeDays.length===0 ? '<div class="empty"><div class="big">📅</div>No audits or follow-ups logged in the last 14 days.</div>' :
+        activeDays.map(function(d){
+          return '<h2 style="font-size:13px;margin-bottom:6px;color:var(--ink-400);">'+new Date(d.iso).toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'})+' · '+(d.audits.length ? d.audits.length+' audit'+(d.audits.length>1?'s':'') : '')+(d.audits.length && d.fus.length ? ' · ' : '')+(d.fus.length ? d.fus.length+' follow-up'+(d.fus.length>1?'s':'')+' done' : '')+'</h2>' +
           '<div style="margin-bottom:16px;">' +
             d.audits.map(function(h){
               return '<div class="card histcard" data-action="view-audit" data-id="'+h.id+'">' +
                 '<div class="histtop"><span class="badge">'+esc((state.templates[h.type]||{}).label||h.type)+'</span><span class="histpct">'+h.completionPct+'%</span></div>' +
                 '<div style="font-weight:700;margin-top:8px;">'+esc(h.storeName||'Unnamed store')+'</div>' +
                 '<div class="histmeta">'+fmtAuditWhen(h.auditDate,h.auditTime)+' · Tap to view full report</div>' +
+              '</div>';
+            }).join('') +
+            d.fus.map(function(x){
+              return '<div class="card histcard" data-action="open-prospect" data-id="'+x.p.id+'">' +
+                '<div class="histtop"><span class="pill good">✓ Follow-up done</span><span class="histmeta" style="margin:0;">'+esc(fmtClock(x.f.doneAt))+'</span></div>' +
+                '<div style="font-weight:700;margin-top:8px;">'+esc(x.p.name||'Unnamed client')+(x.p.location?' · '+esc(x.p.location):'')+'</div>' +
+                (x.f.note ? '<div class="histmeta">'+esc(x.f.note)+'</div>' : '') +
+                '<div class="histmeta">Was due '+esc(fmtFollowUpWhen(x.f))+' · Tap to open client</div>' +
               '</div>';
             }).join('') +
           '</div>';
@@ -4045,6 +4065,8 @@
     var clientsList = list.filter(function(p){ return p.converted; });
     var pipelineAuditedCount = pipelineList.filter(function(p){ return !!p.auditId; }).length;
     var pipelineDeclinedCount = pipelineList.filter(function(p){ return p.declined; }).length;
+    var pf = state.pipelineFilter || 'all';
+    var pipelineShown = pipelineList.filter(function(p){ return pf==='audited' ? !!p.auditId : (pf==='declined' ? !!p.declined : true); });
     var clientKeys = {};
     clientsList.forEach(function(p){ clientKeys[(p.name||'').trim().toLowerCase()] = true; });
     var clientsDueSoon = computeDueList().filter(function(x){ return clientKeys[x.key] && x.dueAt<=Date.now()+7*24*60*60*1000; }).length;
@@ -4115,13 +4137,15 @@
         ) +
         histSummaryHtml
       ) : (
-      '<div class="statgrid" style="margin-top:0;">' +
-        '<div class="stattile t-accent"><div class="v">'+pipelineList.length+'</div><div class="k">In Pipeline</div></div>' +
-        '<div class="stattile"><div class="v">'+pipelineAuditedCount+'</div><div class="k">Audited</div></div>' +
-        '<div class="stattile'+(pipelineDeclinedCount?' t-bad':'')+'"><div class="v">'+pipelineDeclinedCount+'</div><div class="k">Not Converted</div></div>' +
+      '<div class="statgrid tilebtns" style="margin-top:0;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));">' +
+        '<button type="button" class="stattile t-accent'+(pf==='all'?' on':'')+'" data-action="pipeline-filter" data-val="all"><div class="v">'+pipelineList.length+'</div><div class="k">In Pipeline</div></button>' +
+        '<button type="button" class="stattile'+(pf==='audited'?' on':'')+'" data-action="pipeline-filter" data-val="audited"><div class="v">'+pipelineAuditedCount+'</div><div class="k">Audited</div></button>' +
+        '<button type="button" class="stattile t-good" data-action="prospects-tab" data-tab="clients"><div class="v">'+clientsList.length+'</div><div class="k">Converted ›</div></button>' +
+        '<button type="button" class="stattile'+(pipelineDeclinedCount?' t-bad':'')+(pf==='declined'?' on':'')+'" data-action="pipeline-filter" data-val="declined"><div class="v">'+pipelineDeclinedCount+'</div><div class="k">Not Converted</div></button>' +
       '</div>' +
-      (pipelineList.length===0 ? '<div class="empty"><div class="big">🎯</div>No clients yet.<br>Add one to start tracking your pipeline.</div>' :
-        pipelineList.map(function(p){
+      (pf!=='all' ? '<div class="helper" style="margin:-6px 0 12px;">Showing '+(pf==='audited'?'audited':'not converted')+' only — tap the tile again to see everyone.</div>' : '') +
+      (pipelineShown.length===0 ? (pf!=='all' ? '<div class="empty"><div class="big">🔎</div>Nothing here yet.</div>' : '<div class="empty"><div class="big">🎯</div>No clients yet.<br>Add one to start tracking your pipeline.</div>') :
+        pipelineShown.map(function(p){
           var st = prospectStatus(p);
           var priceStr = (p.priceMin||p.priceMax) ? (state.pricing.currency||'')+(p.priceMin||'0')+'–'+(state.pricing.currency||'')+(p.priceMax||'0') : '';
           var stColor = { good:'var(--good)', bad:'var(--bad)', warn:'var(--accent)' }[st.tone] || 'var(--line)';
@@ -7445,6 +7469,7 @@
     }
     else if (action==='toggle-show-done'){ state.actionsShowDone = !state.actionsShowDone; render(); }
     else if (action==='actions-tab'){ state.actionsTab = t.dataset.tab; if (t.dataset.tab==='task' || t.dataset.tab==='lookup') state.lookupTab = t.dataset.tab; render(); }
+    else if (action==='pipeline-filter'){ state.pipelineFilter = (state.pipelineFilter===t.dataset.val || t.dataset.val==='all') ? 'all' : t.dataset.val; render(); }
     else if (action==='prospects-tab'){ state.prospectsTab = t.dataset.tab; state.activeCallId = null; render(); }
     else if (action==='export-csv'){
       var csv = buildHistoryCSV();
