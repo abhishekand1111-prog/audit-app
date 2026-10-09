@@ -561,6 +561,12 @@
   .sm-status.st-new{background:var(--ink); color:var(--paper);}
   .sm-btns{display:flex; flex-wrap:wrap; gap:6px; margin-top:12px;}
   .sm-card{--sm-warn:#B26B00;}
+  .dl-score{font-family:var(--font-m); font-weight:700; font-size:12px; padding:4px 9px; border-radius:20px; white-space:nowrap; flex:none; background:var(--ink); color:var(--paper);}
+  .dl-row{font-size:13.5px; margin-top:8px; line-height:1.45;}
+  .dl-row b{font-weight:700;}
+  .dl-opener{font-size:13.5px; margin-top:10px; padding:10px 12px; border-radius:var(--r-s); background:var(--surface-2); line-height:1.5; white-space:pre-wrap;}
+  .dl-src{font-size:12px; margin-top:8px; color:var(--ink-600); word-break:break-all;}
+  .dl-src a{color:inherit;}
   .sm-tree{margin-top:14px; padding:14px 12px; border:1px solid var(--line); border-radius:var(--r-m); background-image:radial-gradient(var(--line) 1.1px, transparent 1.1px); background-size:16px 16px;}
   .sm-kids{margin-left:12px;}
   .sm-item{position:relative; padding:8px 0 0 20px;}
@@ -1073,7 +1079,10 @@
     smStats: {},
     mapsError: '',
     mapsTab: 'calls',
-    mapsOpen: {}
+    mapsOpen: {},
+    dailyLeads: [],
+    leadsError: '',
+    leadsShowHandled: false
   };
   // Remember where the user was, so a refresh or reopening the app lands on the same page.
   var LS_NAV = 'diagnosisroom_nav_v1';
@@ -1338,12 +1347,33 @@
     }, function(){ state.smStats = {}; });
     fsUnsubs.push(unsub);
   }
+  // Prospects found each morning by the PC's lead finder (top-level dailyLeads, create-only with its write key, owner reads/updates).
+  function fsWatchDailyLeads(){
+    var unsub = fsDb.collection('dailyLeads').orderBy('createdAt', 'desc').limit(200).onSnapshot(function(snap){
+      var list = [];
+      snap.forEach(function(d){
+        var r = d.data({ serverTimestamps:'estimate' });
+        r._id = d.id;
+        r._at = (r.createdAt && r.createdAt.toMillis) ? r.createdAt.toMillis() : Date.now();
+        list.push(r);
+      });
+      state.dailyLeads = list;
+      state.leadsError = '';
+      if (isTypingInApp()) return;
+      renderSoon();
+    }, function(err){
+      state.leadsError = (err && err.code) ? String(err.code) : 'error';
+      renderSoon();
+    });
+    fsUnsubs.push(unsub);
+  }
   function attachFirestoreSync(){
     fsDb = firebase.firestore();
     fsStartRecordSync();
     fsWatchDoc('config', true);
     fsWatchSystemMaps();
     fsWatchSmStats();
+    fsWatchDailyLeads();
     var unsubSync = fsDb.onSnapshotsInSync(function(){
       state.syncPending = false;
       if (isTypingInApp()) return;
@@ -1357,6 +1387,7 @@
     fsDb = null;
     state.systemMaps = [];
     state.smStats = {};
+    state.dailyLeads = [];
     RECORD_SETS.forEach(function(rs){ clearTimeout(rs.retry); rs.ready = false; rs.busy = false; rs.synced = {}; });
   }
 
@@ -4211,11 +4242,12 @@
       '</div>' +
       '<div class="tabs tabs-scroll" style="margin-top:14px;">' +
         '<button class="tab '+(pTab==='calls'?'on':'')+'" data-action="prospects-tab" data-tab="calls">Calls'+(function(){ var n = smNewCount(); return '<span class="tabcount'+(n?' bad':'')+'">'+n+'</span>'; })()+'</button>' +
+        '<button class="tab '+(pTab==='leads'?'on':'')+'" data-action="prospects-tab" data-tab="leads">Leads'+(function(){ var n = dlNewCount(); return n ? '<span class="tabcount">'+n+'</span>' : ''; })()+'</button>' +
         '<button class="tab '+(pTab==='pipeline'?'on':'')+'" data-action="prospects-tab" data-tab="pipeline">Pipeline</button>' +
         '<button class="tab '+(pTab==='clients'?'on':'')+'" data-action="prospects-tab" data-tab="clients">Converted</button>' +
         '<button class="tab '+(pTab==='daily'?'on':'')+'" data-action="prospects-tab" data-tab="daily">Daily Activity</button>' +
       '</div>' +
-      (pTab==='calls' ? renderCallRequestsBody() : pTab==='daily' ? renderProspectsDaily() : (
+      (pTab==='calls' ? renderCallRequestsBody() : pTab==='leads' ? renderDailyLeadsBody() : pTab==='daily' ? renderProspectsDaily() : (
       '<div style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 0;">' +
         '<div class="field" style="flex:2;min-width:180px;margin-bottom:0;"><label for="pSearch">Search</label><input id="pSearch" type="search" data-pipeline-search="1" value="'+esc(state.pipelineQuery||'')+'" placeholder="Name, area, contact, phone…" autocomplete="off"></div>' +
         '<div class="field" style="flex:1;min-width:140px;margin-bottom:0;"><label>Sort by</label><select data-pipeline-sort="1">' + [['follow','Next follow-up'],['newest','Newest first'],['name','Name A–Z'],['value','Value (high first)']].map(function(o){ return '<option value="'+o[0]+'" '+(psort===o[0]?'selected':'')+'>'+o[1]+'</option>'; }).join('') + '</select></div>' +
@@ -6158,6 +6190,71 @@
   }
   function smNewCount(){ return smCalls().filter(function(c){ return (c.status||'new')==='new'; }).length; }
 
+  // ---- Daily Leads: 3-5 prospects researched each morning by the PC's lead finder (D:\Claude Code\prospect-finder) ----
+  var DL_SIGNAL = { opening:'🆕 New opening', reviews:'⭐ Review complaints', delivery:'🛵 Delivery dip', hiring:'🧑‍🍳 Hiring churn', expansion:'📈 Expanding', other:'🔎 Signal' };
+  var DL_FORMAT = { dinein:'Dine-in', qsr:'QSR', cloud:'Cloud kitchen', cafe:'Café', bar:'Bar' };
+  function dlNewCount(){ return (state.dailyLeads||[]).filter(function(l){ return (l.status||'new')==='new'; }).length; }
+  function dlInPipeline(l){
+    var k = String(l.name||'').trim().toLowerCase();
+    return k ? state.prospects.filter(function(p){ return String(p.name||'').trim().toLowerCase()===k; })[0] || null : null;
+  }
+  function dlDayLabel(d){
+    if (d===todayISO()) return 'Today';
+    var y = new Date(); y.setDate(y.getDate()-1);
+    if (d===y.getFullYear()+'-'+String(y.getMonth()+1).padStart(2,'0')+'-'+String(y.getDate()).padStart(2,'0')) return 'Yesterday';
+    var p = String(d||'').split('-');
+    return p.length===3 ? new Date(+p[0], +p[1]-1, +p[2]).toLocaleDateString('en-IN', { weekday:'short', day:'numeric', month:'short' }) : (d||'');
+  }
+  function dlCard(l){
+    var s = l.status||'new', svc = findService(l.service), inP = dlInPipeline(l);
+    var ig = String(l.instagram||'').replace(/^@/, '');
+    var links = contactButtons({ contactMobile: l.phone, contactName: '' }, { msg: l.opener||'' }) +
+      (ig ? '<a class="btn btn-ghost btn-sm" href="https://instagram.com/'+encodeURIComponent(ig)+'" target="_blank" rel="noopener">📸 Instagram</a>' : '') +
+      (l.mapsUrl ? '<a class="btn btn-ghost btn-sm" href="'+esc(l.mapsUrl)+'" target="_blank" rel="noopener">📍 Maps</a>' : '') +
+      (l.opener ? '<button class="btn btn-ghost btn-sm" data-action="lead-copy" data-id="'+esc(l._id)+'">📋 Copy message</button>' : '');
+    var acts = s==='new'
+      ? (inP ? '<button class="btn btn-ghost btn-sm" data-action="open-prospect" data-id="'+esc(inP.id)+'">Already in pipeline ›</button>'
+             : '<button class="btn btn-primary btn-sm" data-action="lead-add" data-id="'+esc(l._id)+'">+ Add to pipeline</button>') +
+        '<button class="btn btn-ghost btn-sm" data-action="lead-status" data-v="skipped" data-id="'+esc(l._id)+'">Skip</button>'
+      : '<span class="histmeta" style="align-self:center;">'+(s==='added' ? '✓ Added to pipeline' : 'Skipped')+'</span>' +
+        '<button class="btn btn-ghost btn-sm" data-action="lead-status" data-v="new" data-id="'+esc(l._id)+'">Undo</button>';
+    var srcs = (l.sources||[]).filter(function(u){ return /^https?:\/\//.test(u); });
+    return '<div class="card sm-card">' +
+      '<div class="sm-top"><div><div class="sm-name">'+esc(l.name||'')+'</div>' +
+        '<div class="histmeta" style="margin-top:2px;">'+esc([l.area, l.city, DL_FORMAT[l.format]||l.format].filter(Boolean).join(' · '))+'</div></div>' +
+        '<span class="dl-score" title="Fit score">'+esc(String(l.score||'–'))+'/10</span></div>' +
+      '<div class="dl-row"><b>'+esc(DL_SIGNAL[l.signalType]||DL_SIGNAL.other)+':</b> '+esc(l.signal||'')+'</div>' +
+      (l.why ? '<div class="dl-row"><b>Likely leak · '+esc(l.leak||'')+':</b> '+esc(l.why)+'</div>' : (l.leak ? '<div class="dl-row"><b>Likely leak:</b> '+esc(l.leak)+'</div>' : '')) +
+      '<div class="dl-row"><b>Pitch:</b> '+esc(svc ? svc.name : (l.service||''))+(l.priceBand ? ' · '+esc(l.priceBand) : '')+'</div>' +
+      (l.reach ? '<div class="dl-row"><b>Where to reach:</b> '+esc(l.reach)+'</div>' : '') +
+      (l.opener ? '<div class="dl-opener">'+esc(l.opener)+'</div>' : '') +
+      (srcs.length ? '<div class="dl-src">Sources: '+srcs.map(function(u, i){ return '<a href="'+esc(u)+'" target="_blank" rel="noopener">'+(i+1)+'</a>'; }).join(' · ')+'</div>' : '') +
+      (links ? '<div class="sm-btns">'+links+'</div>' : '') +
+      '<div class="sm-btns">'+acts+'</div>' +
+    '</div>';
+  }
+  function renderDailyLeadsBody(){
+    if (state.leadsError){
+      return '<div class="card" style="padding:14px 16px; border-color:var(--bad);"><b>Can\'t load daily leads ('+esc(state.leadsError)+').</b>' +
+        '<div class="helper" style="margin-top:6px;">If it says permission-denied, paste the latest firestore-rules-full.txt into the Firebase console and publish.</div></div>';
+    }
+    var all = state.dailyLeads||[];
+    var open = all.filter(function(l){ return (l.status||'new')==='new'; });
+    var handled = all.filter(function(l){ return (l.status||'new')!=='new'; });
+    var days = {}, order = [];
+    open.forEach(function(l){ var d = l.runDate||smDayOf(l._at); if (!days[d]){ days[d] = []; order.push(d); } days[d].push(l); });
+    order.sort().reverse();
+    var body = order.length ? order.map(function(d){
+        var g = days[d].slice().sort(function(a,b){ return (b.score||0)-(a.score||0); });
+        return '<div class="eyebrow" style="margin:16px 0 8px;">'+esc(dlDayLabel(d))+' · '+g.length+'</div><div class="cardstack">'+g.map(dlCard).join('')+'</div>';
+      }).join('')
+      : '<div class="empty" style="padding:22px 14px;"><div class="big">🎯</div>No new leads. The finder runs at 8 AM while your PC and the Claude app are on.</div>';
+    return '<div class="helper" style="margin:12px 0 0;">Restaurants in the Tricity showing a buying signal, picked each morning with the angle to pitch and where to reach them.</div>' +
+      body +
+      (handled.length ? '<button class="btn btn-ghost btn-sm" style="margin-top:18px;" data-action="lead-handled-toggle">'+(state.leadsShowHandled ? 'Hide' : 'Show')+' handled · '+handled.length+'</button>' +
+        (state.leadsShowHandled ? '<div class="cardstack" style="margin-top:10px;">'+handled.map(dlCard).join('')+'</div>' : '') : '');
+  }
+
   function lookupGroups(){
     function sortFn(a,b){ return (b.createdAt||0)-(a.createdAt||0); }
     return {
@@ -6822,6 +6919,37 @@
       state.prospects.push(smP); persistProspects();
       fsDb.collection('systemMaps').doc(smC._id).update({ status:'client', statusAt:Date.now(), prospectId:smP.id }).catch(function(){});
       state.activeProspectId = smP.id; state.activeCallId = null; state.view = 'prospects'; window.scrollTo(0,0); render();
+    }
+    else if (action==='lead-handled-toggle'){ state.leadsShowHandled = !state.leadsShowHandled; render(); }
+    else if (action==='lead-status'){
+      if (!fsDb) return;
+      t.disabled = true;
+      fsDb.collection('dailyLeads').doc(t.dataset.id).update({ status:t.dataset.v, statusAt:Date.now() })
+        .catch(function(err){ alert('Could not update this lead ('+((err&&err.code)||'error')+'). Publish the latest Firebase rules first.'); render(); });
+    }
+    else if (action==='lead-copy'){
+      var dlC = (state.dailyLeads||[]).filter(function(l){ return l._id===t.dataset.id; })[0];
+      if (dlC && dlC.opener){
+        var origDL = t.textContent;
+        var doneDL = function(){ t.textContent = '✓ Copied'; setTimeout(function(){ t.textContent = origDL; }, 1500); };
+        if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(dlC.opener).then(doneDL).catch(function(){ fallbackCopyText(dlC.opener); doneDL(); }); }
+        else { fallbackCopyText(dlC.opener); doneDL(); }
+      }
+    }
+    else if (action==='lead-add'){
+      var dlL = (state.dailyLeads||[]).filter(function(l){ return l._id===t.dataset.id; })[0];
+      if (!dlL || !fsDb) return;
+      var dlSvc = findService(dlL.service);
+      var dlP = { id: uid(), name: dlL.name||'', location: dlL.city||'', address: [dlL.area, dlL.city].filter(Boolean).join(', '),
+        category: (dlL.format==='dinein' || dlL.format==='bar') ? 'dinein' : 'qsr', auditId:null,
+        plannedAuditDate:'', checkinNote: 'Lead ('+(dlL.runDate||'')+'): '+(dlL.signal||'')+(dlL.reach ? ' | Reach: '+dlL.reach : ''),
+        proposed:'', priceMin: dlSvc ? String(dlSvc.oneTimeMin) : '', priceMax: dlSvc ? String(dlSvc.oneTimeMax) : '', converted:false, convertedAt:null,
+        declined:false, declinedAt:null, followUpDate: todayISO(), finalPrice:'', timeline:'', createdAt: Date.now(),
+        servicesOffered: dlSvc ? dlSvc.id : '', pricingType:'', proposalStatus:'', proposalMeetingDate:'', auditsPerMonth:'',
+        contactName:'', contactDesignation:'', contactMobile: isValidMobile(dlL.phone) ? normalizeMobile(dlL.phone) : '', leadId: dlL._id };
+      state.prospects.push(dlP); persistProspects();
+      fsDb.collection('dailyLeads').doc(dlL._id).update({ status:'added', statusAt:Date.now(), prospectId:dlP.id }).catch(function(){});
+      state.activeProspectId = dlP.id; window.scrollTo(0,0); render();
     }
     else if (action==='go-search'){ if(!state.draft){ state.view='search'; render(); } }
     else if (action==='add-content'){
