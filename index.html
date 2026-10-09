@@ -4205,8 +4205,9 @@
     var clientsList = list.filter(function(p){ return p.converted; });
     var pipelineAuditedCount = pipelineList.filter(function(p){ return !!p.auditId; }).length;
     var pipelineDeclinedCount = pipelineList.filter(function(p){ return p.declined; }).length;
+    var pipelineLeadCount = pipelineList.filter(function(p){ return !!p.leadId && !p.declined; }).length;
     var pf = state.pipelineFilter || 'all';
-    var pipelineShown = pipelineList.filter(function(p){ return pf==='audited' ? !!p.auditId : (pf==='declined' ? !!p.declined : true); });
+    var pipelineShown = pipelineList.filter(function(p){ return pf==='audited' ? !!p.auditId : (pf==='declined' ? !!p.declined : (pf==='leads' ? (!!p.leadId && !p.declined) : true)); });
     var clientKeys = {};
     clientsList.forEach(function(p){ clientKeys[(p.name||'').trim().toLowerCase()] = true; });
     var clientsDueSoon = computeDueList().filter(function(x){ return clientKeys[x.key] && x.dueAt<=Date.now()+7*24*60*60*1000; }).length;
@@ -4287,19 +4288,21 @@
         '<button type="button" class="stattile'+(pf==='audited'?' on':'')+'" data-action="pipeline-filter" data-val="audited"><div class="v">'+pipelineAuditedCount+'</div><div class="k">Audited</div></button>' +
         '<button type="button" class="stattile t-good" data-action="prospects-tab" data-tab="clients"><div class="v">'+clientsList.length+'</div><div class="k">Converted ›</div></button>' +
         '<button type="button" class="stattile'+(pipelineDeclinedCount?' t-bad':'')+(pf==='declined'?' on':'')+'" data-action="pipeline-filter" data-val="declined"><div class="v">'+pipelineDeclinedCount+'</div><div class="k">Not Converted</div></button>' +
+        '<button type="button" class="stattile'+(pf==='leads'?' on':'')+'" data-action="pipeline-filter" data-val="leads"><div class="v">'+pipelineLeadCount+'</div><div class="k">From lead finder</div></button>' +
       '</div>' +
-      (pf!=='all' ? '<div class="helper" style="margin:-6px 0 12px;">Showing '+(pf==='audited'?'audited':'not converted')+' only — tap the tile again to see everyone.</div>' : '') +
+      (pf!=='all' ? '<div class="helper" style="margin:-6px 0 12px;">Showing '+(pf==='audited'?'audited':(pf==='leads'?'lead-finder':'not converted'))+' only — tap the tile again to see everyone.</div>' : '') +
       (pipelineShown.length===0 ? (pf!=='all' ? '<div class="empty"><div class="big">🔎</div>Nothing here yet.</div>' : '<div class="empty"><div class="big">🎯</div>No clients yet.<br>Add one to start tracking your pipeline.</div>') :
         pipelineShown.map(function(p){
           var st = prospectStatus(p);
           var priceStr = (p.priceMin||p.priceMax) ? (state.pricing.currency||'')+(p.priceMin||'0')+'–'+(state.pricing.currency||'')+(p.priceMax||'0') : '';
           var stColor = { good:'var(--good)', bad:'var(--bad)', warn:'var(--accent)' }[st.tone] || 'var(--line)';
           var nextFu = openFollowUps(p)[0];
-          var missing = prospectProblems(p);
+          // A fresh lead from the finder never has a contact person yet, so the "Missing" nag waits until it is audited.
+          var missing = (p.leadId && !p.auditId) ? [] : prospectProblems(p);
           var who = [p.contactName, p.contactDesignation].filter(function(x){ return (x||'').trim(); }).map(esc).join(' · ');
           var btns = contactButtons(p);
           return '<div class="card histcard pcard" style="border-left:3px solid '+stColor+';" data-action="open-prospect" data-id="'+p.id+'">' +
-            '<div class="histtop"><span><span class="badge">'+esc(prospectCategoryLabel(p))+'</span>'+serviceBadgeHtml(p)+'</span><span class="pill '+st.tone+'">'+st.label+'</span></div>' +
+            '<div class="histtop"><span><span class="badge">'+esc(prospectCategoryLabel(p))+'</span>'+serviceBadgeHtml(p)+(p.leadId?'<span class="badge" style="margin-left:6px;">🎯 Lead finder</span>':'')+'</span><span class="pill '+st.tone+'">'+st.label+'</span></div>' +
             '<div class="pcard-name" style="'+(p.declined?'text-decoration:line-through;color:var(--ink-400);':'')+'">'+esc(p.name||'Unnamed client')+'</div>' +
             '<div class="histmeta">📍 '+esc(p.location||'No location')+(p.address?' · '+esc(p.address):'')+'</div>' +
             (who || p.contactMobile ? '<div class="histmeta">👤 '+(who||'Contact')+(p.contactMobile?' · '+esc(p.contactMobile):'')+'</div>' : '') +
@@ -6177,14 +6180,18 @@
   }
   // How many website visitors open the check, start it, finish it and book, over the last 30 days.
   function smFunnelHtml(){
-    var t = { visit:0, start:0, finish:0, book:0 };
+    var t = { visit:0, start:0, finish:0, book:0, leadVisit:0, leadStart:0, leadFinish:0, leadBook:0 };
     Object.keys(state.smStats||{}).forEach(function(k){ var v = state.smStats[k]||{}; Object.keys(t).forEach(function(f){ t[f] += (+v[f]||0); }); });
     if (!t.visit && !t.start) return '';
     function pct(a, b){ return b ? Math.round(a/b*100)+'%' : '–'; }
-    var steps = [ ['Visited', t.visit, ''], ['Started', t.start, pct(t.start, t.visit)], ['Finished', t.finish, pct(t.finish, t.start)], ['Booked', t.book, pct(t.book, t.finish)] ];
-    return '<div class="card smfunnel"><div class="histmeta" style="margin-bottom:8px;">Website · last 30 days</div><div class="smf-row">' +
-      steps.map(function(s, i){ return (i ? '<span class="smf-arrow">›</span>' : '')+'<div class="smf-step"><b>'+s[1]+'</b><span>'+s[0]+'</span>'+(s[2] ? '<i>'+s[2]+'</i>' : '')+'</div>'; }).join('') +
-    '</div></div>';
+    function row(v, s, f, b){
+      var steps = [ ['Visited', v, ''], ['Started', s, pct(s, v)], ['Finished', f, pct(f, s)], ['Booked', b, pct(b, f)] ];
+      return '<div class="smf-row">' + steps.map(function(x, i){ return (i ? '<span class="smf-arrow">›</span>' : '')+'<div class="smf-step"><b>'+x[1]+'</b><span>'+x[0]+'</span>'+(x[2] ? '<i>'+x[2]+'</i>' : '')+'</div>'; }).join('') + '</div>';
+    }
+    return '<div class="card smfunnel"><div class="histmeta" style="margin-bottom:8px;">Website · last 30 days</div>' +
+      row(t.visit, t.start, t.finish, t.book) +
+      (t.leadVisit ? '<div class="histmeta" style="margin:12px 0 8px;">From your outreach messages</div>' + row(t.leadVisit, t.leadStart, t.leadFinish, t.leadBook) : '') +
+    '</div>';
   }
   // Entries made while testing the website (name contains "test", or the dummy number 9999999999).
   function smTestEntries(){
@@ -6230,8 +6237,23 @@
       declined:false, declinedAt:null, followUpDate: todayISO(), finalPrice:'', timeline:'', createdAt: Date.now(),
       servicesOffered: svc ? svc.id : '', pricingType:'', proposalStatus:'', proposalMeetingDate:'', auditsPerMonth:'',
       contactName:'', contactDesignation:'', contactMobile: isValidMobile(l.phone) ? normalizeMobile(l.phone) : '', leadId: l._id,
-      inquiry: [dlInquiryEntry(l, category)], leadInquiryAdded: true };
+      inquiry: [dlInquiryEntry(l, category)], leadInquiryAdded: true,
+      followUps: [dlFirstFollowUp(l)], leadFollowUpAdded: true };
   }
+  // The first touch, so a new lead shows up on The Day instead of sitting silently in the pipeline.
+  function dlFirstFollowUp(l){
+    var how = l.phone ? 'WhatsApp' : (l.instagram ? 'Instagram DM' : 'walk in');
+    return { id:'dlfu_'+String(l._id).replace(/[^a-zA-Z0-9]/g, ''), date:todayISO(), time:'', note:'Send the opener ('+how+') — the message is under Inquiry', done:false, doneAt:null, createdAt:Date.now() };
+  }
+  function dlEnsureFollowUp(p, l){
+    if (p.leadFollowUpAdded) return false;
+    p.leadFollowUpAdded = true;
+    if (!p.converted && !p.declined && !openFollowUps(p).length){ p.followUps = p.followUps || []; p.followUps.push(dlFirstFollowUp(l)); }
+    p.updatedAt = Date.now();
+    return true;
+  }
+  // Only leads scoring this or more go into the pipeline by themselves; weaker ones wait in the Leads tab for a manual "Add".
+  var DL_AUTO_MIN = 6;
   // New leads go straight into the pipeline. The transaction on the lead doc means only one device ever adds each lead.
   var dlAutoBusy = {};
   function dlAutoAdd(){
@@ -6240,16 +6262,17 @@
     (state.dailyLeads||[]).forEach(function(l){
       var s = l.status||'new';
       if (s==='added'){
-        // Leads added before this change: give their client the full lead details once.
+        // Leads added before these changes: give their client the full lead details and a first follow-up, once each.
         var ap = state.prospects.filter(function(p){ return p.id===l.prospectId || (p.leadId && p.leadId===l._id); })[0];
         if (ap && !ap.leadInquiryAdded){
           ap.inquiry = ap.inquiry || [];
           if (!ap.inquiry.some(function(e){ return e.id==='dl_'+l._id; })) ap.inquiry.push(dlInquiryEntry(l, ap.category));
           ap.leadInquiryAdded = true; ap.updatedAt = Date.now(); changed = true;
         }
+        if (ap && dlEnsureFollowUp(ap, l)) changed = true;
         return;
       }
-      if (s!=='new' || dlAutoBusy[l._id]) return;
+      if (s!=='new' || dlAutoBusy[l._id] || (Number(l.score)||0) < DL_AUTO_MIN) return;
       var ref = fsDb.collection('dailyLeads').doc(l._id);
       var existing = dlInPipeline(l);
       dlAutoBusy[l._id] = true;
@@ -6267,6 +6290,7 @@
         else if (!(p.inquiry||[]).some(function(e){ return e.id==='dl_'+l._id; })){
           p.inquiry = p.inquiry || []; p.inquiry.push(dlInquiryEntry(l, p.category)); p.leadInquiryAdded = true; p.updatedAt = Date.now();
         }
+        if (p) dlEnsureFollowUp(p, l);
         persistProspects(); renderSoon();
       }).catch(function(){}).then(function(){ delete dlAutoBusy[l._id]; });
     });
@@ -6323,7 +6347,7 @@
         return '<div class="eyebrow" style="margin:16px 0 8px;">'+esc(dlDayLabel(d))+' · '+g.length+'</div><div class="cardstack">'+g.map(dlCard).join('')+'</div>';
       }).join('')
       : '<div class="empty" style="padding:22px 14px;"><div class="big">🎯</div>No new leads. The finder runs at 8 AM while your PC and the Claude app are on.</div>';
-    return '<div class="helper" style="margin:12px 0 0;">Restaurants in the Tricity showing a buying signal, picked each morning with the angle to pitch and where to reach them. New leads go into your pipeline automatically, with the details saved under Inquiry.</div>' +
+    return '<div class="helper" style="margin:12px 0 0;">Restaurants in the Tricity showing a buying signal, picked each morning with the angle to pitch and where to reach them. Leads scoring '+DL_AUTO_MIN+'/10 or more go into your pipeline automatically, with the details under Inquiry and a follow-up for today; weaker ones wait here for you to add or skip.</div>' +
       body +
       (handled.length ? '<button class="btn btn-ghost btn-sm" style="margin-top:18px;" data-action="lead-handled-toggle">'+(state.leadsShowHandled ? 'Hide' : 'Show')+' handled · '+handled.length+'</button>' +
         (state.leadsShowHandled ? '<div class="cardstack" style="margin-top:10px;">'+handled.map(dlCard).join('')+'</div>' : '') : '');
