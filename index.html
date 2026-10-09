@@ -1081,8 +1081,7 @@
     mapsTab: 'calls',
     mapsOpen: {},
     dailyLeads: [],
-    leadsError: '',
-    leadsShowHandled: false
+    leadsError: ''
   };
   // Remember where the user was, so a refresh or reopening the app lands on the same page.
   var LS_NAV = 'diagnosisroom_nav_v1';
@@ -1886,7 +1885,8 @@
     opt = opt || {};
     var n = normalizeMobile(p.contactMobile);
     var first = String(p.contactName||'').trim().split(/\s+/)[0];
-    var msg = opt.msg || (first ? 'Hi '+first+', ' : '');
+    // A lead from the finder that hasn't been audited yet opens WhatsApp with its ready-made opener.
+    var msg = opt.msg || ((p.leadOpener && !p.auditId) ? p.leadOpener : (first ? 'Hi '+first+', ' : ''));
     var touch = opt.touch ? ' data-sm-touch="'+esc(opt.touch)+'"' : '';
     return '<a class="btn btn-ghost btn-sm" href="tel:+91'+n+'"'+touch+'>📞 Call</a>' +
       '<a class="btn btn-ghost btn-sm" href="https://wa.me/91'+n+(msg ? '?text='+encodeURIComponent(msg) : '')+'" target="_blank" rel="noopener"'+touch+'>💬 WhatsApp</a>';
@@ -4171,6 +4171,7 @@
       if (state.systemMaps.length) state.activeCallId = null;
     }
     var pTab = state.prospectsTab || 'pipeline';
+    if (pTab==='leads'){ pTab = 'pipeline'; state.prospectsTab = 'pipeline'; }
     var locs = [], cats = [];
     state.prospects.forEach(function(p){
       if (p.location && locs.indexOf(p.location)===-1) locs.push(p.location);
@@ -4245,12 +4246,11 @@
       '</div>' +
       '<div class="tabs tabs-scroll" style="margin-top:14px;">' +
         '<button class="tab '+(pTab==='calls'?'on':'')+'" data-action="prospects-tab" data-tab="calls">Calls'+(function(){ var n = smNewCount(); return '<span class="tabcount'+(n?' bad':'')+'">'+n+'</span>'; })()+'</button>' +
-        '<button class="tab '+(pTab==='leads'?'on':'')+'" data-action="prospects-tab" data-tab="leads">Leads'+(function(){ var n = dlNewCount(); return n ? '<span class="tabcount">'+n+'</span>' : ''; })()+'</button>' +
         '<button class="tab '+(pTab==='pipeline'?'on':'')+'" data-action="prospects-tab" data-tab="pipeline">Pipeline</button>' +
         '<button class="tab '+(pTab==='clients'?'on':'')+'" data-action="prospects-tab" data-tab="clients">Converted</button>' +
         '<button class="tab '+(pTab==='daily'?'on':'')+'" data-action="prospects-tab" data-tab="daily">Daily Activity</button>' +
       '</div>' +
-      (pTab==='calls' ? renderCallRequestsBody() : pTab==='leads' ? renderDailyLeadsBody() : pTab==='daily' ? renderProspectsDaily() : (
+      (pTab==='calls' ? renderCallRequestsBody() : pTab==='daily' ? renderProspectsDaily() : (
       '<div style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 0;">' +
         '<div class="field" style="flex:2;min-width:180px;margin-bottom:0;"><label for="pSearch">Search</label><input id="pSearch" type="search" data-pipeline-search="1" value="'+esc(state.pipelineQuery||'')+'" placeholder="Name, area, contact, phone…" autocomplete="off"></div>' +
         '<div class="field" style="flex:1;min-width:140px;margin-bottom:0;"><label>Sort by</label><select data-pipeline-sort="1">' + [['follow','Next follow-up'],['newest','Newest first'],['name','Name A–Z'],['value','Value (high first)']].map(function(o){ return '<option value="'+o[0]+'" '+(psort===o[0]?'selected':'')+'>'+o[1]+'</option>'; }).join('') + '</select></div>' +
@@ -6199,10 +6199,8 @@
   }
   function smNewCount(){ return smCalls().filter(function(c){ return (c.status||'new')==='new'; }).length; }
 
-  // ---- Daily Leads: 3-5 prospects researched each morning by the PC's lead finder (D:\Claude Code\prospect-finder) ----
+  // ---- Daily Leads: prospects researched each morning by the PC's lead finder (D:\Claude Code\prospect-finder), added straight to the pipeline ----
   var DL_SIGNAL = { opening:'🆕 New opening', reviews:'⭐ Review complaints', delivery:'🛵 Delivery dip', hiring:'🧑‍🍳 Hiring churn', expansion:'📈 Expanding', other:'🔎 Signal' };
-  var DL_FORMAT = { dinein:'Dine-in', qsr:'QSR', cloud:'Cloud kitchen', cafe:'Café', bar:'Bar' };
-  function dlNewCount(){ return (state.dailyLeads||[]).filter(function(l){ return (l.status||'new')==='new'; }).length; }
   function dlInPipeline(l){
     var byLead = state.prospects.filter(function(p){ return p.leadId && p.leadId===l._id; })[0];
     if (byLead) return byLead;
@@ -6238,7 +6236,7 @@
       servicesOffered: svc ? svc.id : '', pricingType:'', proposalStatus:'', proposalMeetingDate:'', auditsPerMonth:'',
       contactName:'', contactDesignation:'', contactMobile: isValidMobile(l.phone) ? normalizeMobile(l.phone) : '', leadId: l._id,
       inquiry: [dlInquiryEntry(l, category)], leadInquiryAdded: true,
-      followUps: [dlFirstFollowUp(l)], leadFollowUpAdded: true };
+      followUps: [dlFirstFollowUp(l)], leadFollowUpAdded: true, leadOpener: l.opener||'' };
   }
   // The first touch, so a new lead shows up on The Day instead of sitting silently in the pipeline.
   function dlFirstFollowUp(l){
@@ -6252,8 +6250,6 @@
     p.updatedAt = Date.now();
     return true;
   }
-  // Only leads scoring this or more go into the pipeline by themselves; weaker ones wait in the Leads tab for a manual "Add".
-  var DL_AUTO_MIN = 6;
   // New leads go straight into the pipeline. The transaction on the lead doc means only one device ever adds each lead.
   var dlAutoBusy = {};
   function dlAutoAdd(){
@@ -6270,9 +6266,10 @@
           ap.leadInquiryAdded = true; ap.updatedAt = Date.now(); changed = true;
         }
         if (ap && dlEnsureFollowUp(ap, l)) changed = true;
+        if (ap && l.opener && ap.leadOpener===undefined){ ap.leadOpener = l.opener; changed = true; }
         return;
       }
-      if (s!=='new' || dlAutoBusy[l._id] || (Number(l.score)||0) < DL_AUTO_MIN) return;
+      if (s!=='new' || dlAutoBusy[l._id]) return;
       var ref = fsDb.collection('dailyLeads').doc(l._id);
       var existing = dlInPipeline(l);
       dlAutoBusy[l._id] = true;
@@ -6290,69 +6287,12 @@
         else if (!(p.inquiry||[]).some(function(e){ return e.id==='dl_'+l._id; })){
           p.inquiry = p.inquiry || []; p.inquiry.push(dlInquiryEntry(l, p.category)); p.leadInquiryAdded = true; p.updatedAt = Date.now();
         }
-        if (p) dlEnsureFollowUp(p, l);
+        if (p){ dlEnsureFollowUp(p, l); if (l.opener && !p.leadOpener) p.leadOpener = l.opener; }
         persistProspects(); renderSoon();
       }).catch(function(){}).then(function(){ delete dlAutoBusy[l._id]; });
     });
     if (changed){ persistProspects(); renderSoon(); }
   }
-  function dlDayLabel(d){
-    if (d===todayISO()) return 'Today';
-    var y = new Date(); y.setDate(y.getDate()-1);
-    if (d===y.getFullYear()+'-'+String(y.getMonth()+1).padStart(2,'0')+'-'+String(y.getDate()).padStart(2,'0')) return 'Yesterday';
-    var p = String(d||'').split('-');
-    return p.length===3 ? new Date(+p[0], +p[1]-1, +p[2]).toLocaleDateString('en-IN', { weekday:'short', day:'numeric', month:'short' }) : (d||'');
-  }
-  function dlCard(l){
-    var s = l.status||'new', svc = findService(l.service), inP = dlInPipeline(l);
-    var ig = String(l.instagram||'').replace(/^@/, '');
-    var links = contactButtons({ contactMobile: l.phone, contactName: '' }, { msg: l.opener||'' }) +
-      (ig ? '<a class="btn btn-ghost btn-sm" href="https://instagram.com/'+encodeURIComponent(ig)+'" target="_blank" rel="noopener">📸 Instagram</a>' : '') +
-      (l.mapsUrl ? '<a class="btn btn-ghost btn-sm" href="'+esc(l.mapsUrl)+'" target="_blank" rel="noopener">📍 Maps</a>' : '') +
-      (l.opener ? '<button class="btn btn-ghost btn-sm" data-action="lead-copy" data-id="'+esc(l._id)+'">📋 Copy message</button>' : '');
-    var acts = s==='new'
-      ? (inP ? '<button class="btn btn-ghost btn-sm" data-action="open-prospect" data-id="'+esc(inP.id)+'">Already in pipeline ›</button>'
-             : '<button class="btn btn-primary btn-sm" data-action="lead-add" data-id="'+esc(l._id)+'">+ Add to pipeline</button>') +
-        '<button class="btn btn-ghost btn-sm" data-action="lead-status" data-v="skipped" data-id="'+esc(l._id)+'">Skip</button>'
-      : '<span class="histmeta" style="align-self:center;">'+(s==='added' ? '✓ Added to pipeline' : 'Skipped')+'</span>' +
-        '<button class="btn btn-ghost btn-sm" data-action="lead-status" data-v="new" data-id="'+esc(l._id)+'">Undo</button>';
-    var srcs = (l.sources||[]).filter(function(u){ return /^https?:\/\//.test(u); });
-    return '<div class="card sm-card">' +
-      '<div class="sm-top"><div><div class="sm-name">'+esc(l.name||'')+'</div>' +
-        '<div class="histmeta" style="margin-top:2px;">'+esc([l.area, l.city, DL_FORMAT[l.format]||l.format].filter(Boolean).join(' · '))+'</div></div>' +
-        '<span class="dl-score" title="Fit score">'+esc(String(l.score||'–'))+'/10</span></div>' +
-      '<div class="dl-row"><b>'+esc(DL_SIGNAL[l.signalType]||DL_SIGNAL.other)+':</b> '+esc(l.signal||'')+'</div>' +
-      (l.why ? '<div class="dl-row"><b>Likely leak · '+esc(l.leak||'')+':</b> '+esc(l.why)+'</div>' : (l.leak ? '<div class="dl-row"><b>Likely leak:</b> '+esc(l.leak)+'</div>' : '')) +
-      '<div class="dl-row"><b>Pitch:</b> '+esc(svc ? svc.name : (l.service||''))+(l.priceBand ? ' · '+esc(l.priceBand) : '')+'</div>' +
-      (l.reach ? '<div class="dl-row"><b>Where to reach:</b> '+esc(l.reach)+'</div>' : '') +
-      (l.opener ? '<div class="dl-opener">'+esc(l.opener)+'</div>' : '') +
-      (srcs.length ? '<div class="dl-src">Sources: '+srcs.map(function(u, i){ return '<a href="'+esc(u)+'" target="_blank" rel="noopener">'+(i+1)+'</a>'; }).join(' · ')+'</div>' : '') +
-      (links ? '<div class="sm-btns">'+links+'</div>' : '') +
-      '<div class="sm-btns">'+acts+'</div>' +
-    '</div>';
-  }
-  function renderDailyLeadsBody(){
-    if (state.leadsError){
-      return '<div class="card" style="padding:14px 16px; border-color:var(--bad);"><b>Can\'t load daily leads ('+esc(state.leadsError)+').</b>' +
-        '<div class="helper" style="margin-top:6px;">If it says permission-denied, paste the latest firestore-rules-full.txt into the Firebase console and publish.</div></div>';
-    }
-    var all = state.dailyLeads||[];
-    var open = all.filter(function(l){ return (l.status||'new')==='new'; });
-    var handled = all.filter(function(l){ return (l.status||'new')!=='new'; });
-    var days = {}, order = [];
-    open.forEach(function(l){ var d = l.runDate||smDayOf(l._at); if (!days[d]){ days[d] = []; order.push(d); } days[d].push(l); });
-    order.sort().reverse();
-    var body = order.length ? order.map(function(d){
-        var g = days[d].slice().sort(function(a,b){ return (b.score||0)-(a.score||0); });
-        return '<div class="eyebrow" style="margin:16px 0 8px;">'+esc(dlDayLabel(d))+' · '+g.length+'</div><div class="cardstack">'+g.map(dlCard).join('')+'</div>';
-      }).join('')
-      : '<div class="empty" style="padding:22px 14px;"><div class="big">🎯</div>No new leads. The finder runs at 8 AM while your PC and the Claude app are on.</div>';
-    return '<div class="helper" style="margin:12px 0 0;">Restaurants in the Tricity showing a buying signal, picked each morning with the angle to pitch and where to reach them. Leads scoring '+DL_AUTO_MIN+'/10 or more go into your pipeline automatically, with the details under Inquiry and a follow-up for today; weaker ones wait here for you to add or skip.</div>' +
-      body +
-      (handled.length ? '<button class="btn btn-ghost btn-sm" style="margin-top:18px;" data-action="lead-handled-toggle">'+(state.leadsShowHandled ? 'Hide' : 'Show')+' handled · '+handled.length+'</button>' +
-        (state.leadsShowHandled ? '<div class="cardstack" style="margin-top:10px;">'+handled.map(dlCard).join('')+'</div>' : '') : '');
-  }
-
   function lookupGroups(){
     function sortFn(a,b){ return (b.createdAt||0)-(a.createdAt||0); }
     return {
@@ -7017,30 +6957,6 @@
       state.prospects.push(smP); persistProspects();
       fsDb.collection('systemMaps').doc(smC._id).update({ status:'client', statusAt:Date.now(), prospectId:smP.id }).catch(function(){});
       state.activeProspectId = smP.id; state.activeCallId = null; state.view = 'prospects'; window.scrollTo(0,0); render();
-    }
-    else if (action==='lead-handled-toggle'){ state.leadsShowHandled = !state.leadsShowHandled; render(); }
-    else if (action==='lead-status'){
-      if (!fsDb) return;
-      t.disabled = true;
-      fsDb.collection('dailyLeads').doc(t.dataset.id).update({ status:t.dataset.v, statusAt:Date.now() })
-        .catch(function(err){ alert('Could not update this lead ('+((err&&err.code)||'error')+'). Publish the latest Firebase rules first.'); render(); });
-    }
-    else if (action==='lead-copy'){
-      var dlC = (state.dailyLeads||[]).filter(function(l){ return l._id===t.dataset.id; })[0];
-      if (dlC && dlC.opener){
-        var origDL = t.textContent;
-        var doneDL = function(){ t.textContent = '✓ Copied'; setTimeout(function(){ t.textContent = origDL; }, 1500); };
-        if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(dlC.opener).then(doneDL).catch(function(){ fallbackCopyText(dlC.opener); doneDL(); }); }
-        else { fallbackCopyText(dlC.opener); doneDL(); }
-      }
-    }
-    else if (action==='lead-add'){
-      var dlL = (state.dailyLeads||[]).filter(function(l){ return l._id===t.dataset.id; })[0];
-      if (!dlL || !fsDb) return;
-      var dlP = dlMakeProspect(dlL);
-      state.prospects.push(dlP); persistProspects();
-      fsDb.collection('dailyLeads').doc(dlL._id).update({ status:'added', statusAt:Date.now(), prospectId:dlP.id }).catch(function(){});
-      state.activeProspectId = dlP.id; window.scrollTo(0,0); render();
     }
     else if (action==='go-search'){ if(!state.draft){ state.view='search'; render(); } }
     else if (action==='add-content'){
