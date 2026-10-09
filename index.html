@@ -1223,6 +1223,7 @@
       state[rs.key] = list;
       rs.synced = map;
       saveJSON(rs.ls, list);
+      if (rs.key==='prospects') dlAutoAdd();
       if (snap.metadata.hasPendingWrites || isTypingInApp()) return;
       renderSoon();
     }, syncFail);
@@ -1359,6 +1360,7 @@
       });
       state.dailyLeads = list;
       state.leadsError = '';
+      dlAutoAdd();
       if (isTypingInApp()) return;
       renderSoon();
     }, function(err){
@@ -6195,8 +6197,80 @@
   var DL_FORMAT = { dinein:'Dine-in', qsr:'QSR', cloud:'Cloud kitchen', cafe:'Café', bar:'Bar' };
   function dlNewCount(){ return (state.dailyLeads||[]).filter(function(l){ return (l.status||'new')==='new'; }).length; }
   function dlInPipeline(l){
+    var byLead = state.prospects.filter(function(p){ return p.leadId && p.leadId===l._id; })[0];
+    if (byLead) return byLead;
     var k = String(l.name||'').trim().toLowerCase();
     return k ? state.prospects.filter(function(p){ return String(p.name||'').trim().toLowerCase()===k; })[0] || null : null;
+  }
+  // Everything the finder researched, written as the client's "problem faced" so it shows on the client and in the audit.
+  function dlInquiryEntry(l, category){
+    var svc = findService(l.service), ig = String(l.instagram||'').replace(/^@/, '');
+    var srcs = (l.sources||[]).filter(function(u){ return /^https?:\/\//.test(u); });
+    var leak = String(l.leak||'').toLowerCase();
+    var area = leak ? (inquiryAreaOptions(category).filter(function(a){ return a.toLowerCase().indexOf(leak)!==-1; })[0] || '') : '';
+    var lines = [
+      'Daily lead '+(l.runDate||'')+(l.score ? ' · fit '+l.score+'/10' : ''),
+      (DL_SIGNAL[l.signalType]||DL_SIGNAL.other)+': '+(l.signal||''),
+      l.why ? 'Likely leak'+(l.leak ? ' ('+l.leak+')' : '')+': '+l.why : (l.leak ? 'Likely leak: '+l.leak : ''),
+      'Pitch: '+(svc ? svc.name : (l.service||''))+(l.priceBand ? ' · '+l.priceBand : ''),
+      l.reach ? 'Where to reach: '+l.reach : '',
+      [l.phone ? 'Phone: '+l.phone : '', ig ? 'Instagram: @'+ig : '', l.mapsUrl ? 'Maps: '+l.mapsUrl : ''].filter(Boolean).join(' · '),
+      l.opener ? 'Opening message: '+l.opener : '',
+      srcs.length ? 'Sources: '+srcs.join(' ') : ''
+    ];
+    return { id:'dl_'+l._id, area:area, problem:lines.filter(Boolean).join('\n'), action:'', createdAt:Date.now() };
+  }
+  function dlMakeProspect(l, id){
+    var svc = findService(l.service);
+    var category = (l.format==='dinein' || l.format==='bar') ? 'dinein' : 'qsr';
+    return { id: id || uid(), name: l.name||'', location: l.city||'', address: [l.area, l.city].filter(Boolean).join(', '),
+      category: category, auditId:null,
+      plannedAuditDate:'', checkinNote: 'Lead ('+(l.runDate||'')+'): '+(l.signal||'')+(l.reach ? ' | Reach: '+l.reach : ''),
+      proposed:'', priceMin: svc ? String(svc.oneTimeMin) : '', priceMax: svc ? String(svc.oneTimeMax) : '', converted:false, convertedAt:null,
+      declined:false, declinedAt:null, followUpDate: todayISO(), finalPrice:'', timeline:'', createdAt: Date.now(),
+      servicesOffered: svc ? svc.id : '', pricingType:'', proposalStatus:'', proposalMeetingDate:'', auditsPerMonth:'',
+      contactName:'', contactDesignation:'', contactMobile: isValidMobile(l.phone) ? normalizeMobile(l.phone) : '', leadId: l._id,
+      inquiry: [dlInquiryEntry(l, category)], leadInquiryAdded: true };
+  }
+  // New leads go straight into the pipeline. The transaction on the lead doc means only one device ever adds each lead.
+  var dlAutoBusy = {};
+  function dlAutoAdd(){
+    if (!fsDb || !state.authUser || !RS.prospects.ready || !RS.prospects._seen) return;
+    var changed = false;
+    (state.dailyLeads||[]).forEach(function(l){
+      var s = l.status||'new';
+      if (s==='added'){
+        // Leads added before this change: give their client the full lead details once.
+        var ap = state.prospects.filter(function(p){ return p.id===l.prospectId || (p.leadId && p.leadId===l._id); })[0];
+        if (ap && !ap.leadInquiryAdded){
+          ap.inquiry = ap.inquiry || [];
+          if (!ap.inquiry.some(function(e){ return e.id==='dl_'+l._id; })) ap.inquiry.push(dlInquiryEntry(l, ap.category));
+          ap.leadInquiryAdded = true; ap.updatedAt = Date.now(); changed = true;
+        }
+        return;
+      }
+      if (s!=='new' || dlAutoBusy[l._id]) return;
+      var ref = fsDb.collection('dailyLeads').doc(l._id);
+      var existing = dlInPipeline(l);
+      dlAutoBusy[l._id] = true;
+      var pid = existing ? existing.id : 'lead'+String(l._id).replace(/[^a-zA-Z0-9]/g, '');
+      fsDb.runTransaction(function(tx){
+        return tx.get(ref).then(function(snap){
+          if (!snap.exists || (snap.data().status||'new')!=='new') return false;
+          tx.update(ref, { status:'added', statusAt:Date.now(), prospectId:pid });
+          return true;
+        });
+      }).then(function(won){
+        if (!won) return;
+        var p = findProspect(pid);
+        if (!p){ state.prospects.push(dlMakeProspect(l, pid)); }
+        else if (!(p.inquiry||[]).some(function(e){ return e.id==='dl_'+l._id; })){
+          p.inquiry = p.inquiry || []; p.inquiry.push(dlInquiryEntry(l, p.category)); p.leadInquiryAdded = true; p.updatedAt = Date.now();
+        }
+        persistProspects(); renderSoon();
+      }).catch(function(){}).then(function(){ delete dlAutoBusy[l._id]; });
+    });
+    if (changed){ persistProspects(); renderSoon(); }
   }
   function dlDayLabel(d){
     if (d===todayISO()) return 'Today';
@@ -6249,7 +6323,7 @@
         return '<div class="eyebrow" style="margin:16px 0 8px;">'+esc(dlDayLabel(d))+' · '+g.length+'</div><div class="cardstack">'+g.map(dlCard).join('')+'</div>';
       }).join('')
       : '<div class="empty" style="padding:22px 14px;"><div class="big">🎯</div>No new leads. The finder runs at 8 AM while your PC and the Claude app are on.</div>';
-    return '<div class="helper" style="margin:12px 0 0;">Restaurants in the Tricity showing a buying signal, picked each morning with the angle to pitch and where to reach them.</div>' +
+    return '<div class="helper" style="margin:12px 0 0;">Restaurants in the Tricity showing a buying signal, picked each morning with the angle to pitch and where to reach them. New leads go into your pipeline automatically, with the details saved under Inquiry.</div>' +
       body +
       (handled.length ? '<button class="btn btn-ghost btn-sm" style="margin-top:18px;" data-action="lead-handled-toggle">'+(state.leadsShowHandled ? 'Hide' : 'Show')+' handled · '+handled.length+'</button>' +
         (state.leadsShowHandled ? '<div class="cardstack" style="margin-top:10px;">'+handled.map(dlCard).join('')+'</div>' : '') : '');
@@ -6939,14 +7013,7 @@
     else if (action==='lead-add'){
       var dlL = (state.dailyLeads||[]).filter(function(l){ return l._id===t.dataset.id; })[0];
       if (!dlL || !fsDb) return;
-      var dlSvc = findService(dlL.service);
-      var dlP = { id: uid(), name: dlL.name||'', location: dlL.city||'', address: [dlL.area, dlL.city].filter(Boolean).join(', '),
-        category: (dlL.format==='dinein' || dlL.format==='bar') ? 'dinein' : 'qsr', auditId:null,
-        plannedAuditDate:'', checkinNote: 'Lead ('+(dlL.runDate||'')+'): '+(dlL.signal||'')+(dlL.reach ? ' | Reach: '+dlL.reach : ''),
-        proposed:'', priceMin: dlSvc ? String(dlSvc.oneTimeMin) : '', priceMax: dlSvc ? String(dlSvc.oneTimeMax) : '', converted:false, convertedAt:null,
-        declined:false, declinedAt:null, followUpDate: todayISO(), finalPrice:'', timeline:'', createdAt: Date.now(),
-        servicesOffered: dlSvc ? dlSvc.id : '', pricingType:'', proposalStatus:'', proposalMeetingDate:'', auditsPerMonth:'',
-        contactName:'', contactDesignation:'', contactMobile: isValidMobile(dlL.phone) ? normalizeMobile(dlL.phone) : '', leadId: dlL._id };
+      var dlP = dlMakeProspect(dlL);
       state.prospects.push(dlP); persistProspects();
       fsDb.collection('dailyLeads').doc(dlL._id).update({ status:'added', statusAt:Date.now(), prospectId:dlP.id }).catch(function(){});
       state.activeProspectId = dlP.id; window.scrollTo(0,0); render();
