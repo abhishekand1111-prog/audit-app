@@ -6431,8 +6431,26 @@
       followUps:[{ id:'qsrfu_'+qsrSlug(name+city), date:slot.date, time:slot.time, note:'First '+(mob ? 'call / WhatsApp' : 'visit (walk in)')+': confirm 6–10 dine-in seats, offer the free System Map', done:false, doneAt:null, createdAt:Date.now() }],
       leadOpener:opener, qsrImport:true, qsrChecked:true };
   }
+  // A listener that first answers from the phone's cache never says "now from the server" when nothing changed,
+  // so ask the server directly once, instead of waiting for that.
+  var qsrServerAsked = false;
+  function qsrServerCheck(){
+    if (qsrServerAsked) return;
+    qsrServerAsked = true;
+    Promise.all([fsUserDataDoc('config').get({ source:'server' }), fsRecQuery(RS.prospects).get({ source:'server' })]).then(function(res){
+      var cfgSnap = res[0], list = [];
+      if (cfgSnap.exists && cfgSnap.data().targets) state.targets = cfgSnap.data().targets;
+      res[1].forEach(function(d){ var r = d.data(); if (r && r.id) list.push(r); });
+      // Use the server's list only when it is complete compared with what is on screen (never drop records).
+      if (list.length >= state.prospects.length){ list.sort(RS.prospects.sort); state.prospects = list; }
+      cfgServer = true; RS.prospects._server = true;
+      qsrFocusRun();
+    }).catch(function(){ qsrServerAsked = false; setTimeout(qsrFocusRun, 30000); });
+  }
   function qsrFocusRun(){
-    if (!fsDb || !state.authUser || !cfgServer || !RS.prospects.ready || !RS.prospects._server || qsrFocusBusy) return;
+    if (!fsDb || !state.authUser || !RS.prospects.ready || qsrFocusBusy) return;
+    if (state.targets && state.targets.qsrFocus && state.targets.qsrFocus.done) return;
+    if (!cfgServer || !RS.prospects._server){ qsrServerCheck(); return; }
     state.targets = state.targets || {};
     if (state.targets.qsrFocus && state.targets.qsrFocus.done) return;
     qsrFocusBusy = true;
