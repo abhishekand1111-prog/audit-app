@@ -1216,13 +1216,14 @@
       });
       // Nothing new from the cloud (e.g. the echo of our own save): skip the reassign, the save and the redraw.
       var prevMap = rs.synced || {}, prevKeys = Object.keys(prevMap), newKeys = Object.keys(map);
-      if (rs._seen && prevKeys.length===newKeys.length && newKeys.every(function(k){ return prevMap[k]===map[k]; })) return;
+      if (!snap.metadata.fromCache) rs._server = true;
+      if (rs._seen && prevKeys.length===newKeys.length && newKeys.every(function(k){ return prevMap[k]===map[k]; })){ if (rs.key==='prospects') qsrFocusRun(); return; }
       rs._seen = true;
       list.sort(rs.sort);
       state[rs.key] = list;
       rs.synced = map;
       saveJSON(rs.ls, list);
-      if (rs.key==='prospects') dlAutoAdd();
+      if (rs.key==='prospects'){ dlAutoAdd(); qsrFocusRun(); }
       if (snap.metadata.hasPendingWrites || isTypingInApp()) return;
       renderSoon();
     }, syncFail);
@@ -1300,6 +1301,7 @@
           if (data.paramLibrary) state.paramLibrary = data.paramLibrary;
           if (data.targets) state.targets = data.targets;
           if (data.reauditOverrides) state.reauditOverrides = data.reauditOverrides;
+          if (!snap.metadata.fromCache){ cfgServer = true; setTimeout(qsrFocusRun, 0); }
         } else {
           state[name] = data.list || [];
         }
@@ -3166,7 +3168,7 @@
       '<div class="helper" style="margin-bottom:14px;margin-top:6px;">Set what you\'re aiming for this month. Revenue is worked out from your clients: the price you enter when you mark a client as converted counts in the month it was converted, and a monthly retainer counts every month while that client stays active.</div>' +
       '<div style="display:flex; gap:12px; margin-bottom:6px;">' +
         '<div class="field" style="flex:1;"><label>Revenue target ('+esc(state.pricing.currency)+')</label><input type="number" min="0" data-target="revenue" value="'+(state.targets.revenue||0)+'"></div>' +
-        '<div class="field" style="flex:1;"><label>Clients to onboard</label><input type="number" min="0" data-target="clients" value="'+(state.targets.clients||0)+'"></div>' +
+        '<div class="field" style="flex:1;"><label>'+(state.targets.qsrFocus ? 'QSR clients to onboard' : 'Clients to onboard')+'</label><input type="number" min="0" data-target="clients" value="'+(state.targets.clients||0)+'"></div>' +
       '</div>' +
       '<div class="field" style="max-width:150px;margin-bottom:28px;"><label>Currency symbol</label><input type="text" maxlength="3" data-pricing="currency" value="'+esc(state.pricing.currency)+'"></div>' +
       '<h1 style="font-size:20px;margin:0 0 4px;">Travel</h1>' +
@@ -3890,7 +3892,7 @@
     computeDueList().forEach(function(x){ if (x.dueAt < Date.now()) dueKeys[x.key] = true; });
     var out = [];
     state.prospects.forEach(function(p){
-      if (p.declined || p.engagementEnded || !(p.name||'').trim()) return;
+      if (p.declined || p.engagementEnded || isParked(p) || !(p.name||'').trim()) return;
       var score = 0, why = [], key = norm(p.name);
       var ov = (p.followUps||[]).filter(function(f){ return !f.done && f.date && (f.date<today || (f.date===today && f.time && f.time<nowMin)); }).length;
       if (ov){ score += Math.min(ov,3)*3; why.push(ov+' overdue follow-up'+(ov>1?'s':'')); }
@@ -4202,13 +4204,14 @@
       });
     }
 
-    var pipelineList = list.filter(function(p){ return !p.converted; });
+    var parkedList = list.filter(isParked);
+    var pipelineList = list.filter(function(p){ return !p.converted && !isParked(p); });
     var clientsList = list.filter(function(p){ return p.converted; });
     var pipelineAuditedCount = pipelineList.filter(function(p){ return !!p.auditId; }).length;
     var pipelineDeclinedCount = pipelineList.filter(function(p){ return p.declined; }).length;
     var pipelineLeadCount = pipelineList.filter(function(p){ return !!p.leadId && !p.declined; }).length;
     var pf = state.pipelineFilter || 'all';
-    var pipelineShown = pipelineList.filter(function(p){ return pf==='audited' ? !!p.auditId : (pf==='declined' ? !!p.declined : (pf==='leads' ? (!!p.leadId && !p.declined) : true)); });
+    var pipelineShown = pf==='parked' ? parkedList : pipelineList.filter(function(p){ return pf==='audited' ? !!p.auditId : (pf==='declined' ? !!p.declined : (pf==='leads' ? (!!p.leadId && !p.declined) : true)); });
     var clientKeys = {};
     clientsList.forEach(function(p){ clientKeys[(p.name||'').trim().toLowerCase()] = true; });
     var clientsDueSoon = computeDueList().filter(function(x){ return clientKeys[x.key] && x.dueAt<=Date.now()+7*24*60*60*1000; }).length;
@@ -4289,8 +4292,11 @@
         '<button type="button" class="stattile t-good" data-action="prospects-tab" data-tab="clients"><div class="v">'+clientsList.length+'</div><div class="k">Converted ›</div></button>' +
         '<button type="button" class="stattile'+(pipelineDeclinedCount?' t-bad':'')+(pf==='declined'?' on':'')+'" data-action="pipeline-filter" data-val="declined"><div class="v">'+pipelineDeclinedCount+'</div><div class="k">Not Converted</div></button>' +
         '<button type="button" class="stattile'+(pf==='leads'?' on':'')+'" data-action="pipeline-filter" data-val="leads"><div class="v">'+pipelineLeadCount+'</div><div class="k">From lead finder</div></button>' +
+        (parkedList.length ? '<button type="button" class="stattile'+(pf==='parked'?' on':'')+'" data-action="pipeline-filter" data-val="parked"><div class="v">'+parkedList.length+'</div><div class="k">Parked</div></button>' : '') +
       '</div>' +
-      (pf!=='all' ? '<div class="helper" style="margin:-6px 0 12px;">Showing '+(pf==='audited'?'audited':(pf==='leads'?'lead-finder':'not converted'))+' only — tap the tile again to see everyone.</div>' : '') +
+      qsrFocusNoteHtml() +
+      (pf==='parked' ? '<div class="helper" style="margin:-6px 0 12px;">Set aside while the focus is QSRs and hotels. Each one comes back to the pipeline on its own on the date shown, or tap Un-park to bring it back now.</div>'
+        : (pf!=='all' ? '<div class="helper" style="margin:-6px 0 12px;">Showing '+(pf==='audited'?'audited':(pf==='leads'?'lead-finder':'not converted'))+' only — tap the tile again to see everyone.</div>' : '')) +
       (pipelineShown.length===0 ? (pf!=='all' ? '<div class="empty"><div class="big">🔎</div>Nothing here yet.</div>' : '<div class="empty"><div class="big">🎯</div>No clients yet.<br>Add one to start tracking your pipeline.</div>') :
         pipelineShown.map(function(p){
           var st = prospectStatus(p);
@@ -4298,7 +4304,7 @@
           var stColor = { good:'var(--good)', bad:'var(--bad)', warn:'var(--accent)' }[st.tone] || 'var(--line)';
           var nextFu = openFollowUps(p)[0];
           // A fresh lead from the finder never has a contact person yet, so the "Missing" nag waits until it is audited.
-          var missing = (p.leadId && !p.auditId) ? [] : prospectProblems(p);
+          var missing = ((p.leadId || p.qsrImport) && !p.auditId) ? [] : prospectProblems(p);
           var who = [p.contactName, p.contactDesignation].filter(function(x){ return (x||'').trim(); }).map(esc).join(' · ');
           var btns = contactButtons(p);
           return '<div class="card histcard pcard" style="border-left:3px solid '+stColor+';" data-action="open-prospect" data-id="'+p.id+'">' +
@@ -4310,7 +4316,8 @@
             (!p.declined && p.plannedAuditDate ? '<div class="histmeta">⭐ Audit day: '+fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime())+plannedTimeSuffix(p)+'</div>' : '') +
             (nextFu ? '<div class="histmeta">📞 Next follow-up: '+esc(fmtFollowUpWhen(nextFu))+(nextFu.note?' — '+esc(nextFu.note):'')+(p.declined ? '' : ' <span class="pill '+followUpTone(nextFu).tone+'">'+followUpTone(nextFu).label+'</span>')+'</div>'
               : (p.declined && p.followUpDate ? '<div class="histmeta">📞 Follow up: '+fmtDateShort(new Date(p.followUpDate+'T00:00:00').getTime())+'</div>' : '')) +
-            (missing.length ? '<div class="pcard-missing">Missing: '+esc(missing.join(', '))+'</div>' : '') +
+            (missing.length && !isParked(p) ? '<div class="pcard-missing">Missing: '+esc(missing.join(', '))+'</div>' : '') +
+            (isParked(p) ? '<div class="histmeta">⏸ Parked'+(p.parked.reason ? ' — '+esc(p.parked.reason) : '')+(p.parked.until ? ' · back on '+fmtDateShort(new Date(p.parked.until+'T00:00:00').getTime()) : '')+' <button type="button" class="btn btn-text btn-sm" style="padding:2px 4px;" data-action="unpark-prospect" data-id="'+p.id+'">Un-park</button></div>' : '') +
             '<div class="pcard-foot">'+(btns ? '<span class="contactrow">'+btns+'</span>' : '<span></span>')+'<span class="furow-open">Open ›</span></div>' +
             '<div style="display:flex;gap:8px;margin-top:10px;">' +
               '<button type="button" class="qbtn ok" data-action="quick-convert" data-id="'+p.id+'">✓ Mark converted</button>' +
@@ -4580,7 +4587,10 @@
     return t;
   }
   function fmtFollowUpWhen(f){ return fmtDateShort(new Date(f.date+'T00:00:00').getTime())+(f.time?' · '+fmtTime12(f.time):''); }
+  // Parked = set aside until a date (dine-in prospects while the focus is QSR and hotels). It drops out of the pipeline, The Day and reminders, and comes back by itself on that date.
+  function isParked(p){ return !!(p && p.parked && !p.converted && (!p.parked.until || p.parked.until > todayISO())); }
   function openFollowUps(p){
+    if (isParked(p)) return [];
     return (p.followUps||[]).filter(function(f){ return !f.done && f.date; }).sort(function(a,b){ return followUpDueAt(a)-followUpDueAt(b); });
   }
   // A service with a recurring visit cadence (weekly/monthly) auto-schedules its next follow-up here —
@@ -4787,7 +4797,7 @@
   function computeFollowUpPlanRaw(){
     var cfg = planCfg(), today = todayISO(), items = [];
     state.prospects.forEach(function(p){
-      if (p.converted || p.declined) return;
+      if (p.converted || p.declined || isParked(p)) return;
       (p.followUps||[]).forEach(function(f){ if (!f.done && !f.serviceRecurring && f.date) items.push({ p:p, f:f }); });
     });
     function key(x){ return x.f.date+' '+(x.f.time||'99:99'); }
@@ -5062,6 +5072,7 @@
       '<div class="eyebrow">Client</div>' +
       '<h1 style="font-size:24px;margin-top:6px;margin-bottom:4px;">'+esc(p.name||'Unnamed client')+serviceBadgeHtml(p)+'</h1>' +
       (p.updatedAt ? '<div class="helper" style="margin:0 0 12px;">Updated '+fmtRelativeTime(p.updatedAt)+'</div>' : '') +
+      (isParked(p) ? '<div class="card" style="padding:10px 14px;margin-bottom:12px;border-color:var(--accent);">⏸ <b>Parked</b>'+(p.parked.reason ? ' — '+esc(p.parked.reason) : '')+(p.parked.until ? '. Comes back to the pipeline on '+fmtDateShort(new Date(p.parked.until+'T00:00:00').getTime())+'.' : '')+' <button type="button" class="btn btn-ghost btn-sm" style="margin-left:6px;" data-action="unpark-prospect" data-id="'+p.id+'">Un-park now</button></div>' : '') +
       ((audits.length || clientCostEntries(p).length) ? '<div style="margin:0 0 12px;"><button class="btn btn-ghost btn-sm" data-action="print-client-pack" data-id="'+p.id+'">📦 Client pack (PDF)</button></div>' : '') +
       '<div class="jumpbar">' +
         [['Contact','Point of Contact'],['Parameters','Parameters'],['Follow-ups','Follow-ups']].concat(audits.length ? [['Timeline','Timeline'],['Next actions','Recommended Next Actions'],['Proposal','Proposal & conversion']] : [])
@@ -5078,6 +5089,7 @@
         '<div class="field"><label>Category'+req+'</label><div class="catrow">' +
           templateKeys().map(function(k){ return '<button type="button" class="naBtn '+(p.category===k?'on':'')+'" style="padding:9px 16px;font-size:13px;" data-action="set-prospect-category" data-val="'+esc(k)+'">'+esc(state.templates[k].label)+'</button>'; }).join('') +
         '</div></div>' +
+        (p.category==='qsr' ? '<div class="field"><label for="pSeats">Dine-in seats</label><input id="pSeats" type="number" min="0" inputmode="numeric" data-bind-prospect="seats" value="'+esc(p.seats||'')+'" placeholder="e.g. 8"><div class="helper" style="margin-top:4px;">Focus: QSRs with a small dine-in (about 6–10 seats). Takeaway or delivery only (0 seats) isn\'t a fit — mark it not converted.</div></div>' : '') +
         '<div class="field"><label for="pAddress">Address'+req+'</label><input id="pAddress" data-bind-prospect="address" value="'+esc(p.address)+'" placeholder="Full address"></div>' +
       '</div>' +
       sh('👤','Point of Contact') +
@@ -6227,7 +6239,7 @@
   }
   function dlMakeProspect(l, id){
     var svc = findService(l.service);
-    var category = (l.format==='dinein' || l.format==='bar') ? 'dinein' : 'qsr';
+    var category = (l.format==='dinein' || l.format==='bar') ? 'dinein' : (l.format==='hotel' ? 'hotel' : 'qsr');
     return { id: id || uid(), name: l.name||'', location: l.city||'', address: [l.area, l.city].filter(Boolean).join(', '),
       category: category, auditId:null,
       plannedAuditDate:'', checkinNote: 'Lead ('+(l.runDate||'')+'): '+(l.signal||'')+(l.reach ? ' | Reach: '+l.reach : ''),
@@ -6236,7 +6248,7 @@
       servicesOffered: svc ? svc.id : '', pricingType:'', proposalStatus:'', proposalMeetingDate:'', auditsPerMonth:'',
       contactName:'', contactDesignation:'', contactMobile: isValidMobile(l.phone) ? normalizeMobile(l.phone) : '', leadId: l._id,
       inquiry: [dlInquiryEntry(l, category)], leadInquiryAdded: true,
-      followUps: [dlFirstFollowUp(l)], leadFollowUpAdded: true, leadOpener: l.opener||'' };
+      followUps: [dlFirstFollowUp(l)], leadFollowUpAdded: true, leadOpener: l.opener||'', qsrChecked: true };
   }
   // The first touch, so a new lead shows up on The Day instead of sitting silently in the pipeline.
   function dlFirstFollowUp(l){
@@ -6292,6 +6304,178 @@
       }).catch(function(){}).then(function(){ delete dlAutoBusy[l._id]; });
     });
     if (changed){ persistProspects(); renderSoon(); }
+  }
+  // ---- QSR focus (Oct 2026): from now on the pipeline is QSRs (small dine-in) and hotels; dine-in waits 6 months ----
+  // Runs once, on the signed-in device, after the cloud copy of the clients and settings has loaded:
+  // parks every unconverted prospect that isn't a QSR or hotel (never deletes, never touches paying clients),
+  // adds the QSR prospect list with first calls spread over the next 30 days, and sets the monthly target to 20.
+  var QSR_FOCUS_UNTIL = '2027-04-10';
+  var QSR_NOT_FIT = /cloud kitchen|delivery[- ]only|only delivery|take[- ]?away[- ]only|only take[- ]?away|no seating|no dine|delivery kitchen/i;
+  // [name, city, area, what they serve, Google rating, Google reviews, phone, address, source]
+  var QSR_IMPORT = [["Retro Kafe","Panchkula","Amravati Enclave","Street food, momos & Chinese · Zomato dine-in 3.8 (14), delivery 3.7 (242)","","","+917696699979","Kiosk 6, DLF Valley Market, Amravati Enclave, Panchkula","https://www.zomato.com/chandigarh/retro-kafe-1-amravati-enclave-panchkula/reviews"],
+    ["SubnSip","Panchkula","Mansa Devi","Subs, sandwiches & shakes","4.8","71","","Mansa Devi Complex, 1st floor, dss 105, Mansa Devi Complex, Sector 5, Panchkula, Haryana 134114, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["The Drink Space","Panchkula","Sector 14","Fast food, wraps & shakes · Zomato dine-in 3.1 (15), delivery 3.5 (340)","","","+917030020400","Booth 221, Sector 14, Panchkula","https://www.zomato.com/chandigarh/the-drink-space-sector-14-panchkula/reviews"],
+    ["Rollsnation","Panchkula","Sector 15","Rolls & wraps","4.6","50","+91 98155 14953","Shop No 192, Sector 15, Panchkula, Haryana 134113, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Sai Soya Chaap Delight & mr.& Mrs.cafe","Panchkula","Sector 15","Soya chaap & café snacks","4.2","22","+91 98772 56359","Street vendor zone, near Jain bhawan, Sector 15, Panchkula, Haryana 134113, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Harvi's Pizza","Panchkula","Sector 15","Pizza · Zomato dine-in 4.3 (399), delivery 3.8 (4,054)","","","+916283345949","SCO 12, Sector 15, Panchkula","https://www.zomato.com/chandigarh/harvis-pizza-1-sector-15-panchkula/reviews"],
+    ["Momo Delights","Panchkula","Sector 15","Momos & street food · Zomato dine-in 3.9 (226), delivery 4.2 (2,799)","","","+917696862630","Booth 179, Sector 15, Panchkula","https://www.zomato.com/chandigarh/momo-delights-sector-15-panchkula/reviews"],
+    ["Chaaplicious Restaurant Panchkula Sector 16","Panchkula","Sector 16","Soya chaap","4","14","+91 98887 44766","SCO 182, Sector 16, Panchkula, Haryana 134113, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Vishal Noodle Corner","Panchkula","Sector 20","Chinese & noodles","3.3","47","+91 94639 39572","Booth No. 221, Sector 20, Panchkula, Haryana 134117, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Fresh Pantry","Panchkula","Sector 20","Fast food","3.6","39","+91 98889 92345","Gh-79, Sector 20, Panchkula, Fatehpur, Haryana 134117, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Mahaveer Ji Malai Chaap Wale Sector 20 Panchkula","Panchkula","Sector 20","Soya chaap","3.8","48","+91 70271 63631","Booth No, 209, Sector 20, Panchkula, Haryana 134117, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Veer Ji Malai Chaap Wale Panchkula Sector 20","Panchkula","Sector 20","Soya chaap","3.5","104","+91 84270 11020","Booth No 209, Sector 20, Panchkula, Haryana 134117, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Get Desserted - Waffles, Brownies & More! Sector 20 Panchkula","Panchkula","Sector 20","Waffles, brownies & desserts","4.7","50","+91 98788 10646","Shop No. 222, Sector 20, Panchkula, Haryana 134117, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Too Much Punjabi","Panchkula","Sector 25","North Indian, rolls & fast food · Zomato dine-in 4.3 (53), delivery 3.4 (2,418)","","","+919915528888","Booth 11, Near Ojas Hospital, Sector 25, Panchkula","https://www.zomato.com/chandigarh/too-much-punjabi-sector-25-panchkula/reviews"],
+    ["Shadow Wok","Panchkula","Sector 4","Chinese","4.7","54","+91 89686 93647","312, second floor, 13, Haripur, Sector 4, Panchkula, Haryana 134112, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["THE PIZZAA STORY","Panchkula","Sector 4","Pizza & sandwiches","5","86","+91 99153 67694","SHOP NO 42, REHDI MARKET, Sector 4, Panchkula, Haryana 134112, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["The dora cafe","Panchkula","Sector 5","Ice cream & desserts","4.9","32","","PV23+J36, Sector 5, Panchkula, Judian, Haryana 134109, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Motu Kulfi","Panchkula","Sector 5","Kulfi & desserts","4.5","44","+91 95924 35924","Booth no. 8, Night Food Street, Sector 5, Panchkula, Judian, Haryana 134109, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Flavors","Panchkula","Sector 6","Fast food","3.7","83","+91 99159 20000","Shop No. 7, Sector 6, Panchkula, Haryana 134109, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Degchi","Panchkula","Sector 6","North Indian, rolls & Chinese · Zomato dine-in 3.9 (216)","","","+911722590222","SCF 63, Sector 6, Panchkula","https://www.zomato.com/chandigarh/degchi-sector-6-panchkula/reviews"],
+    ["Crisparos ( The London Bakery)","Panchkula","Sector 7","Bakery & desserts","4.2","15","+91 73075 33504","Booth No.7, near Jindal Chemist, Sector 7, Panchkula, Judian, Haryana 134109, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["SS Combo Kitchen","Panchkula","Sector 9","Combo meals / fast food","4.5","57","+91 81468 96539","BOTH NO :- 32, Sector 9, Panchkula, Haryana 134113, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["King Of Subs","Panchkula","Sector 9","Subs, burgers & rolls · Zomato dine-in 4.2 (51), delivery 3.7 (3,082)","","","+917009227623","SCO 205, Floor 1, Sector 9, Panchkula","https://www.zomato.com/chandigarh/king-of-subs-sector-9-panchkula/reviews"],
+    ["Burgrill - OG's of Grilled Burger","Panchkula","Sector 9","Grilled burgers & wraps (also an outlet in Sector 67 Mohali) · Zomato dine-in 4.0 (795), delivery 4.1 (20.1K)","","","+911724186310","DSS 310, Sector 9, Panchkula","https://www.zomato.com/chandigarh/burgrill-ogs-of-grilled-burger-sector-9-panchkula/reviews"],
+    ["RB Rolls and Fast Food","Chandigarh","","Rolls & fast food","4.8","69","+91 82872 63976","Booth no 9, pocket 4, phase-2, omaxe, New Chandigarh, Ranai Majra, Punjab 140901, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Mohit kulfi faluda and milk badam","Chandigarh","Sector 15","Kulfi, falooda & milk badam","4.4","24","","QQ2C+VXJ, Sector 15-A, Sector 15, Chandigarh, 160015, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Food&fire","Chandigarh","Sector 20","Fried chicken & burgers","5","53","+91 87279 88434","Booth no 270, Azad Market, 33A, Sector 20, Chandigarh, 160020, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["China Town Fast Food.","Chandigarh","Sector 20D","Chinese & fast food","4.1","47","+91 98030 07132","Booth No. 359, Azad Market, Sector 20D, Sector 20, Chandigarh, 160020, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Devanchal fast food Sector20 D chandigarh","Chandigarh","Sector 20D","Fast food (snacks, Chinese)","4.1","106","+91 98883 91844","Booth no 389, Azad Market, Sector 20D, Sector 20, Chandigarh, 160020, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Sai Fresh 'N' Fries","Chandigarh","Sector 20D","Fries & fast food","4.2","26","+91 82888 99922","Booth No. 259, Azad Market, Sector 20D, Sector 20, Chandigarh, 160020, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Dumpling Hood","Chandigarh","Sector 20D","Momos & dumplings","4.3","64","","Shop Number 30, Sector 20D, Sector 20, Chandigarh, 160020, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Shawarma 44","Chandigarh","Sector 34C","Shawarma & wraps","4.9","9","+91 77105 75312","Shop no 148, Sector 34C, Sector 34, Chandigarh, 160022, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Sandwich Story","Chandigarh","Sector 35","Sandwiches","4.6","55","+91 70875 07555","Shop No.16, 35C, Sector 35, Chandigarh, 160022, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["The Chaap Box","Chandigarh","Sector 46C","Soya chaap","4.4","103","+91 90345 05100","Booth no. 33, Sector 46C, Sector 46, Chandigarh, 160047, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Gulshan Ice-cream Corner","Chandigarh","Sector 47 D","Ice cream & desserts","4.3","22","+91 98762 98907","Sector 47 D, Sector 47 A, Sector 47 D, Sector 47, Chandigarh, 160047, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Egg Cult","Chandigarh","Sector 8","Egg dishes & sandwiches","4.5","101","+91 172 434 3634","8B, 8B, Sector 8, Chandigarh, 160009, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Biggies Burger: Zirakpur","Zirakpur","","Burgers","4.8","43","","Counter no. 18, Cosmo Mall, ZIrakpur- Chandigarh, Highway, Zirakpur, Punjab 140603, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Bobba Bobba & Hungroo Cafe","Zirakpur","","Chinese, momos & bubble tea","4.7","40","+91 77173 14292","Shop No. 1&2, Shopping Centre, High Ground Rd, Nabha, Zirakpur, Punjab 140603, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["VIP JUICE & SHAKES BAR","Zirakpur","","Juices & shakes","5","9","","Block -C, Royale Palm, Scf No, VIP Rd, Zirakpur, Punjab 140603, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Authentic Sikkim Momo","Zirakpur","","Momos","4.8","59","+91 98772 09838","shop no 5, ground floor, near patiala house, Silver City Main, Zirakpur, Punjab 140603, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Momo Buds","Zirakpur","","Momos","4.9","12","","Shop No.9, Kesri plaza, vip r we road, Zirakpur, Punjab 140603, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Momo Fusion","Zirakpur","","Momos","5","21","+91 76969 12365","Shop no-1, Dua Square, VIP Rd, near bansal plaza, Zirakpur, Punjab 140603, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Momos Hunter","Zirakpur","","Momos","4.4","13","+91 81465 52877","Deen Plaza, High Ground Rd, Zirakpur, Punjab 140603, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Brewzaar -The Pizza & Burgers","Zirakpur","","Pizza & burgers","4.9","21","+91 70093 41549","Shop no 09, lottery markets, near lucky inn hotel, Utrathiya, Zirakpur, Punjab 160104, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Harpal chap king","Zirakpur","","Soya chaap","3.9","11","+91 94635 50119","JRQ8+786, VIP Rd, Zirakpur, Punjab 140603, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Soya King","Zirakpur","","Soya chaap","4.1","104","+91 91155 10044","SHOP NO. 37, Block D, Citi Center, VIP Rd, Zirakpur, Chandigarh, Sahibzada Ajit Singh Nagar, Punjab 140603, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Wrap and Shake","Zirakpur","","Wraps & shakes","4.9","38","+91 62391 11530","Apple's Height, SCO 35B, VIP Rd, Zirakpur, Punjab 140603, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["TWENTY TWENTY Fast Food","Zirakpur","Baltana","Chinese & fast food","3.4","23","","Walia complex, Peer Baba Rd, Baltana, Sector 19, Panchkula, Zirakpur, Punjab 140604, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Pizza Wings","Zirakpur","Dhakoli","Pizza · Zomato dine-in 3.8 (26), delivery 4.1 (8,730)","","","+919915703330","88, Ground Floor, Guru Nanak Enclave, Dhakoli, Zirakpur","https://www.zomato.com/chandigarh/pizza-wings-dhakoli-zirakpur/reviews"],
+    ["Wah Ji Wah","Zirakpur","Dhakoli","North Indian, Chinese & momos · Zomato dine-in 3.6 (12), delivery 3.8 (3,048)","","","+918289004191","Shop 85, SAS Nagar, Dhakoli, Zirakpur","https://www.zomato.com/chandigarh/wah-ji-wah-1-dhakoli-zirakpur/reviews"],
+    ["CUP AND CONE","Zirakpur","Highland Marg","Ice cream & desserts","5","14","+91 87259 56768","Highland Marg, opposite OASIS GREENS, Zirakpur, Nabha, Punjab 140603, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Momo Xpress","Zirakpur","Lohgarh","Momos","5","9","+91 77106 00051","No. 38, Top Floor, Metro Plaza Citi Market, Lohgarh Rd, Zirakpur, Punjab 140603, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Pizza pie","Zirakpur","Lohgarh","Pizza","4.5","83","+91 94646 31384","150, NK Sharma Rd, near johan public school, Badal Colony, Lohgarh, Zirakpur, Punjab 140603, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Biryani Queen","Zirakpur","Peer Muchalla","Biryani","4.7","28","+91 99884 46425","603, Midtown business Park, Peer Muchalla, Zirakpur, Punjab 160104, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Raju Chinese Food | Peer Muchalla","Zirakpur","Peer Muchalla","Chinese & fast food","3.5","89","","Shop No. 5, D, Market Rd, opposite Peer Dargah, Peer Muchalla, Zirakpur, Fatehpur, Punjab 160104, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["King's Pizza & Cafe","Zirakpur","VIP Road","Pizza, burgers & wraps · Zomato dine-in 4.1 (27)","","","+918288815444","Shop 37, Ground Floor, Chandigarh City Center, VIP Road, Zirakpur","https://www.zomato.com/chandigarh/kings-pizza-cafe-vip-road-zirakpur/reviews"],
+    ["Pizza Perk's By Hangry","Zirakpur","VIP Road","Pizza · Zomato dine-in 3.8 (14), delivery 3.6 (105)","","","+918725988451","SCF-1, Ground Floor, Hollywood Plaza, VIP Road, Zirakpur","https://www.zomato.com/chandigarh/pizza-perks-by-hangry-vip-road-zirakpur/reviews"],
+    ["Roms Pizza","Zirakpur","VIP Road","Pizza & burgers · Zomato dine-in 3.6 (8), delivery 3.7 (433)","","","+919896447077","Shop 234, Upper Ground Floor, Devaji Plaza, VIP Road, Zirakpur","https://www.zomato.com/chandigarh/roms-pizza-1-vip-road-zirakpur/reviews"],
+    ["Pizza Place | Sec 88 Mohali","Mohali","","Pizza","4.9","30","+91 90412 77196","Both No 84, Sec 88, Sahibzada Ajit Singh Nagar, Punjab 140308, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["RDX Fast Food","Mohali","Kharar Road","Chinese, momos & rolls · Zomato dine-in 4.3 (41), delivery 3.7 (17.8K)","","","+919915832926","Shop B5, First Floor, Acme Western Homes, Kharar Road, Mohali","https://www.zomato.com/chandigarh/rdx-fast-food-kharar-road-mohali/reviews"],
+    ["Muskan Chicken Point","Mohali","Kharar Road","Chicken, biryani & Mughlai · Zomato dine-in 3.7 (25), delivery 3.5 (1,997)","","","+917088130079","Desumajra, Kharar Road, Mohali","https://www.zomato.com/chandigarh/muskan-chicken-point-kharar-road-mohali/reviews"],
+    ["Burger Engineers Pure Veg","Mohali","Phase 10","Burgers (veg)","4.9","18","+91 99889 61932","Booth No. 11, Phase 10, Sector 64, Sahibzada Ajit Singh Nagar, Punjab 160062, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Ice Pice","Mohali","Phase 10","Ice cream & desserts","4","104","+91 93130 62001","Booth no. 171, near SARAO HOTEL, Phase 10, Sector 64, Sahibzada Ajit Singh Nagar, Punjab 160062, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["The Shawarma Bar","Mohali","Phase 3B","Shawarma & wraps","3.8","68","","PP69+WM2, Unnamed Road, Phase 3B-1, Sector 60, Sahibzada Ajit Singh Nagar, Punjab 160059, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["The Shawarma king","Mohali","Phase 3B","Shawarma & wraps","4.5","22","","near pal dhaba, Phase 3B-2, Balongi, Sahibzada Ajit Singh Nagar, Punjab 160059, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Peggy Ice Cream","Mohali","Phase 3B1","Ice cream & desserts","4.1","83","+91 99150 07777","Sco 28, near CP67 Mall, Phase 3B1, Sector 68, Kumbra, Sahibzada Ajit Singh Nagar, Punjab 160062, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Shawarma Wala","Mohali","Phase 3B2","Shawarma & wraps","3","32","","Booth no 159, Phase 3B2, Phase 3B-2, Sector 60, Sahibzada Ajit Singh Nagar, Punjab 160059, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Frullato Thick Shakes • Desserts","Mohali","Phase 3B2","Thick shakes & desserts","3.2","63","","Phase 3B2, Phase 3B-2, Market, Sector 60, Sahibzada Ajit Singh Nagar, Punjab 160059, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Waffle express","Mohali","Phase 3B2","Waffles & desserts","4.7","15","+91 99151 09944","Scf-94, Phase 3B2, Phase 3B-2, Sector 60, Sahibzada Ajit Singh Nagar, Punjab 160059, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Mr. Momos","Mohali","Phase 5","Momos","3.8","17","","Booth No, 23, Phase 5, Sector 59, Sahibzada Ajit Singh Nagar, Punjab 160059, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Burger Blast","Mohali","Phase 5","Burgers, sandwiches & rolls · Zomato dine-in 3.7 (10), delivery 4.3 (99)","","","+917986221936","Shop 8, Building 97, Shahi Majra, Sector 58, Phase 5, Mohali","https://www.zomato.com/chandigarh/burger-blast-phase-5-mohali/reviews"],
+    ["FRANZEE MOMOS","Mohali","Sector 125","Momos","4.9","58","+91 96025 02508","in front of SCO-16, near Sanatan Dharam Mandir, Sector 125, Sunny Enclave, Sahibzada Ajit Singh Nagar, Kharar, Punjab 140301, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Balaji Food Arts & Balaji Soya chaap","Mohali","Sector 61","Soya chaap","4.8","16","","Shop no 266,265,264, ABIN Real estate, Flower market, Sector 61, Sahibzada Ajit Singh Nagar, Punjab 160062, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["XBurgers Outlet","Mohali","Sector 62","Burgers","4.1","30","","Fourth Floor, Mohali Walk Mall, Sector 62, Sahibzada Ajit Singh Nagar, Punjab 160062, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Lub Lub - World Of Shawarmas","Mohali","Sector 66A","Shawarma & Lebanese · Zomato dine-in 4.2 (36), delivery 4.3 (703)","","","+918501000064","Booth 89, Airport Road, Sky Gardens, Sector 66A, Mohali","https://www.zomato.com/chandigarh/lub-lub-world-of-shawarmas-sector-82-mohali/reviews"],
+    ["Chai Peeney Chalein","Mohali","Sector 79","Chai, burgers & wraps · Zomato dine-in 3.8 (10), delivery 3.6 (180)","","","+917719603340","Booth 70, Sector 79, Mohali","https://www.zomato.com/chandigarh/chai-peeney-chalein-1-sector-67-mohali/reviews"],
+    ["Bareilly Ki Barfi","Mohali","Sector 82","Street food & fast food · Zomato dine-in 3.6 (43), delivery 3.8 (545)","","","+917785801111","SCO 81, JLPL Industrial Area, Sector 82, Mohali","https://www.zomato.com/chandigarh/bareilly-ki-barfi-sector-82-mohali/reviews"],
+    ["Hambuurg","Mohali","Sector 91","Burgers","5","24","+91 85449 45210","E251, Sector 91, Sahibzada Ajit Singh Nagar, Punjab 140307, India","Google Maps (QSR list, 10 Oct 2026)"],
+    ["Delhi Chaap Corner","Mohali","Sunny Enclave","Soya chaap","4.8","77","+91 80549 19011","Shop No. 6, no 3, near Jalvayu Tower Road South, Sunny Enclave, Sahibzada Ajit Singh Nagar, Kharar, Punjab 140301, India","Google Maps (QSR list, 10 Oct 2026)"]];
+  var cfgServer = false, qsrFocusBusy = false;
+  function qsrSlug(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 40); }
+  function qsrFocusText(p){ return [p.name, p.address, p.checkinNote, p.proposed].concat((p.inquiry||[]).map(function(e){ return e.problem; })).join(' '); }
+  // Day-by-day call slots for the next 30 days, using the follow-up planner's daily cap and times, minus calls already booked on that day.
+  function qsrSlots(n){
+    var cfg = planCfg(), booked = {}, out = [];
+    state.prospects.forEach(function(p){ openFollowUps(p).forEach(function(f){ booked[f.date] = (booked[f.date]||0)+1; }); });
+    for (var i=1; out.length<n && i<=60; i++){
+      var iso = addDaysISO(todayISO(), i);
+      var times = planSlots(iso, cfg, false).slice(booked[iso]||0);
+      if (i>30 && !times.length) times = planSlots(iso, cfg, false);
+      times.forEach(function(t){ if (out.length<n) out.push({ date:iso, time:t }); });
+    }
+    while (out.length<n) out.push({ date:addDaysISO(todayISO(), 30), time:'' });
+    return out;
+  }
+  function qsrMakeProspect(q, slot){
+    var name = q[0], city = q[1], area = q[2], what = q[3], phone = q[6], id = 'qsr'+qsrSlug(name+city);
+    var mob = isValidMobile(phone) ? normalizeMobile(phone) : '';
+    var where = area ? area+', '+city : city;
+    var opener = 'Hi, this is Abhishek from Diagnosis Room, Panchkula. I work with QSRs around '+where+' on the day-to-day systems (kitchen consistency, stock and wastage, rush-hour service). '+
+      'Would you like to try our free 60-second System Map for '+name+'? It shows which parts of the outlet run on a system and which depend on one person: https://abhishekand1111-prog.github.io/?src=lead — Abhishek, Diagnosis Room';
+    var lines = [
+      'QSR prospect list (Oct 2026) · '+what,
+      (q[4] ? 'Google: '+q[4]+'★'+(q[5] ? ' ('+q[5]+' reviews)' : '') : ''),
+      (phone ? 'Phone: '+phone : 'Phone: not listed — walk in'),
+      (q[7] ? 'Address: '+q[7] : ''),
+      (q[8] ? 'Source: '+q[8] : ''),
+      'First call: confirm the dine-in seating (about 6–10 seats fits; takeaway or delivery only is not a fit, mark it not converted), check their Zomato/Swiggy rating, offer the free System Map or a 20-minute floor walk.'
+    ];
+    return { id:id, name:name, location:city, address:q[7] || where, category:'qsr', auditId:null,
+      plannedAuditDate:'', checkinNote:'QSR list: '+what+(q[4] ? ' · Google '+q[4]+'★' : ''), proposed:'', priceMin:'', priceMax:'',
+      converted:false, convertedAt:null, declined:false, declinedAt:null, followUpDate:slot.date, finalPrice:'', timeline:'', createdAt:Date.now(),
+      servicesOffered:'', pricingType:'', proposalStatus:'', proposalMeetingDate:'', auditsPerMonth:'',
+      contactName:'', contactDesignation:'', contactMobile:mob, seats:'',
+      inquiry:[{ id:'qsrl_'+qsrSlug(name+city), area:'', problem:lines.filter(Boolean).join('\n'), action:'', createdAt:Date.now() }],
+      followUps:[{ id:'qsrfu_'+qsrSlug(name+city), date:slot.date, time:slot.time, note:'First '+(mob ? 'call / WhatsApp' : 'visit (walk in)')+': confirm 6–10 dine-in seats, offer the free System Map', done:false, doneAt:null, createdAt:Date.now() }],
+      leadOpener:opener, qsrImport:true, qsrChecked:true };
+  }
+  function qsrFocusRun(){
+    if (!fsDb || !state.authUser || !cfgServer || !RS.prospects.ready || !RS.prospects._server || qsrFocusBusy) return;
+    state.targets = state.targets || {};
+    if (state.targets.qsrFocus && state.targets.qsrFocus.done) return;
+    qsrFocusBusy = true;
+    var r = { done:true, at:Date.now(), kept:0, hotels:0, paying:0, parked:0, parkedNames:[], added:0, already:0, oldTarget:state.targets.clients||0, noteSeen:false };
+    state.prospects.forEach(function(p){
+      if (p.qsrChecked) return;
+      p.qsrChecked = true;
+      if (p.converted){ r.paying++; return; }
+      if (p.category==='hotel'){ r.hotels++; return; }
+      var reason = p.category==='qsr' ? (QSR_NOT_FIT.test(qsrFocusText(p)) ? 'Delivery or takeaway only' : '')
+        : (p.category==='dinein' ? 'Dine-in, revisit after 6 months' : 'Not marked QSR or hotel; un-park it if it is one');
+      if (!reason){ r.kept++; return; }
+      p.parked = { at:Date.now(), until:QSR_FOCUS_UNTIL, reason:reason }; p.updatedAt = Date.now();
+      r.parked++; if (r.parkedNames.length<60) r.parkedNames.push(p.name||'Unnamed client');
+    });
+    var have = {};
+    state.prospects.forEach(function(p){ have[qsrSlug(p.name)] = true; });
+    var todo = QSR_IMPORT.filter(function(q){
+      if (have[qsrSlug(q[0])] || findProspect('qsr'+qsrSlug(q[0]+q[1]))){ r.already++; return false; }
+      have[qsrSlug(q[0])] = true; return true;
+    });
+    var slots = qsrSlots(todo.length);
+    todo.forEach(function(q, i){ state.prospects.push(qsrMakeProspect(q, slots[i])); r.added++; });
+    state.targets.clients = 20;
+    state.targets.qsrFocus = r;
+    // Settings first: saving the clients can echo back an older settings snapshot before this one is written.
+    var tg = state.targets;
+    persistTargets(); persistProspects();
+    if (state.targets!==tg){ state.targets = tg; persistTargets(); }
+    qsrFocusBusy = false;
+    renderSoon();
+  }
+  function qsrFocusNoteHtml(){
+    var r = state.targets && state.targets.qsrFocus;
+    if (!r || !r.done || r.noteSeen) return '';
+    return '<div class="card" style="padding:12px 14px;margin:0 0 14px;border-color:var(--accent);background:var(--accent-soft);">' +
+      '<div style="font-weight:800;margin-bottom:4px;">🎯 Pipeline is now QSR + hotels</div>' +
+      '<div class="histmeta" style="margin:0;">Kept '+r.kept+' QSR'+(r.kept===1?'':'s')+(r.hotels ? ' and '+r.hotels+' hotel'+(r.hotels===1?'':'s') : '')+'. ' +
+        'Parked '+r.parked+' dine-in / other prospect'+(r.parked===1?'':'s')+' until '+fmtDateShort(new Date(QSR_FOCUS_UNTIL+'T00:00:00').getTime())+' '+QSR_FOCUS_UNTIL.slice(0,4)+' (tap <b>Parked</b> to see them; nothing was deleted). ' +
+        (r.paying ? r.paying+' converted client'+(r.paying===1?'':'s')+' left as they are. ' : '') +
+        'Added '+r.added+' QSR prospect'+(r.added===1?'':'s')+' with first calls over the next 30 days'+(r.already ? ' ('+r.already+(r.already===1 ? ' was' : ' were')+' already in your clients)' : '')+'. ' +
+        'Monthly target: 20 clients'+(r.oldTarget && r.oldTarget!==20 ? ' (was '+r.oldTarget+')' : '')+'.</div>' +
+      '<button type="button" class="btn btn-ghost btn-sm" style="margin-top:8px;" data-action="qsr-note-dismiss">Got it</button>' +
+    '</div>';
   }
   function lookupGroups(){
     function sortFn(a,b){ return (b.createdAt||0)-(a.createdAt||0); }
@@ -6367,11 +6551,11 @@
           alerts.push({ tone: stuckDays>=stuckLimit*2?'bad':'warn', icon:'⏳', text: (p.name||'Unnamed client')+' — '+stuckDays+' days on "'+LOOP_STEPS[loopTypeOf(p)].label+'", needs a nudge', action:'goto-prospect', id:p.id });
         }
       }
-      if (p.plannedAuditDate && p.plannedAuditDate<=todayStr && !p.auditId && !p.declined){
+      if (p.plannedAuditDate && p.plannedAuditDate<=todayStr && !p.auditId && !p.declined && !isParked(p)){
         var overdue = p.plannedAuditDate < todayStr;
         alerts.push({ tone: overdue?'bad':'warn', icon:'⭐', text: (p.name||'Unnamed client')+' — scheduled audit '+(overdue?'was due '+fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime()):'due today'+plannedTimeSuffix(p))+', needs check-in', action:'goto-prospect', id:p.id });
       }
-      if (p.proposalStatus==='meeting_scheduled' && p.proposalMeetingDate && p.proposalMeetingDate<=todayStr && !p.converted && !p.declined){
+      if (p.proposalStatus==='meeting_scheduled' && p.proposalMeetingDate && p.proposalMeetingDate<=todayStr && !p.converted && !p.declined && !isParked(p)){
         var mOverdue = p.proposalMeetingDate < todayStr;
         alerts.push({ tone: mOverdue?'bad':'warn', icon:'🤝', text: (p.name||'Unnamed client')+' — proposal meeting '+(mOverdue?'was due '+fmtDateShort(new Date(p.proposalMeetingDate+'T00:00:00').getTime()):'due today')+', follow up', action:'goto-prospect', id:p.id });
       }
@@ -6456,7 +6640,7 @@
       (hasTarget ? (
         targetProgressRow('Revenue', revenueMonth, t.revenue, esc(state.pricing.currency)) +
         (rev.total ? '<div class="histmeta" style="margin:-4px 0 10px;">'+esc(state.pricing.currency)+rev.retainer+' from monthly retainers · '+esc(state.pricing.currency)+rev.oneTime+' one-time</div>' : '') +
-        targetProgressRow('Clients onboarded', clientsMonth, t.clients, '')
+        targetProgressRow(t.qsrFocus ? 'QSR clients onboarded' : 'Clients onboarded', clientsMonth, t.clients, '')
       ) : '<div class="helper" style="margin:0;">No target set for this month yet — <span style="color:var(--accent-ink);font-weight:700;cursor:pointer;" data-action="go-pricing">set one in Settings →</span></div>') +
     '</div>';
   }
@@ -6465,7 +6649,7 @@
     var events = [];
     state.history.forEach(function(h){ if (h.finishedAt>=todayStartMs) events.push({ t:h.finishedAt, icon:'📋', tone:'accent', text:'Audited '+(h.storeName||'Unnamed store')+' — '+h.completionPct+'% score', action:'view-audit', id:h.id }); });
     state.prospects.forEach(function(p){
-      if ((p.createdAt||0)>=todayStartMs) events.push({ t:p.createdAt, icon:'➕', tone:'accent', text:'Added client '+(p.name||'Unnamed client'), action:'goto-prospect', id:p.id });
+      if ((p.createdAt||0)>=todayStartMs && !p.qsrImport) events.push({ t:p.createdAt, icon:'➕', tone:'accent', text:'Added client '+(p.name||'Unnamed client'), action:'goto-prospect', id:p.id });
       if (p.converted && (p.convertedAt||0)>=todayStartMs) events.push({ t:p.convertedAt, icon:'🎉', tone:'good', text:(p.name||'Unnamed client')+' converted to client', action:'goto-prospect', id:p.id });
       if (p.declined && (p.declinedAt||0)>=todayStartMs) events.push({ t:p.declinedAt, icon:'✗', tone:'bad', text:(p.name||'Unnamed client')+' marked not converted', action:'goto-prospect', id:p.id });
     });
@@ -6561,8 +6745,8 @@
     state.prospects.forEach(function(p){
       var nm = p.name || 'Unnamed client';
       openFollowUps(p).forEach(function(f){ add(f.date, f.time, '📞', 'accent', f.note||'Follow-up', nm+' · Follow-up', 'goto-prospect', p.id); });
-      if (p.plannedAuditDate && !p.auditId && !p.declined) add(p.plannedAuditDate, p.plannedAuditTime, '⭐', 'warn', 'Scheduled audit', nm, 'goto-prospect', p.id);
-      if (p.proposalStatus==='meeting_scheduled' && p.proposalMeetingDate && !p.converted && !p.declined) add(p.proposalMeetingDate, '', '🤝', 'warn', 'Proposal meeting', nm, 'goto-prospect', p.id);
+      if (p.plannedAuditDate && !p.auditId && !p.declined && !isParked(p)) add(p.plannedAuditDate, p.plannedAuditTime, '⭐', 'warn', 'Scheduled audit', nm, 'goto-prospect', p.id);
+      if (p.proposalStatus==='meeting_scheduled' && p.proposalMeetingDate && !p.converted && !p.declined && !isParked(p)) add(p.proposalMeetingDate, '', '🤝', 'warn', 'Proposal meeting', nm, 'goto-prospect', p.id);
     });
     allInvoices().forEach(function(x){ if (!x.inv.paid) add(invDue(x.inv), '', '💸', 'bad', 'Payment due: '+fmtMoney(invAmount(x.inv)), (x.p.name||'Client')+(x.inv.note?' · '+x.inv.note:''), 'goto-prospect', x.p.id); });
     state.prospects.forEach(function(p){ var sg = nextInvoiceSuggestion(p); if (sg) add(sg.date, '', '🧾', 'warn', 'Raise invoice: '+fmtMoney(sg.amount), (p.name||'Client')+(sg.retainer?' · monthly':''), 'goto-prospect', p.id); });
@@ -7400,6 +7584,13 @@
         if (qdP.declined){ qdP.converted = false; qdP.convertedAt = null; }
         persistProspects(); render();
       }
+    }
+    else if (action==='unpark-prospect'){
+      var upP = findProspect(t.dataset.id);
+      if (upP){ upP.parked = null; upP.updatedAt = Date.now(); persistProspects(); render(); }
+    }
+    else if (action==='qsr-note-dismiss'){
+      if (state.targets && state.targets.qsrFocus){ state.targets.qsrFocus.noteSeen = true; persistTargets(); render(); }
     }
     else if (action==='reactivate-prospect'){
       var rp = findProspect(state.activeProspectId);
