@@ -1888,7 +1888,8 @@
     var n = normalizeMobile(p.contactMobile);
     var first = String(p.contactName||'').trim().split(/\s+/)[0];
     // A lead from the finder that hasn't been audited yet opens WhatsApp with its ready-made opener.
-    var msg = opt.msg || ((p.leadOpener && !p.auditId) ? p.leadOpener : (first ? 'Hi '+first+', ' : ''));
+    // Openers saved before Oct 2026 were signed with another name; messages always go out as Prince Anand.
+    var msg = opt.msg || ((p.leadOpener && !p.auditId) ? p.leadOpener.replace(/\bAbhishek\b/g, 'Prince Anand') : (first ? 'Hi '+first+', ' : ''));
     var touch = opt.touch ? ' data-sm-touch="'+esc(opt.touch)+'"' : '';
     return '<a class="btn btn-ghost btn-sm" href="tel:+91'+n+'"'+touch+'>📞 Call</a>' +
       '<a class="btn btn-ghost btn-sm" href="https://wa.me/91'+n+(msg ? '?text='+encodeURIComponent(msg) : '')+'" target="_blank" rel="noopener"'+touch+'>💬 WhatsApp</a>';
@@ -6411,8 +6412,8 @@
     var name = q[0], city = q[1], area = q[2], what = q[3], phone = q[6], id = 'qsr'+qsrSlug(name+city);
     var mob = isValidMobile(phone) ? normalizeMobile(phone) : '';
     var where = area ? area+', '+city : city;
-    var opener = 'Hi, this is Abhishek from Diagnosis Room, Panchkula. I work with QSRs around '+where+' on the day-to-day systems (kitchen consistency, stock and wastage, rush-hour service). '+
-      'Would you like to try our free 60-second System Map for '+name+'? It shows which parts of the outlet run on a system and which depend on one person: https://abhishekand1111-prog.github.io/?src=lead — Abhishek, Diagnosis Room';
+    var opener = 'Hi, this is Prince Anand from Diagnosis Room, Panchkula. I work with QSRs around '+where+' on the day-to-day systems (kitchen consistency, stock and wastage, rush-hour service). '+
+      'Would you like to try our free 60-second System Map for '+name+'? It shows which parts of the outlet run on a system and which depend on one person: https://abhishekand1111-prog.github.io/?src=lead — Prince Anand, Diagnosis Room';
     var lines = [
       'QSR prospect list (Oct 2026) · '+what,
       (q[4] ? 'Google: '+q[4]+'★'+(q[5] ? ' ('+q[5]+' reviews)' : '') : ''),
