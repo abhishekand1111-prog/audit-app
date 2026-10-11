@@ -7036,6 +7036,8 @@
 
   // ---------- event delegation ----------
   app.addEventListener('click', function(e){
+    // Safari doesn't move focus off a date field when a button is tapped; release it so the held-back redraw can run.
+    if (dateEditing){ dateEditing = false; var dae = document.activeElement; if (dae && dae.type==='date'){ try{ dae.blur(); }catch(er){} } }
     // Calling or WhatsApp-ing a new call request counts as contacting it.
     var smTouch = e.target.closest('[data-sm-touch]');
     if (smTouch && fsDb){
