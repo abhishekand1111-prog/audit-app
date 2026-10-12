@@ -5980,7 +5980,7 @@
     var hi = 'Hi'+(first ? ' '+first : '')+', ';
     var msg = c.kind==='inquiry'
       ? hi+'thanks for getting in touch with Diagnosis Room'+(smBiz(c) ? ' about '+smBiz(c) : '')+'. '
-      : hi+'this is about the Snapshot Call you booked with Diagnosis Room'+(ct.date ? ' for '+smWhenLabel(c) : '')+'. ';
+      : (smIsSys(c) ? hi+'this is about the one-time system you asked about on the Diagnosis Room System Map. ' : hi+'this is about the Snapshot Call you booked with Diagnosis Room'+(ct.date ? ' for '+smWhenLabel(c) : '')+'. ');
     return contactButtons({ contactMobile: ct.phone, contactName: ct.name }, { msg: msg, touch: smOpen(c) && (c.status||'new')==='new' ? c._id : '' });
   }
   // Downloads an .ics file so the Snapshot Call lands in the phone's calendar with a reminder.
@@ -5995,7 +5995,7 @@
     var start = times[0] ? 'DTSTART:'+t(times[0]) : 'DTSTART;VALUE=DATE:'+ds;
     var end = times[1] ? 'DTEND:'+t(times[1]) : (times[0] ? 'DTEND:'+t(times[0]).slice(0,9)+String(Math.min(23, +times[0].split(':')[0]+1)).padStart(2,'0')+times[0].split(':')[1]+'00' : 'DTEND;VALUE=DATE:'+ndS);
     function icsEsc(v){ return String(v||'').replace(/\\/g,'\\\\').replace(/[,;]/g, function(m){ return '\\'+m; }).replace(/\n/g,'\\n'); }
-    var title = 'Snapshot Call: '+(ct.name||'')+(smBiz(c) ? ' ('+smBiz(c)+')' : '');
+    var title = smCallWord(c)+': '+(ct.name||'')+(smBiz(c) ? ' ('+smBiz(c)+')' : '');
     var desc = ['Phone: '+(ct.phone||''), 'Slot: '+(ct.slot||''), c.headline||''].filter(Boolean).join('\n');
     var ics = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Diagnosis Room//EN','BEGIN:VEVENT',
       'UID:'+c._id+'@diagnosisroom','DTSTAMP:'+new Date().toISOString().replace(/[-:]/g,'').split('.')[0]+'Z',
@@ -6019,6 +6019,7 @@
         '<div class="histmeta" style="margin-top:2px;">'+smMeta(c)+'</div></div>' +
         '<span class="sm-status st-'+esc(s)+'">'+esc(SM_STATUS[s]||s)+'</span></div>' +
       (ct.date ? '<div class="sm-when'+(due?' due':'')+'">📅 '+esc(smWhenLabel(c))+(due && ct.date<todayStr?' · overdue':'')+'</div>' : '') +
+      (smIsSys(c) ? '<div class="sm-head" style="font-weight:700;">🧩 Wants the one-time system</div>' : '') +
       (summary ? '<div class="sm-head sm-clip">'+(c.kind==='inquiry' ? '💬 ' : '')+esc(summary)+'</div>' : '') +
       '<div class="sm-btns">'+smContactButtons(c)+'<span class="furow-open" style="margin-left:auto;align-self:center;">Details ›</span></div>' +
     '</div>';
@@ -6126,7 +6127,7 @@
     }
     function row(k, v){ return v ? '<div class="sumrow"><span class="k">'+k+'</span><span class="v" style="text-align:right;">'+v+'</span></div>' : ''; }
     var title = isMap ? (c.restaurant||'Anonymous map') : (ct.name||'Unnamed');
-    var kindLabel = c.kind==='inquiry' ? 'Website inquiry' : (isMap ? 'System Map · no call booked' : 'Snapshot Call request');
+    var kindLabel = c.kind==='inquiry' ? 'Website inquiry' : (isMap ? 'System Map · no call booked' : (smIsSys(c) ? 'One-time system request · call back' : 'Snapshot Call request'));
     return '<main>' +
       '<button class="backrow" data-action="sm-back">← Back to calls</button>' +
       '<div class="eyebrow">'+esc(kindLabel)+'</div>' +
@@ -6210,6 +6211,9 @@
   function smTestEntries(){
     return state.systemMaps.filter(function(m){ var ct = m.contact||{}; return /\btest\b/i.test(ct.name||'') || /\btest\b/i.test(ct.business||'') || ct.phone==='9999999999'; });
   }
+  // A call request from the result page's "one-time system" offer (the website marks it with this slot text).
+  function smIsSys(c){ return c.kind==='call' && /^One-time system/.test((c.contact&&c.contact.slot)||''); }
+  function smCallWord(c){ return smIsSys(c) ? 'One-time system call back' : 'Snapshot Call'; }
   function smNewCount(){ return smCalls().filter(function(c){ return (c.status||'new')==='new'; }).length; }
 
   // ---- Daily Leads: prospects researched each morning by the PC's lead finder (D:\Claude Code\prospect-finder), added straight to the pipeline ----
@@ -6586,9 +6590,9 @@
       if (!smOpen(c)) return;
       var who = (ct.name||'Someone')+(smBiz(c)?' ('+smBiz(c)+')':'');
       if (c.kind==='inquiry'){ if (s==='new') alerts.push({ tone:'good', icon:'✉️', text: who+' sent an inquiry from your website', action:'sm-open', id:c._id }); return; }
-      if (ct.date && ct.date<todayStr) alerts.push({ tone:'bad', icon:'📞', text: who+' — Snapshot Call was due '+fmtDateShort(new Date(ct.date+'T00:00:00').getTime())+', '+(s==='new'?'not contacted yet':'not marked done'), action:'sm-open', id:c._id });
-      else if (ct.date===todayStr) alerts.push({ tone:'warn', icon:'📞', text: who+' — Snapshot Call today, '+(ct.slot||''), action:'sm-open', id:c._id });
-      else if (s==='new') alerts.push({ tone:'good', icon:'📞', text: who+' booked a Snapshot Call for '+smWhenLabel(c), action:'sm-open', id:c._id });
+      if (ct.date && ct.date<todayStr) alerts.push({ tone:'bad', icon:'📞', text: who+' — '+smCallWord(c)+' was due '+fmtDateShort(new Date(ct.date+'T00:00:00').getTime())+', '+(s==='new'?'not contacted yet':'not marked done'), action:'sm-open', id:c._id });
+      else if (ct.date===todayStr) alerts.push({ tone:'warn', icon:'📞', text: who+' — '+smCallWord(c)+' today, '+(ct.slot||''), action:'sm-open', id:c._id });
+      else if (s==='new') alerts.push({ tone:'good', icon:'📞', text: who+(smIsSys(c) ? ' asked for a call back about the one-time system' : ' booked a Snapshot Call for '+smWhenLabel(c)), action:'sm-open', id:c._id });
     });
     var noPrice = clientsMissingPrice();
     if (noPrice.length){
@@ -6778,7 +6782,7 @@
     smCalls().forEach(function(c){
       if (c.kind!=='call' || !smOpen(c) || !c.contact.date) return;
       var st = smSlotStart(c);
-      add(c.contact.date, st!=='23:59' ? st : '', '☎️', 'warn', 'Snapshot Call: '+(c.contact.name||'Unnamed'), [smBiz(c), c.contact.slot, c.contact.phone].filter(Boolean).join(' · '), 'sm-open', c._id);
+      add(c.contact.date, st!=='23:59' ? st : '', '☎️', 'warn', smCallWord(c)+': '+(c.contact.name||'Unnamed'), [smBiz(c), c.contact.slot, c.contact.phone].filter(Boolean).join(' · '), 'sm-open', c._id);
     });
     ev.sort(function(a, b){
       if (a.date!==b.date) return a.date<b.date ? -1 : 1;
