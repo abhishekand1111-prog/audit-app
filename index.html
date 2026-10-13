@@ -995,6 +995,8 @@
   var masterMigrated = false;
   function ensureHotelDefaults(){
     if (!state.templates.hotel) state.templates.hotel = seedTemplates(DEFAULT_TEMPLATES).hotel;
+    // "Big": one category for the larger sit-down restaurants and hotels. Its checklist starts empty (copy areas in from General).
+    if (!state.templates.big){ state.templates.big = { label:'Big', sections:[] }; masterMigrated = true; }
     // "All Areas" master library: seeded once from every area across the audit checklists, then edited freely.
     // Only when Dine-In still holds real questions: an empty or stale copy must never create (and save) an empty General over real data.
     if (!state.templates.master && state.templates.dinein && state.templates.qsr && state.templates.dinein.sections.some(function(s){ return (s.items||[]).length; })){
@@ -1016,7 +1018,9 @@
       state.editorTab = 'master';
     }
     if (!state.pricing.hotel) state.pricing.hotel = JSON.parse(JSON.stringify(DEFAULT_PRICING.hotel));
+    if (!state.pricing.big) state.pricing.big = JSON.parse(JSON.stringify(state.pricing.dinein || DEFAULT_PRICING.dinein));
     if (!state.schedule.hotel) state.schedule.hotel = JSON.parse(JSON.stringify(DEFAULT_SCHEDULE.hotel));
+    if (!state.schedule.big) state.schedule.big = JSON.parse(JSON.stringify(state.schedule.dinein || DEFAULT_SCHEDULE.dinein));
   }
 
   function todayISO(){ var d = new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
@@ -1046,8 +1050,9 @@
     prospects: loadJSON(LS_PR, []),
     activeProspectId: null,
     pendingProspectId: null,
-    prospectsFilterLocation: 'all',
-    prospectsFilterCategory: 'all',
+    prospectsFilterLocation: '',
+    prospectsFilterCategory: '',
+    prospectsFilterOffer: 'all',
     lookups: loadJSON(LS_LK, []),
     contentIdeas: loadJSON(LS_CI, []),
     reauditOverrides: loadJSON(LS_RO, {}),
@@ -3100,7 +3105,7 @@
         '<button class="btn btn-ghost btn-sm" data-action="duplicate-template">⧉ Duplicate this checklist</button>' +
         ((isBuiltinTemplate(tab) || tab==='master') ? '' : '<button class="btn btn-text btn-danger" data-action="delete-template">Delete this checklist</button>') +
       '</div>' +
-      ((isBuiltinTemplate(tab) && tab!=='master') ? '<button class="btn btn-text btn-danger" data-action="reset-template">Reset '+tmpl.label+' checklist to defaults</button>' : '') +
+      ((isBuiltinTemplate(tab) && tab!=='master' && tab!=='big') ? '<button class="btn btn-text btn-danger" data-action="reset-template">Reset '+tmpl.label+' checklist to defaults</button>' : '') +
     '</main>';
   }
 
@@ -3476,7 +3481,7 @@
   }
   // The editor also shows the "General" master library first (it is never used to run an audit itself).
   function editorKeys(){ return (state.templates.master ? ['master'] : []).concat(templateKeys()); }
-  function isBuiltinTemplate(k){ return k==='dinein' || k==='qsr' || k==='hotel'; }
+  function isBuiltinTemplate(k){ return k==='dinein' || k==='qsr' || k==='hotel' || k==='big'; }
   function clientExtraItems(storeName){
     var key = norm(storeName);
     if (!key) return [];
@@ -3750,6 +3755,89 @@
       if (hit) out.push(t.label);
     });
     return out;
+  }
+
+  // ---------- Remarks: quick dated notes from conversations, shown again before the next follow-up ----------
+  // What you sell them: QSRs get the digital product; dine-in, hotels and Big get consultancy and retainer.
+  function offerOf(p){ return p.category==='qsr' ? 'digital' : 'consult'; }
+  function offerLabel(p){ return offerOf(p)==='digital' ? 'Digital product' : 'Consultancy'; }
+  function offerBadgeHtml(p){ return '<span class="badge" style="margin-left:6px;">'+(offerOf(p)==='digital'?'💻 ':'🧭 ')+offerLabel(p)+'</span>'; }
+  var FIT_ORDER = { A:0, B:1, C:2 };
+  function fitBadgeHtml(p){ return FIT_ORDER[p.fit]!==undefined ? '<span class="badge" style="margin-left:6px;">Fit '+p.fit+'</span>' : ''; }
+  function renderFitRow(p){
+    return '<div class="helper" style="margin:0 0 6px;">Fit for '+(offerOf(p)==='digital'?'the digital product':'consultancy')+' — A = recurring service or process problem in reviews and a reachable owner, B = maybe, C = unlikely.</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">' +
+      ['A','B','C',''].map(function(f){ return '<button type="button" class="btn btn-sm '+((p.fit||'')===f?'btn-primary':'btn-ghost')+'" data-action="set-fit" data-id="'+p.id+'" data-fit="'+f+'">'+(f||'Not rated')+'</button>'; }).join('') +
+      '</div>';
+  }
+  // ---------- Import a client list from a JSON file; anything already in your clients is merged, never added twice ----------
+  var IMP_STOP = { the:1, restaurant:1, hotel:1, hotels:1, and:1, n:1, food:1, foods:1, fast:1, cafe:1, of:1, by:1 };
+  var IMP_CITIES = ['chandigarh','mohali','panchkula','zirakpur'];
+  function impTokens(name){
+    var s = String(name||'').toLowerCase().replace(/\(.*?\)/g,' ').replace(/\|.*$/,' ').replace(/&/g,' and ')
+      .replace(/\b(sec|sector|phase)\s*-?\s*\d+[a-z]?\b/g,' ').replace(/[^a-z0-9 ]/g,' ');
+    return s.split(/\s+/).filter(function(w){ return w && !IMP_STOP[w] && IMP_CITIES.indexOf(w)<0; });
+  }
+  function impCity(s){ s = String(s||'').toLowerCase(); for (var i=0;i<IMP_CITIES.length;i++){ if (s.indexOf(IMP_CITIES[i])>=0) return IMP_CITIES[i]; } return ''; }
+  function impSameBrand(a, b){
+    if (!a.length || !b.length) return false;
+    var inB = a.every(function(w){ return b.indexOf(w)>=0; }), inA = b.every(function(w){ return a.indexOf(w)>=0; });
+    if (inA && inB) return 'exact';
+    return ((inB && a.length>=2) || (inA && b.length>=2)) ? 'subset' : false;
+  }
+  function impFindExisting(rec){
+    var t = impTokens(rec.name), c = impCity(rec.city);
+    for (var i=0;i<state.prospects.length;i++){
+      var p = state.prospects[i], m = impSameBrand(t, impTokens(p.name));
+      if (!m) continue;
+      var pc = impCity(p.location);
+      if (m==='exact' ? (!pc || !c || pc===c) : (pc && c && pc===c)) return p;
+    }
+    return null;
+  }
+  function impRemarkText(rec){
+    var bits = [rec.remark || ''];
+    if (rec.phone && !isValidMobile(rec.phone)) bits.push('Phone: '+rec.phone);
+    return bits.filter(Boolean).join(' · ');
+  }
+  function impApply(rec){
+    var p = impFindExisting(rec), text = impRemarkText(rec), mob = isValidMobile(rec.phone) ? normalizeMobile(rec.phone) : '';
+    if (p){
+      if (text){ p.remarks = p.remarks || []; if (!p.remarks.some(function(r){ return r.text===text; })) p.remarks.unshift({ id:uid(), at:Date.now(), text:text }); }
+      if (rec.fit && !p.fit) p.fit = rec.fit;
+      if (rec.category==='hotel' && p.category==='dinein') p.category = 'hotel';
+      if (!p.contactMobile && mob) p.contactMobile = mob;
+      if ((!p.address || p.address===p.location) && rec.address) p.address = rec.address;
+      if (p.parked && p.category!=='qsr' && !p.converted && (rec.fit==='A' || rec.fit==='B')) delete p.parked;
+      p.updatedAt = Date.now();
+      return 'merged';
+    }
+    var now = Date.now();
+    state.prospects.push({ id:'imp'+qsrSlug(rec.name+rec.city)+uid().slice(0,4), name:rec.name, location:rec.city||'', address:rec.address||'', category:rec.category||'qsr', auditId:null,
+      plannedAuditDate:'', checkinNote:'', proposed:'', priceMin:'', priceMax:'', converted:false, convertedAt:null, declined:false, declinedAt:null, followUpDate:'', finalPrice:'', timeline:'', createdAt:now, updatedAt:now,
+      servicesOffered:'', pricingType:'', proposalStatus:'', proposalMeetingDate:'', auditsPerMonth:'', contactName:'', contactDesignation:'', contactMobile:mob, seats:'',
+      inquiry:[], followUps:[], remarks:text ? [{ id:uid(), at:now, text:text }] : [], fit:rec.fit||undefined, qsrChecked:true, imported:true });
+    return 'new';
+  }
+  function impDryRun(list){
+    var saved = state.prospects, n = 0, m = 0;
+    state.prospects = JSON.parse(JSON.stringify(saved));
+    try { list.forEach(function(rec){ if (rec && rec.name){ if (impApply(rec)==='new') n++; else m++; } }); } finally { state.prospects = saved; }
+    return { added:n, merged:m };
+  }
+  function latestRemark(p){ var l = (p.remarks||[]).slice().sort(function(a,b){ return (b.at||0)-(a.at||0); })[0]; return l || null; }
+  function remarkShort(s, n){ s = String(s||'').replace(/\s+/g,' ').trim(); return s.length>n ? s.slice(0, n-1)+'…' : s; }
+  function renderRemarksCard(p){
+    var list = (p.remarks||[]).slice().sort(function(a,b){ return (b.at||0)-(a.at||0); });
+    return sh('📝','Remarks') + '<div class="card" style="padding:14px 16px;margin-bottom:20px;">' +
+      renderFitRow(p) +
+      '<div class="helper" style="margin:0 0 8px;">What you heard on the call or visit. The latest one shows on the pipeline card and next to the follow-up, so it\'s in front of you before you call again.</div>' +
+      '<textarea rows="2" data-remark-new="'+p.id+'" placeholder="e.g. Owner interested, busy till Diwali, asked for a price" style="width:100%;"></textarea>' +
+      '<div style="margin-top:8px;"><button type="button" class="btn btn-primary btn-sm" data-action="remark-add" data-id="'+p.id+'">＋ Add remark</button></div>' +
+      (list.length ? '<div style="margin-top:12px;">' + list.map(function(r){
+        return '<div style="display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line);"><div style="flex:1;min-width:0;"><div class="histmeta" style="margin:0 0 2px;">'+esc(fmtDateShort(r.at))+' · '+esc(fmtClock(r.at))+'</div><div style="overflow-wrap:anywhere;white-space:pre-wrap;">'+esc(r.text)+'</div></div><button type="button" class="iconbtn" data-action="remark-del" data-id="'+p.id+'" data-rid="'+r.id+'" aria-label="Delete remark">✕</button></div>';
+      }).join('') + '</div>' : '') +
+    '</div>';
   }
 
   // ---------- Travel: distance to each client, visits driven, and monthly totals ----------
@@ -4181,11 +4269,13 @@
       if (p.category && cats.indexOf(p.category)===-1) cats.push(p.category);
     });
     locs.sort(); cats.sort();
-    var fl = state.prospectsFilterLocation||'all', fc = state.prospectsFilterCategory||'all';
+    var flRaw = state.prospectsFilterLocation||'', fcRaw = state.prospectsFilterCategory||'';
+    var fl = flRaw||'all', fc = fcRaw||'all';
     var ndMap = {};
     state.prospects.forEach(function(p){ ndMap[p.id] = prospectNextDue(p); });
     var list = state.prospects.filter(function(p){
-      return (fl==='all' || p.location===fl) && (fc==='all' || p.category===fc);
+      var fo = state.prospectsFilterOffer||'all';
+      return (fl==='all' || p.location===fl) && (fc==='all' || p.category===fc) && (fo==='all' || offerOf(p)===fo);
     }).sort(function(a,b){
       if (!!a.declined !== !!b.declined) return a.declined ? 1 : -1;
       var nda = ndMap[a.id], ndb = ndMap[b.id];
@@ -4200,6 +4290,7 @@
       list = list.slice().sort(function(a,b){
         if (!!a.declined !== !!b.declined) return a.declined ? 1 : -1;
         if (psort==='name') return (a.name||'').localeCompare(b.name||'');
+        if (psort==='fit'){ var fa = FIT_ORDER[a.fit]===undefined ? 9 : FIT_ORDER[a.fit], fb = FIT_ORDER[b.fit]===undefined ? 9 : FIT_ORDER[b.fit]; return fa-fb || (a.name||'').localeCompare(b.name||''); }
         if (psort==='value') return pval(b)-pval(a) || (b.createdAt||0)-(a.createdAt||0);
         return (b.createdAt||0)-(a.createdAt||0);
       });
@@ -4212,6 +4303,9 @@
     var pipelineDeclinedCount = pipelineList.filter(function(p){ return p.declined; }).length;
     var pipelineLeadCount = pipelineList.filter(function(p){ return !!p.leadId && !p.declined; }).length;
     var pf = state.pipelineFilter || 'all';
+    // The long list only appears once a location and a type are chosen (or you search, or tap a filter tile).
+    var gateOpen = !state.prospects.length || (!!flRaw && !!fcRaw) || !!pq || (pTab==='pipeline' && pf!=='all');
+    var gateHtml = '<div class="empty"><div class="big">📍</div>Choose a <b>location</b> and a <b>type</b> above to see the list.<br><span class="helper">Pick "All locations" and "All categories" to see everyone, or search by name.</span></div>';
     var pipelineShown = pf==='parked' ? parkedList : pipelineList.filter(function(p){ return pf==='audited' ? !!p.auditId : (pf==='declined' ? !!p.declined : (pf==='leads' ? (!!p.leadId && !p.declined) : true)); });
     var clientKeys = {};
     clientsList.forEach(function(p){ clientKeys[(p.name||'').trim().toLowerCase()] = true; });
@@ -4234,8 +4328,10 @@
     }
 
     // Exports are occasional — they sit at the bottom instead of above the tabs.
-    var exportHtml = (pTab!=='calls' && (state.prospects.length || state.history.length)) ? (
+    var exportHtml = (pTab!=='calls') ? (
       '<div class="exportrow">' +
+        '<button class="btn btn-ghost btn-sm" data-action="trigger-import-clients">⬆ Import clients (JSON)</button>' +
+        '<input type="file" accept="application/json" id="importClientsInput" data-action="import-clients-file" style="display:none;">' +
         (state.prospects.length ? '<button class="btn btn-ghost btn-sm" data-action="export-prospects-csv">⬇ Export clients CSV</button>' : '') +
         (state.history.length ? '<button class="btn btn-ghost btn-sm" data-action="export-csv">⬇ Export audits CSV</button>' : '') +
       '</div>'
@@ -4257,12 +4353,13 @@
       (pTab==='calls' ? renderCallRequestsBody() : pTab==='daily' ? renderProspectsDaily() : (
       '<div style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 0;">' +
         '<div class="field" style="flex:2;min-width:180px;margin-bottom:0;"><label for="pSearch">Search</label><input id="pSearch" type="search" data-pipeline-search="1" value="'+esc(state.pipelineQuery||'')+'" placeholder="Name, area, contact, phone…" autocomplete="off"></div>' +
-        '<div class="field" style="flex:1;min-width:140px;margin-bottom:0;"><label>Sort by</label><select data-pipeline-sort="1">' + [['follow','Next follow-up'],['newest','Newest first'],['name','Name A–Z'],['value','Value (high first)']].map(function(o){ return '<option value="'+o[0]+'" '+(psort===o[0]?'selected':'')+'>'+o[1]+'</option>'; }).join('') + '</select></div>' +
+        '<div class="field" style="flex:1;min-width:140px;margin-bottom:0;"><label>Sort by</label><select data-pipeline-sort="1">' + [['follow','Next follow-up'],['newest','Newest first'],['name','Name A–Z'],['fit','Fit (A first)'],['value','Value (high first)']].map(function(o){ return '<option value="'+o[0]+'" '+(psort===o[0]?'selected':'')+'>'+o[1]+'</option>'; }).join('') + '</select></div>' +
       '</div>' +
       (locs.length || cats.length ? (
         '<div style="display:flex; gap:12px; flex-wrap:wrap; margin:14px 0;">' +
-          (locs.length ? '<div class="field" style="flex:1; min-width:150px; margin-bottom:0;"><label>Location</label><select data-prospect-filter="location"><option value="all">All locations</option>'+locs.map(function(l){ return '<option value="'+esc(l)+'" '+(fl===l?'selected':'')+'>'+esc(l)+'</option>'; }).join('')+'</select></div>' : '') +
-          (cats.length ? '<div class="field" style="flex:1; min-width:150px; margin-bottom:0;"><label>Category</label><select data-prospect-filter="category"><option value="all">All categories</option>'+cats.map(function(c){ return '<option value="'+esc(c)+'" '+(fc===c?'selected':'')+'>'+esc(state.templates[c]?state.templates[c].label:c)+'</option>'; }).join('')+'</select></div>' : '') +
+          (locs.length ? '<div class="field" style="flex:1; min-width:150px; margin-bottom:0;"><label>Location</label><select data-prospect-filter="location"><option value="" '+(flRaw?'':'selected')+'>Choose location…</option><option value="all" '+(flRaw==='all'?'selected':'')+'>All locations</option>'+locs.map(function(l){ return '<option value="'+esc(l)+'" '+(fl===l?'selected':'')+'>'+esc(l)+'</option>'; }).join('')+'</select></div>' : '') +
+          '<div class="field" style="flex:1; min-width:150px; margin-bottom:0;"><label>Offer</label><select data-prospect-filter="offer">' + [['all','All offers'],['consult','Consultancy (dine-in, hotels, Big)'],['digital','Digital product (QSR)']].map(function(o){ return '<option value="'+o[0]+'" '+((state.prospectsFilterOffer||'all')===o[0]?'selected':'')+'>'+o[1]+'</option>'; }).join('') + '</select></div>' +
+          (cats.length ? '<div class="field" style="flex:1; min-width:150px; margin-bottom:0;"><label>Category</label><select data-prospect-filter="category"><option value="" '+(fcRaw?'':'selected')+'>Choose type…</option><option value="all" '+(fcRaw==='all'?'selected':'')+'>All categories</option>'+cats.map(function(c){ return '<option value="'+esc(c)+'" '+(fc===c?'selected':'')+'>'+esc(state.templates[c]?state.templates[c].label:c)+'</option>'; }).join('')+'</select></div>' : '') +
         '</div>'
       ) : '') +
       (pTab==='clients' ? (
@@ -4271,14 +4368,14 @@
           '<div class="stattile'+(clientsDueSoon?' t-bad':'')+'"><div class="v">'+clientsDueSoon+'</div><div class="k">Due This Week</div></div>' +
           '<div class="stattile t-good"><div class="v">'+esc(state.pricing.currency)+clientsRevenue+'</div><div class="k">Revenue This Month</div></div>' +
         '</div>' +
-        (clientsList.length===0 ? '<div class="empty"><div class="big">🤝</div>No clients yet.<br>Convert a pipeline entry to see them here.</div>' :
+        (!gateOpen ? gateHtml : clientsList.length===0 ? '<div class="empty"><div class="big">🤝</div>No clients yet.<br>Convert a pipeline entry to see them here.</div>' :
           clientsList.map(function(p){
             var audits = prospectAudits(p);
             var next = computeClientNextAction(p, audits);
             var last = audits[0];
             var toneColor = { bad:'var(--bad)', warn:'var(--accent)', good:'var(--good)', accent:'var(--accent)' };
             return '<div class="card histcard" style="border-left:3px solid '+(toneColor[next.tone]||'var(--line)')+';" data-action="open-prospect" data-id="'+p.id+'">' +
-              '<div class="histtop"><span><span class="badge">'+esc(prospectCategoryLabel(p))+'</span>'+serviceBadgeHtml(p)+'</span>'+(last?'<span class="histpct">'+last.completionPct+'%</span>':'')+'</div>' +
+              '<div class="histtop"><span><span class="badge">'+esc(prospectCategoryLabel(p))+'</span>'+offerBadgeHtml(p)+fitBadgeHtml(p)+serviceBadgeHtml(p)+'</span>'+(last?'<span class="histpct">'+last.completionPct+'%</span>':'')+'</div>' +
               '<div style="font-weight:700;margin-top:8px;">'+esc(p.name||'Unnamed client')+'</div>' +
               '<div class="histmeta">'+esc(p.location||'—')+(p.address?' · '+esc(p.address):'')+'</div>' +
               '<div class="histmeta" style="margin-top:4px;">'+next.icon+' '+esc(next.text)+'</div>' +
@@ -4298,7 +4395,7 @@
       qsrFocusNoteHtml() +
       (pf==='parked' ? '<div class="helper" style="margin:-6px 0 12px;">Set aside while the focus is QSRs and hotels. Each one comes back to the pipeline on its own on the date shown, or tap Un-park to bring it back now.</div>'
         : (pf!=='all' ? '<div class="helper" style="margin:-6px 0 12px;">Showing '+(pf==='audited'?'audited':(pf==='leads'?'lead-finder':'not converted'))+' only — tap the tile again to see everyone.</div>' : '')) +
-      (pipelineShown.length===0 ? (pf!=='all' ? '<div class="empty"><div class="big">🔎</div>Nothing here yet.</div>' : '<div class="empty"><div class="big">🎯</div>No clients yet.<br>Add one to start tracking your pipeline.</div>') :
+      (!gateOpen ? gateHtml : pipelineShown.length===0 ? (pf!=='all' ? '<div class="empty"><div class="big">🔎</div>Nothing here yet.</div>' : '<div class="empty"><div class="big">🎯</div>No clients yet.<br>Add one to start tracking your pipeline.</div>') :
         pipelineShown.map(function(p){
           var st = prospectStatus(p);
           var priceStr = (p.priceMin||p.priceMax) ? (state.pricing.currency||'')+(p.priceMin||'0')+'–'+(state.pricing.currency||'')+(p.priceMax||'0') : '';
@@ -4309,11 +4406,12 @@
           var who = [p.contactName, p.contactDesignation].filter(function(x){ return (x||'').trim(); }).map(esc).join(' · ');
           var btns = contactButtons(p);
           return '<div class="card histcard pcard" style="border-left:3px solid '+stColor+';" data-action="open-prospect" data-id="'+p.id+'">' +
-            '<div class="histtop"><span><span class="badge">'+esc(prospectCategoryLabel(p))+'</span>'+serviceBadgeHtml(p)+(p.leadId?'<span class="badge" style="margin-left:6px;">🎯 Lead finder</span>':'')+'</span><span class="pill '+st.tone+'">'+st.label+'</span></div>' +
+            '<div class="histtop"><span><span class="badge">'+esc(prospectCategoryLabel(p))+'</span>'+offerBadgeHtml(p)+fitBadgeHtml(p)+serviceBadgeHtml(p)+(p.leadId?'<span class="badge" style="margin-left:6px;">🎯 Lead finder</span>':'')+'</span><span class="pill '+st.tone+'">'+st.label+'</span></div>' +
             '<div class="pcard-name" style="'+(p.declined?'text-decoration:line-through;color:var(--ink-400);':'')+'">'+esc(p.name||'Unnamed client')+'</div>' +
             '<div class="histmeta">📍 '+esc(p.location||'No location')+(p.address?' · '+esc(p.address):'')+'</div>' +
             (who || p.contactMobile ? '<div class="histmeta">👤 '+(who||'Contact')+(p.contactMobile?' · '+esc(p.contactMobile):'')+'</div>' : '') +
             (priceStr || p.timeline ? '<div class="histmeta">💰 '+priceStr+(priceStr && p.timeline?' · ':'')+(p.timeline?esc(p.timeline):'')+'</div>' : '') +
+            (latestRemark(p) ? '<div class="histmeta">📝 '+esc(remarkShort(latestRemark(p).text, 110))+' · '+esc(fmtDateShort(latestRemark(p).at))+'</div>' : '') +
             (!p.declined && p.plannedAuditDate ? '<div class="histmeta">⭐ Audit day: '+fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime())+plannedTimeSuffix(p)+'</div>' : '') +
             (nextFu ? '<div class="histmeta">📞 Next follow-up: '+esc(fmtFollowUpWhen(nextFu))+(nextFu.note?' — '+esc(nextFu.note):'')+(p.declined ? '' : ' <span class="pill '+followUpTone(nextFu).tone+'">'+followUpTone(nextFu).label+'</span>')+'</div>'
               : (p.declined && p.followUpDate ? '<div class="histmeta">📞 Follow up: '+fmtDateShort(new Date(p.followUpDate+'T00:00:00').getTime())+'</div>' : '')) +
@@ -4859,6 +4957,7 @@
             '</div>' +
             '<div class="histmeta">'+esc(clientStageLabel(x.p))+' · '+esc(fmtFollowUpWhen(x.f))+'</div>' +
             (x.f.note ? '<div style="font-size:13.5px;margin-top:2px;">'+esc(x.f.note)+'</div>' : '') +
+            (latestRemark(x.p) ? '<div class="histmeta" style="margin-top:2px;">📝 '+esc(remarkShort(latestRemark(x.p).text, 120))+'</div>' : '') +
             '<div class="contactrow" style="margin-top:6px;">' +
               '<button type="button" class="btn btn-ghost btn-sm" data-action="done-followup" data-pid="'+x.p.id+'" data-fid="'+x.f.id+'">✓ Done</button>' +
               '<button type="button" class="btn btn-ghost btn-sm" data-action="reschedule-followup" data-pid="'+x.p.id+'" data-fid="'+x.f.id+'">📅 Reschedule</button>' +
@@ -5109,6 +5208,7 @@
       renderCauseCard(audits) +
       renderTravelCard(p) +
       renderFollowUps(p) +
+      renderRemarksCard(p) +
       renderBillingCard(p) +
       renderMeetingTimerCard(p) +
       renderInquiryEditor('client', p.inquiry||[], inquiryAreaOptions(p.category)) +
@@ -6691,7 +6791,7 @@
     }
     state.prospects.forEach(function(p){
       var nm = p.name || 'Unnamed client';
-      openFollowUps(p).forEach(function(f){ add(f.date, f.time, '📞', 'accent', f.note||'Follow-up', nm+' · Follow-up', 'goto-prospect', p.id); });
+      openFollowUps(p).forEach(function(f){ add(f.date, f.time, '📞', 'accent', f.note||'Follow-up', nm+' · Follow-up'+(latestRemark(p) ? ' · 📝 '+remarkShort(latestRemark(p).text, 70) : ''), 'goto-prospect', p.id); });
       if (p.plannedAuditDate && !p.auditId && !p.declined && !isParked(p)) add(p.plannedAuditDate, p.plannedAuditTime, '⭐', 'warn', 'Scheduled audit', nm, 'goto-prospect', p.id);
       if (p.proposalStatus==='meeting_scheduled' && p.proposalMeetingDate && !p.converted && !p.declined && !isParked(p)) add(p.proposalMeetingDate, '', '🤝', 'warn', 'Proposal meeting', nm, 'goto-prospect', p.id);
     });
@@ -7382,6 +7482,19 @@
       var tdp = findProspect(t.dataset.pid);
       if (tdp && window.confirm('Remove this visit?')){ tdp.trips = (tdp.trips||[]).filter(function(x){ return x.id!==t.dataset.tid; }); tdp.updatedAt = Date.now(); persistProspects(); render(); }
     }
+    else if (action==='remark-add'){
+      var rmP = findProspect(t.dataset.id), rmEl = app.querySelector('[data-remark-new="'+t.dataset.id+'"]');
+      var rmText = rmEl ? rmEl.value.trim() : '';
+      if (rmP && rmText){ rmP.remarks = rmP.remarks || []; rmP.remarks.unshift({ id: uid(), at: Date.now(), text: rmText }); rmP.updatedAt = Date.now(); persistProspects(); render(); }
+    }
+    else if (action==='set-fit'){
+      var ftP = findProspect(t.dataset.id);
+      if (ftP){ if (t.dataset.fit) ftP.fit = t.dataset.fit; else delete ftP.fit; ftP.updatedAt = Date.now(); persistProspects(); render(); }
+    }
+    else if (action==='remark-del'){
+      var rdP = findProspect(t.dataset.id);
+      if (rdP && window.confirm('Delete this remark?')){ rdP.remarks = (rdP.remarks||[]).filter(function(r){ return r.id!==t.dataset.rid; }); rdP.updatedAt = Date.now(); persistProspects(); render(); }
+    }
     else if (action==='cost-skip'){ state.costEntry = null; state.newClientFlow = null; window.scrollTo(0,0); render(); }
     else if (action==='cost-view'){
       state.paramsClient = t.dataset.id; state.paramsEntry = ''; state.activeProspectId = null; state.costEntry = null; state.view = 'params'; window.scrollTo(0,0); render();
@@ -7871,7 +7984,9 @@
     }
     else if (action==='toggle-show-done'){ state.actionsShowDone = !state.actionsShowDone; render(); }
     else if (action==='actions-tab'){ state.actionsTab = t.dataset.tab; if (t.dataset.tab==='task' || t.dataset.tab==='lookup') state.lookupTab = t.dataset.tab; render(); }
-    else if (action==='pipeline-filter'){ state.pipelineFilter = (state.pipelineFilter===t.dataset.val || t.dataset.val==='all') ? 'all' : t.dataset.val; render(); }
+    else if (action==='pipeline-filter'){
+      if (t.dataset.val==='all'){ if (!state.prospectsFilterLocation) state.prospectsFilterLocation = 'all'; if (!state.prospectsFilterCategory) state.prospectsFilterCategory = 'all'; }
+      state.pipelineFilter = (state.pipelineFilter===t.dataset.val || t.dataset.val==='all') ? 'all' : t.dataset.val; render(); }
     else if (action==='prospects-tab'){ state.prospectsTab = t.dataset.tab; state.activeCallId = null; render(); }
     else if (action==='export-csv'){
       var csv = buildHistoryCSV();
@@ -7885,6 +8000,10 @@
       var json = buildBackupJSON();
       downloadJSON(json, 'diagnosis-room-backup-'+todayISO()+'.json');
       saveJSON(LS_LB, Date.now()); render();
+    }
+    else if (action==='trigger-import-clients'){
+      var icInput = document.getElementById('importClientsInput');
+      if (icInput) icInput.click();
     }
     else if (action==='trigger-restore-backup'){
       var rbInput = document.getElementById('restoreBackupInput');
@@ -8569,6 +8688,7 @@
     else if (el.dataset.paramsEntry){ state.paramsEntry = el.value; render(); }
     else if (el.dataset.prospectFilter==='location'){ state.prospectsFilterLocation = el.value; render(); }
     else if (el.dataset.prospectFilter==='category'){ state.prospectsFilterCategory = el.value; render(); }
+    else if (el.dataset.prospectFilter==='offer'){ state.prospectsFilterOffer = el.value; render(); }
     else if (el.dataset.schedule){
       var spath = el.dataset.schedule.split('.');
       var sday = parseInt(el.value,10); if (isNaN(sday) || sday<1) sday = 1;
@@ -8689,6 +8809,25 @@
     else if (el.dataset.action==='set-proposal-status-select'){
       var psp = findProspect(state.activeProspectId);
       if (psp){ psp.proposalStatus = el.value; persistProspects(); render(); }
+    }
+    else if (el.dataset.action==='import-clients-file'){
+      var ifile = el.files && el.files[0];
+      if (!ifile) return;
+      var ireader = new FileReader();
+      ireader.onload = function(ev){
+        try {
+          var ilist = JSON.parse(ev.target.result);
+          if (!Array.isArray(ilist)) throw new Error('not a list');
+          var plan = impDryRun(ilist);
+          if (window.confirm('Import '+ilist.length+' clients?\n\n'+plan.added+' new, '+plan.merged+' already in your list (their details are merged, not duplicated).\nNothing is deleted and no follow-ups are created.')){
+            ilist.forEach(function(rec){ if (rec && rec.name) impApply(rec); });
+            persistProspects(); render();
+            alert('Done: '+plan.added+' added, '+plan.merged+' merged.');
+          }
+        } catch(err){ alert("Could not read this file — it should be the client list JSON."); }
+        el.value = '';
+      };
+      ireader.readAsText(ifile);
     }
     else if (el.dataset.action==='restore-backup-file'){
       var file = el.files && el.files[0];
