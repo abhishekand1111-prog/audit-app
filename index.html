@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Diagnosis Room</title>
-<meta name="description" content="Timed, section-by-section audit checklists for Dine-In and QSR floor checks.">
+<meta name="description" content="Audit checklists and client pipeline for dine-in restaurants, hotels and QSR head offices.">
 <link rel="manifest" href="manifest.json?v=4">
 <link rel="icon" href="icons/favicon-32.png?v=4" type="image/png" sizes="32x32">
 <link rel="icon" href="icons/icon-192.png?v=4" type="image/png" sizes="192x192">
@@ -1055,6 +1055,7 @@
     prospectsFilterLocation: '',
     prospectsFilterCategory: '',
     prospectsFilterOffer: 'all',
+    prospectsFilterStage: 'all',
     lookups: loadJSON(LS_LK, []),
     contentIdeas: loadJSON(LS_CI, []),
     reauditOverrides: loadJSON(LS_RO, {}),
@@ -3040,7 +3041,7 @@
       (tab==='master' && state.editorMsg ? '<div class="card" style="padding:10px 14px;margin-bottom:12px;border-color:var(--good);">✓ '+esc(state.editorMsg)+'</div>' : '') +
       (tab==='master' ? '<div style="margin-bottom:12px;"><button class="btn btn-ghost btn-sm" data-action="sync-copies">⟳ Update all copies from General</button></div>'
         : '<div style="margin-bottom:12px;"><button class="btn btn-primary btn-sm" data-action="start-from-checklist" data-type="'+esc(tab)+'">▶ Start an audit with this checklist</button></div>') +
-      (tab==='master' ? '<div class="helper" style="margin-bottom:12px;">General holds every area and question in one place. Build it here, then use <b>⇄ Copy to…</b> on a section (or the ⚙ on a single item) to copy what you need into Dine-In, QSR or Hotel.</div>' : '') +
+      (tab==='master' ? '<div class="helper" style="margin-bottom:12px;">General holds every area and question in one place. Build it here, then use <b>⇄ Copy to…</b> on a section (or the ⚙ on a single item) to copy what you need into Dine-In, Hotels, Big or QSR Head.</div>' : '') +
       tmpl.sections.map(function(sec){
         return '<div class="card edsection">' +
           '<div class="edhead">' +
@@ -3176,7 +3177,7 @@
       '<div class="helper" style="margin-bottom:14px;margin-top:6px;">Set what you\'re aiming for this month. Revenue is worked out from your clients: the price you enter when you mark a client as converted counts in the month it was converted, and a monthly retainer counts every month while that client stays active.</div>' +
       '<div style="display:flex; gap:12px; margin-bottom:6px;">' +
         '<div class="field" style="flex:1;"><label>Revenue target ('+esc(state.pricing.currency)+')</label><input type="number" min="0" data-target="revenue" value="'+(state.targets.revenue||0)+'"></div>' +
-        '<div class="field" style="flex:1;"><label>'+(state.targets.qsrFocus ? 'QSR clients to onboard' : 'Clients to onboard')+'</label><input type="number" min="0" data-target="clients" value="'+(state.targets.clients||0)+'"></div>' +
+        '<div class="field" style="flex:1;"><label>'+'Clients to onboard'+'</label><input type="number" min="0" data-target="clients" value="'+(state.targets.clients||0)+'"></div>' +
       '</div>' +
       '<div class="field" style="max-width:150px;margin-bottom:28px;"><label>Currency symbol</label><input type="text" maxlength="3" data-pricing="currency" value="'+esc(state.pricing.currency)+'"></div>' +
       '<h1 style="font-size:20px;margin:0 0 4px;">Travel</h1>' +
@@ -3764,6 +3765,54 @@
   function offerOf(p){ return p.category==='qsr' ? 'digital' : 'consult'; }
   function offerLabel(p){ return offerOf(p)==='digital' ? 'Digital product' : 'Consultancy'; }
   function offerBadgeHtml(p){ return '<span class="badge" style="margin-left:6px;">'+(offerOf(p)==='digital'?'💻 ':'🧭 ')+offerLabel(p)+'</span>'; }
+  // ---------- Outreach stage (where each client is in your approach) ----------
+  var STAGES = [['','Not contacted'],['called','Called'],['meeting','Meeting set'],['proposal','Proposal sent']];
+  function stageOf(p){ return p.stage || ''; }
+  function stageLabel(p){ var s = stageOf(p); for (var i=0;i<STAGES.length;i++){ if (STAGES[i][0]===s) return STAGES[i][1]; } return 'Not contacted'; }
+  function stageBadgeHtml(p){ return stageOf(p) ? '<span class="badge" style="margin-left:6px;">'+esc(stageLabel(p))+'</span>' : ''; }
+  function renderStageRow(p){
+    return '<div class="helper" style="margin:0 0 6px;">Outreach stage — where you are with them. Tapping a stage also moves them off the "Next to call" list.</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">' +
+      STAGES.map(function(s){ return '<button type="button" class="btn btn-sm '+(stageOf(p)===s[0]?'btn-primary':'btn-ghost')+'" data-action="set-stage" data-id="'+p.id+'" data-stage="'+s[0]+'">'+s[1]+'</button>'; }).join('') +
+      '</div>';
+  }
+  // ---------- Evidence (closures, review problems, rating drops you found on a client) ----------
+  var EV_KINDS = [['closure','Closed / shut'],['reviews','Review problem'],['rating','Rating drop'],['staff','Staff / service'],['other','Other']];
+  function evKindLabel(k){ for (var i=0;i<EV_KINDS.length;i++){ if (EV_KINDS[i][0]===k) return EV_KINDS[i][1]; } return 'Other'; }
+  function latestEvidence(p){ var l = (p.evidence||[]).slice().sort(function(a,b){ return (b.date||'').localeCompare(a.date||'') || (b.at||0)-(a.at||0); })[0]; return l || null; }
+  // "Recent trouble" = evidence dated in the last 60 days.
+  function recentTrouble(p){ var e = latestEvidence(p); return (e && e.date && e.date >= isoDaysFromNow(-60)) ? e : null; }
+  function evidenceLineHtml(p){
+    var e = recentTrouble(p); if (!e) return '';
+    return '<div class="histmeta" style="color:var(--bad);">⚠ '+esc(evKindLabel(e.kind))+' · '+esc(fmtDateShort(new Date(e.date+'T00:00:00').getTime()))+(e.text ? ' — '+esc(remarkShort(e.text, 90)) : '')+'</div>';
+  }
+  function renderEvidenceCard(p){
+    var list = (p.evidence||[]).slice().sort(function(a,b){ return (b.date||'').localeCompare(a.date||'') || (b.at||0)-(a.at||0); });
+    return sh('🔎','Evidence') + '<div class="card" style="padding:14px 16px;margin-bottom:20px;">' +
+      '<div class="helper" style="margin:0 0 8px;">What you found that shows they have a problem: a closure, bad reviews, a rating drop. Recent ones (last 60 days) show on the client card and can be sorted to the top.</div>' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
+        '<div class="field" style="flex:1;min-width:140px;margin-bottom:8px;"><label>Type</label><select data-ev-kind="'+p.id+'">'+EV_KINDS.map(function(k){ return '<option value="'+k[0]+'">'+k[1]+'</option>'; }).join('')+'</select></div>' +
+        '<div class="field" style="flex:1;min-width:140px;margin-bottom:8px;"><label>Date it happened</label><input type="date" data-ev-date="'+p.id+'" value="'+todayISO()+'"></div>' +
+      '</div>' +
+      '<textarea rows="2" data-ev-text="'+p.id+'" placeholder="e.g. Closed 3 days in Sept per Google; 1-star reviews about cold food" style="width:100%;"></textarea>' +
+      '<div style="margin-top:8px;"><button type="button" class="btn btn-primary btn-sm" data-action="evidence-add" data-id="'+p.id+'">＋ Add evidence</button></div>' +
+      (list.length ? '<div style="margin-top:12px;">' + list.map(function(e){
+        return '<div style="display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line);"><div style="flex:1;min-width:0;"><div class="histmeta" style="margin:0 0 2px;">'+esc(evKindLabel(e.kind))+' · '+esc(e.date ? fmtDateShort(new Date(e.date+'T00:00:00').getTime()) : '')+'</div><div style="overflow-wrap:anywhere;white-space:pre-wrap;">'+esc(e.text)+'</div></div><button type="button" class="iconbtn" data-action="evidence-del" data-id="'+p.id+'" data-eid="'+e.id+'" aria-label="Delete evidence">✕</button></div>';
+      }).join('') + '</div>' : '') +
+    '</div>';
+  }
+  // ---------- Duplicate check: another client that looks like the same brand in the same city ----------
+  function findDuplicateClient(p){
+    var t = impTokens(p.name); if (!t.length) return null;
+    var c = impCity(p.location);
+    for (var i=0;i<state.prospects.length;i++){
+      var o = state.prospects[i]; if (o.id===p.id || !(o.name||'').trim()) continue;
+      var m = impSameBrand(t, impTokens(o.name)); if (!m) continue;
+      var oc = impCity(o.location);
+      if (m==='exact' ? (!oc || !c || oc===c) : (oc && c && oc===c)) return o;
+    }
+    return null;
+  }
   var FIT_ORDER = { A:0, B:1, C:2 };
   function fitBadgeHtml(p){ return FIT_ORDER[p.fit]!==undefined ? '<span class="badge" style="margin-left:6px;">Fit '+p.fit+'</span>' : ''; }
   function renderFitRow(p){
@@ -3833,6 +3882,7 @@
   function renderRemarksCard(p){
     var list = (p.remarks||[]).slice().sort(function(a,b){ return (b.at||0)-(a.at||0); });
     return sh('📝','Remarks') + '<div class="card" style="padding:14px 16px;margin-bottom:20px;">' +
+      renderStageRow(p) +
       renderFitRow(p) +
       '<div class="helper" style="margin:0 0 8px;">What you heard on the call or visit. The latest one shows on the pipeline card and next to the follow-up, so it\'s in front of you before you call again.</div>' +
       '<textarea rows="2" data-remark-new="'+p.id+'" placeholder="e.g. Owner interested, busy till Diwali, asked for a price" style="width:100%;"></textarea>' +
@@ -4278,7 +4328,8 @@
     state.prospects.forEach(function(p){ ndMap[p.id] = prospectNextDue(p); });
     var list = state.prospects.filter(function(p){
       var fo = state.prospectsFilterOffer||'all';
-      return (fl==='all' || p.location===fl) && (fc==='all' || p.category===fc) && (fo==='all' || offerOf(p)===fo);
+      var fs = state.prospectsFilterStage||'all';
+      return (fl==='all' || p.location===fl) && (fc==='all' || p.category===fc) && (fo==='all' || offerOf(p)===fo) && (fs==='all' || stageOf(p)===(fs==='none' ? '' : fs));
     }).sort(function(a,b){
       if (!!a.declined !== !!b.declined) return a.declined ? 1 : -1;
       var nda = ndMap[a.id], ndb = ndMap[b.id];
@@ -4293,6 +4344,7 @@
       list = list.slice().sort(function(a,b){
         if (!!a.declined !== !!b.declined) return a.declined ? 1 : -1;
         if (psort==='name') return (a.name||'').localeCompare(b.name||'');
+        if (psort==='trouble'){ var ea = recentTrouble(a), eb = recentTrouble(b); if (!!ea !== !!eb) return ea ? -1 : 1; if (ea && eb && ea.date!==eb.date) return ea.date < eb.date ? 1 : -1; return (a.name||'').localeCompare(b.name||''); }
         if (psort==='fit'){ var fa = FIT_ORDER[a.fit]===undefined ? 9 : FIT_ORDER[a.fit], fb = FIT_ORDER[b.fit]===undefined ? 9 : FIT_ORDER[b.fit]; return fa-fb || (a.name||'').localeCompare(b.name||''); }
         if (psort==='value') return pval(b)-pval(a) || (b.createdAt||0)-(a.createdAt||0);
         return (b.createdAt||0)-(a.createdAt||0);
@@ -4356,7 +4408,7 @@
       (pTab==='calls' ? renderCallRequestsBody() : pTab==='daily' ? renderProspectsDaily() : (
       '<div style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 0;">' +
         '<div class="field" style="flex:2;min-width:180px;margin-bottom:0;"><label for="pSearch">Search</label><input id="pSearch" type="search" data-pipeline-search="1" value="'+esc(state.pipelineQuery||'')+'" placeholder="Name, area, contact, phone…" autocomplete="off"></div>' +
-        '<div class="field" style="flex:1;min-width:140px;margin-bottom:0;"><label>Sort by</label><select data-pipeline-sort="1">' + [['follow','Next follow-up'],['newest','Newest first'],['name','Name A–Z'],['fit','Fit (A first)'],['value','Value (high first)']].map(function(o){ return '<option value="'+o[0]+'" '+(psort===o[0]?'selected':'')+'>'+o[1]+'</option>'; }).join('') + '</select></div>' +
+        '<div class="field" style="flex:1;min-width:140px;margin-bottom:0;"><label>Sort by</label><select data-pipeline-sort="1">' + [['follow','Next follow-up'],['newest','Newest first'],['name','Name A–Z'],['fit','Fit (A first)'],['trouble','Recent trouble first'],['value','Value (high first)']].map(function(o){ return '<option value="'+o[0]+'" '+(psort===o[0]?'selected':'')+'>'+o[1]+'</option>'; }).join('') + '</select></div>' +
       '</div>' +
       (locs.length || cats.length ? (
         '<div style="display:flex; gap:12px; flex-wrap:wrap; margin:14px 0;">' +
@@ -4396,7 +4448,15 @@
         (parkedList.length ? '<button type="button" class="stattile'+(pf==='parked'?' on':'')+'" data-action="pipeline-filter" data-val="parked"><div class="v">'+parkedList.length+'</div><div class="k">Parked</div></button>' : '') +
       '</div>' +
       qsrFocusNoteHtml() +
-      (pf==='parked' ? '<div class="helper" style="margin:-6px 0 12px;">Set aside while the focus is QSRs and hotels. Each one comes back to the pipeline on its own on the date shown, or tap Un-park to bring it back now.</div>'
+      (function(){
+        var cnt = { none:0, called:0, meeting:0, proposal:0 };
+        state.prospects.forEach(function(p){ if (p.converted || p.declined || isParked(p)) return; cnt[stageOf(p)||'none']++; });
+        var cur = state.prospectsFilterStage||'all';
+        var chip = function(val, label, n){ return '<button type="button" class="btn btn-sm '+(cur===val?'btn-primary':'btn-ghost')+'" data-action="stage-filter" data-val="'+val+'">'+label+' '+n+'</button>'; };
+        return '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px;align-items:center;"><span class="helper" style="margin:0 6px 0 0;">Outreach:</span>' +
+          chip('all','All', cnt.none+cnt.called+cnt.meeting+cnt.proposal) + chip('none','Not contacted', cnt.none) + chip('called','Called', cnt.called) + chip('meeting','Meeting set', cnt.meeting) + chip('proposal','Proposal sent', cnt.proposal) + '</div>';
+      })() +
+      (pf==='parked' ? '<div class="helper" style="margin:-6px 0 12px;">Set aside for now. Each one comes back to the pipeline on its own on the date shown, or tap Un-park to bring it back now.</div>'
         : (pf!=='all' ? '<div class="helper" style="margin:-6px 0 12px;">Showing '+(pf==='audited'?'audited':(pf==='leads'?'lead-finder':'not converted'))+' only — tap the tile again to see everyone.</div>' : '')) +
       (!gateOpen ? gateHtml : pipelineShown.length===0 ? (pf!=='all' ? '<div class="empty"><div class="big">🔎</div>Nothing here yet.</div>' : '<div class="empty"><div class="big">🎯</div>No clients yet.<br>Add one to start tracking your pipeline.</div>') :
         pipelineShown.map(function(p){
@@ -4409,11 +4469,12 @@
           var who = [p.contactName, p.contactDesignation].filter(function(x){ return (x||'').trim(); }).map(esc).join(' · ');
           var btns = contactButtons(p);
           return '<div class="card histcard pcard" style="border-left:3px solid '+stColor+';" data-action="open-prospect" data-id="'+p.id+'">' +
-            '<div class="histtop"><span><span class="badge">'+esc(prospectCategoryLabel(p))+'</span>'+offerBadgeHtml(p)+fitBadgeHtml(p)+serviceBadgeHtml(p)+(p.leadId?'<span class="badge" style="margin-left:6px;">🎯 Lead finder</span>':'')+'</span><span class="pill '+st.tone+'">'+st.label+'</span></div>' +
+            '<div class="histtop"><span><span class="badge">'+esc(prospectCategoryLabel(p))+'</span>'+offerBadgeHtml(p)+fitBadgeHtml(p)+stageBadgeHtml(p)+serviceBadgeHtml(p)+(p.leadId?'<span class="badge" style="margin-left:6px;">🎯 Lead finder</span>':'')+'</span><span class="pill '+st.tone+'">'+st.label+'</span></div>' +
             '<div class="pcard-name" style="'+(p.declined?'text-decoration:line-through;color:var(--ink-400);':'')+'">'+esc(p.name||'Unnamed client')+'</div>' +
             '<div class="histmeta">📍 '+esc(p.location||'No location')+(p.address?' · '+esc(p.address):'')+'</div>' +
             (who || p.contactMobile ? '<div class="histmeta">👤 '+(who||'Contact')+(p.contactMobile?' · '+esc(p.contactMobile):'')+'</div>' : '') +
             (priceStr || p.timeline ? '<div class="histmeta">💰 '+priceStr+(priceStr && p.timeline?' · ':'')+(p.timeline?esc(p.timeline):'')+'</div>' : '') +
+            evidenceLineHtml(p) +
             (latestRemark(p) ? '<div class="histmeta">📝 '+esc(remarkShort(latestRemark(p).text, 110))+' · '+esc(fmtDateShort(latestRemark(p).at))+'</div>' : '') +
             (!p.declined && p.plannedAuditDate ? '<div class="histmeta">⭐ Audit day: '+fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime())+plannedTimeSuffix(p)+'</div>' : '') +
             (nextFu ? '<div class="histmeta">📞 Next follow-up: '+esc(fmtFollowUpWhen(nextFu))+(nextFu.note?' — '+esc(nextFu.note):'')+(p.declined ? '' : ' <span class="pill '+followUpTone(nextFu).tone+'">'+followUpTone(nextFu).label+'</span>')+'</div>'
@@ -4929,6 +4990,28 @@
     var n = computeFollowUpPlan().length;
     return '<button type="button" class="btn btn-ghost btn-sm" style="width:100%;margin-top:10px;" data-action="replan-followups">🗓️ Re-plan follow-ups ('+(n ? n+' to move' : 'all within limits')+')</button>';
   }
+  // Dashboard: the next clients to approach, A-rated first. A client leaves this list as soon as it has an outreach stage.
+  function renderNextToCall(){
+    var pool = state.prospects.filter(function(p){ return !p.converted && !p.declined && !isParked(p) && !stageOf(p) && (p.name||'').trim(); });
+    if (!pool.length) return '';
+    var rank = function(p){ return FIT_ORDER[p.fit]===undefined ? 3 : FIT_ORDER[p.fit]; };
+    pool.sort(function(a,b){ return rank(a)-rank(b) || ((recentTrouble(b)?1:0)-(recentTrouble(a)?1:0)) || (b.contactMobile?1:0)-(a.contactMobile?1:0) || (a.name||'').localeCompare(b.name||''); });
+    var shown = pool.slice(0, 5), aLeft = pool.filter(function(p){ return p.fit==='A'; }).length;
+    return sh('📣','Next to call') +
+      '<div class="card" style="padding:14px 16px;margin-bottom:20px;">' +
+        '<div class="helper" style="margin:0 0 8px;">'+pool.length+' not contacted yet'+(aLeft ? ' · '+aLeft+' rated A' : '')+'. Set an outreach stage on a client and it leaves this list.</div>' +
+        shown.map(function(p){
+          return '<div class="furow" data-action="goto-prospect" data-id="'+p.id+'" role="button" tabindex="0">' +
+            '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;"><span style="font-weight:700;">'+esc(p.name)+'</span><span class="furow-open">Open ›</span></div>' +
+            '<div class="histmeta">'+esc(prospectCategoryLabel(p))+' · '+esc(p.location||'')+(p.fit ? ' · Fit '+esc(p.fit) : '')+'</div>' +
+            evidenceLineHtml(p) +
+            (latestRemark(p) ? '<div class="histmeta" style="margin-top:2px;">📝 '+esc(remarkShort(latestRemark(p).text, 110))+'</div>' : '') +
+            '<div class="contactrow" style="margin-top:6px;">'+contactButtons(p)+'</div>' +
+          '</div>';
+        }).join('') +
+      '</div>';
+  }
+
   function renderFollowUpBoard(){
     var now = Date.now(), todayStr = todayISO();
     var all = [];
@@ -5187,12 +5270,13 @@
       '<div class="helper" data-prospect-hint style="margin:0 0 12px;'+(pProblems.length?'color:var(--accent-ink);':'color:var(--good);')+'">'+esc(prospectHintText(pProblems))+'</div>' +
       '<div class="formstack">' +
         '<div class="field"><label for="pName">Client / store name'+req+'</label><input id="pName" data-bind-prospect="name" value="'+esc(p.name)+'" placeholder="e.g. Northside Grill"></div>' +
+        (function(){ var dupC = findDuplicateClient(p); return dupC ? '<div class="card" style="margin:-6px 0 12px;padding:10px 14px;border-color:var(--bad);"><b>⚠ Possible duplicate:</b> <b>'+esc(dupC.name)+'</b>'+(dupC.location ? ' ('+esc(dupC.location)+')' : '')+' is already in your clients ('+esc(prospectCategoryLabel(dupC))+'). <button type="button" class="btn btn-ghost btn-sm" style="margin-left:6px;" data-action="open-prospect" data-id="'+dupC.id+'">Open that client</button></div>' : ''; })() +
         (similarProspectName ? '<div class="helper" style="margin-top:-10px;color:var(--accent-ink);">Did you mean <b>'+esc(similarProspectName)+'</b>? A similar store already exists — <span style="text-decoration:underline;cursor:pointer;" data-action="use-similar-prospectname" data-name="'+esc(similarProspectName)+'">use that name</span> to avoid splitting its history.</div>' : '') +
         '<div class="field"><label for="pLocation">Location'+req+'</label><input id="pLocation" data-bind-prospect="location" value="'+esc(p.location)+'" placeholder="e.g. Bandra West"></div>' +
         '<div class="field"><label>Category'+req+'</label><div class="catrow">' +
           templateKeys().map(function(k){ return '<button type="button" class="naBtn '+(p.category===k?'on':'')+'" style="padding:9px 16px;font-size:13px;" data-action="set-prospect-category" data-val="'+esc(k)+'">'+esc(state.templates[k].label)+'</button>'; }).join('') +
         '</div></div>' +
-        (p.category==='qsr' ? '<div class="field"><label for="pSeats">Dine-in seats</label><input id="pSeats" type="number" min="0" inputmode="numeric" data-bind-prospect="seats" value="'+esc(p.seats||'')+'" placeholder="e.g. 8"><div class="helper" style="margin-top:4px;">Focus: QSRs with a small dine-in (about 6–10 seats). Takeaway or delivery only (0 seats) isn\'t a fit — mark it not converted.</div></div>' : '') +
+        (p.category==='qsr' ? '<div class="field"><label for="pSeats">Outlets in the network</label><input id="pSeats" type="number" min="0" inputmode="numeric" data-bind-prospect="seats" value="'+esc(p.seats||'')+'" placeholder="e.g. 25"><div class="helper" style="margin-top:4px;">QSR Head means the franchisor / head office, not a single franchisee outlet. Enter how many outlets they run or franchise.</div></div>' : '') +
         '<div class="field"><label for="pAddress">Address'+req+'</label><input id="pAddress" data-bind-prospect="address" value="'+esc(p.address)+'" placeholder="Full address"></div>' +
       '</div>' +
       sh('👤','Point of Contact') +
@@ -5212,6 +5296,7 @@
       renderTravelCard(p) +
       renderFollowUps(p) +
       renderRemarksCard(p) +
+      renderEvidenceCard(p) +
       renderBillingCard(p) +
       renderMeetingTimerCard(p) +
       renderInquiryEditor('client', p.inquiry||[], inquiryAreaOptions(p.category)) +
@@ -6517,6 +6602,7 @@
     renderSoon();
   }
   function qsrFocusNoteHtml(){
+    return '';
     var r = state.targets && state.targets.qsrFocus;
     if (!r || !r.done || r.noteSeen) return '';
     return '<div class="card" style="padding:12px 14px;margin:0 0 14px;border-color:var(--accent);background:var(--accent-soft);">' +
@@ -6692,7 +6778,7 @@
       (hasTarget ? (
         targetProgressRow('Revenue', revenueMonth, t.revenue, esc(state.pricing.currency)) +
         (rev.total ? '<div class="histmeta" style="margin:-4px 0 10px;">'+esc(state.pricing.currency)+rev.retainer+' from monthly retainers · '+esc(state.pricing.currency)+rev.oneTime+' one-time</div>' : '') +
-        targetProgressRow(t.qsrFocus ? 'QSR clients onboarded' : 'Clients onboarded', clientsMonth, t.clients, '')
+        targetProgressRow('Clients onboarded', clientsMonth, t.clients, '')
       ) : '<div class="helper" style="margin:0;">No target set for this month yet — <span style="color:var(--accent-ink);font-weight:700;cursor:pointer;" data-action="go-pricing">set one in Settings →</span></div>') +
     '</div>';
   }
@@ -6976,6 +7062,7 @@
       '</div>' +
       renderAttentionBoard() +
       renderFollowUpBoard() +
+      renderNextToCall() +
       renderWeekSummary() +
       renderInvoicesBoard() +
       renderTravelBoard() +
@@ -7496,6 +7583,22 @@
       var ftP = findProspect(t.dataset.id);
       if (ftP){ if (t.dataset.fit) ftP.fit = t.dataset.fit; else delete ftP.fit; ftP.updatedAt = Date.now(); persistProspects(); render(); }
     }
+    else if (action==='set-stage'){
+      var stP = findProspect(t.dataset.id);
+      if (stP){ if (t.dataset.stage) stP.stage = t.dataset.stage; else delete stP.stage; stP.updatedAt = Date.now(); persistProspects(); render(); }
+    }
+    else if (action==='evidence-add'){
+      var evP = findProspect(t.dataset.id), evId = t.dataset.id;
+      var evText = ((app.querySelector('[data-ev-text="'+evId+'"]')||{}).value||'').trim();
+      var evKind = (app.querySelector('[data-ev-kind="'+evId+'"]')||{}).value || 'other';
+      var evDate = (app.querySelector('[data-ev-date="'+evId+'"]')||{}).value || todayISO();
+      if (evP && evText){ evP.evidence = evP.evidence || []; evP.evidence.unshift({ id: uid(), at: Date.now(), kind: evKind, date: evDate, text: evText }); evP.updatedAt = Date.now(); persistProspects(); render(); }
+    }
+    else if (action==='evidence-del'){
+      var edP = findProspect(t.dataset.id);
+      if (edP && window.confirm('Delete this evidence?')){ edP.evidence = (edP.evidence||[]).filter(function(e){ return e.id!==t.dataset.eid; }); edP.updatedAt = Date.now(); persistProspects(); render(); }
+    }
+    else if (action==='stage-filter'){ state.prospectsFilterStage = t.dataset.val || 'all'; render(); }
     else if (action==='remark-del'){
       var rdP = findProspect(t.dataset.id);
       if (rdP && window.confirm('Delete this remark?')){ rdP.remarks = (rdP.remarks||[]).filter(function(r){ return r.id!==t.dataset.rid; }); rdP.updatedAt = Date.now(); persistProspects(); render(); }
