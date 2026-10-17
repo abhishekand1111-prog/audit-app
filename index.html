@@ -816,6 +816,12 @@
     { id:'svc_franchise_audit', name:'Franchise Health Audit', category:'Franchise Audit', trackingMethod:'app', visitInterval:'per-visit',
       oneTimeMin:35000, oneTimeMax:45000, retainerMin:0, retainerMax:0, retainerMinMonths:0,
       priceNote:'Per outlet, per visit. Digital audit scorecard with photo evidence per outlet. Excludes 18% GST.' },
+    { id:'svc_fr_system', name:'Franchisor System & SOP + Guardian retainer', category:'Franchisor', trackingMethod:'sheets', visitInterval:'monthly',
+      oneTimeMin:70000, oneTimeMax:120000, retainerMin:20000, retainerMax:45000, retainerMinMonths:6,
+      priceNote:'Option 1 for a franchisor / head office: system and SOP build, one-time ₹70K–1.2L, plus the monthly Guardian retainer ₹20–45K that keeps every outlet on the standard (portion audits, aggregator dispute recovery, surge handling). Figures from the Final leads ROI sheet, to be validated per brand. Excludes 18% GST.' },
+    { id:'svc_fr_data', name:'Franchisor Data Visibility', category:'Franchisor', trackingMethod:'sheets', visitInterval:'monthly',
+      oneTimeMin:50000, oneTimeMax:95000, retainerMin:0, retainerMax:0, retainerMinMonths:0,
+      priceNote:'Option 2 for a franchisor: one-time ₹50–95K dashboard that shows head office every outlet\'s sales, food cost, wastage and ratings side by side. Can be taken with or without Option 1. Figures from the Final leads ROI sheet, to be validated per brand. Excludes 18% GST.' },
     { id:'svc_perf_linked', name:'Performance-Linked Model', category:'Performance-Linked', trackingMethod:'n/a', visitInterval:'monthly',
       oneTimeMin:0, oneTimeMax:0, retainerMin:50000, retainerMax:50000, retainerMinMonths:0,
       priceNote:'₹50K/mo base + 15–20% of verified monthly savings. Excludes 18% GST.' },
@@ -839,6 +845,8 @@
     svc_multi_app:      { auditAreas:ALL_AREAS, metrics:['inventory','wastage','zomato'] },
     svc_preopening:     { auditAreas:['Delivery Management','Food Safety & Storage','Cleanliness & Sanitation'], metrics:[] },
     svc_franchise_audit:{ auditAreas:[], metrics:[] },
+    svc_fr_system:      { auditAreas:[], metrics:['inventory','wastage','zomato'] },
+    svc_fr_data:        { auditAreas:[], metrics:['inventory','wastage','zomato'] },
     svc_perf_linked:    { auditAreas:['Delivery Management','Food Safety & Storage'], metrics:['inventory','wastage'] },
     svc_open_diagnosis: { auditAreas:[], metrics:[] },
     svc_free_audit:     { auditAreas:[], metrics:[] }
@@ -857,6 +865,8 @@
     svc_multi_app:      ['Standardise the audit format across all outlets','Build or configure the multi-outlet app','Onboard every outlet and manager','Use the central dashboard to rank outlets and franchisees','Review the scorecards and actions monthly'],
     svc_preopening:     ['Review the concept, menu and layout plan','Build the equipment, staffing and licensing checklist','Set up the SOPs and tracking from day one','Run a mock service before opening','Sign off the opening readiness checklist'],
     svc_franchise_audit:['Schedule the outlet visit','Run the full audit with photo evidence','Score the outlet against the franchise standard','Share the scorecard with the franchisee and head office','Agree and track the corrective actions'],
+    svc_fr_system:      ['Map how the brand works today: SOPs, training, supply and aggregator control','Turn the recipes into gram-based SOPs and a franchisee manual','Set up outlet audits with photo evidence and a pass mark','Train franchisees and managers and sign off each outlet','Run the monthly Guardian review: top and bottom outlets, corrective actions'],
+    svc_fr_data:        ['Agree the numbers head office needs from every outlet','Connect POS, inventory and aggregator data to one sheet per outlet','Build the side-by-side dashboard and the outlet ranking','Train outlet managers to submit data on time','Review the dashboard with head office every month'],
     svc_perf_linked:    ['Agree the baseline numbers and the savings target','Set up the tracking for the agreed metrics','Review the numbers every month','Verify the savings with the owner','Invoice the base fee plus the share of verified savings']
   };
   function fillServiceAuditFields(svc){
@@ -983,9 +993,13 @@
     });
     return out;
   }
+  var svcAdded = false;
   function ensureServiceDefaults(){
     if (!Array.isArray(state.services)) return;
     state.services.forEach(fillServiceAuditFields);
+    ['svc_fr_system','svc_fr_data'].forEach(function(sid){
+      if (!state.services.some(function(s){ return s.id===sid; })){ state.services.push(JSON.parse(JSON.stringify(DEFAULT_SERVICES.filter(function(s){ return s.id===sid; })[0]))); svcAdded = true; }
+    });
     var removed = false;
     try{ removed = !!localStorage.getItem('diagnosisroom_nofreeaudit'); }catch(e){}
     if (!removed && !state.services.some(function(s){ return s.id==='svc_free_audit'; })){
@@ -999,6 +1013,26 @@
     if (!state.templates.big){ state.templates.big = { label:'Big', sections:[] }; masterMigrated = true; }
     // QSR now means the franchisor (head office), not the single franchisee outlet.
     if (state.templates.qsr && state.templates.qsr.label==='QSR'){ state.templates.qsr.label = 'QSR Head'; masterMigrated = true; }
+    // QSR Head: a head-office audit (standards, outlet audits, supply, aggregator control, outlet economics, data). Added once, only while the checklist has no questions yet.
+    var qh = state.templates.qsr;
+    if (qh && !qh.headSeeded && !(qh.sections||[]).some(function(s){ return (s.items||[]).length; })){
+      var HQ = [
+        ['Franchise standards & SOPs', ['Is there a written SOP and recipe manual for every menu item?','Are recipes gram-based and version-controlled, and who signs off a change?','How are SOP changes communicated to every outlet, and how do you know they were applied?','Is there a franchisee onboarding and training programme with a sign-off before opening?','How is a new menu item tested before it goes to all outlets?']],
+        ['Outlet audits & compliance', ['How often is each outlet audited, and by whom?','Is the audit scored, with photo evidence and a pass mark?','What happens to an outlet that fails (action, deadline, penalty)?','Are mystery audits done for portion weight, taste and hygiene?','Is there one view that ranks the best and worst outlets?']],
+        ['Supply chain & central kitchen', ['Which items come from the central kitchen and which are bought locally?','Do franchisees know when the next dispatch arrives?','How are stock-outs, short-dated or wrong dispatches reported and fixed?','Are vendor prices and quality checked centrally?']],
+        ['Aggregator & delivery control', ['Who controls aggregator listings, prices and discounts: head office or the franchisee?','Is there a surge-hour SOP for packing and rider hand-off?','Are ratings and complaints tracked per outlet, and who acts on them?','Does the franchisee margin survive the aggregator discount and commission?']],
+        ['Outlet economics & support', ['Does head office know each outlet\'s sales, food cost % and wastage %?','What reports do franchisees send, and how often?','Is there a support line or escalation with a response time?','Which outlets sit below the brand rating, and what is the reason?']],
+        ['Data & systems', ['Is POS data pulled centrally by outlet every day?','Is inventory and wastage reported per outlet?','Is the reported data reconciled against sales?']]
+      ];
+      HQ.forEach(function(h){ qh.sections.push({ id:uid(), name:h[0], items:h[1].map(function(q){ return { id:uid(), text:q }; }) }); });
+      qh.headSeeded = true; masterMigrated = true;
+    }
+    // Big: start from a copy of General (linked to it), once, while its checklist has no questions yet.
+    var bg = state.templates.big, gm = state.templates.master;
+    if (bg && !bg.seeded && !(bg.sections||[]).some(function(s){ return (s.items||[]).length; }) && gm && (gm.sections||[]).some(function(s){ return (s.items||[]).length; })){
+      gm.sections.forEach(function(s){ if (!(s.items||[]).length) return; bg.sections.push({ id:uid(), name:s.name, items:s.items.map(function(it){ return { id:uid(), text:it.text, from:it.id }; }) }); });
+      bg.seeded = true; masterMigrated = true;
+    }
     // "All Areas" master library: seeded once from every area across the audit checklists, then edited freely.
     // Only when Dine-In still holds real questions: an empty or stale copy must never create (and save) an empty General over real data.
     if (!state.templates.master && state.templates.dinein && state.templates.qsr && state.templates.dinein.sections.some(function(s){ return (s.items||[]).length; })){
@@ -1305,6 +1339,7 @@
           if (masterMigrated){ masterMigrated = false; setTimeout(persistTemplates, 0); }
           if (data.services) state.services = data.services;
           ensureServiceDefaults();
+          if (svcAdded){ svcAdded = false; setTimeout(persistServices, 0); }
           if (data.deliverables) state.deliverables = data.deliverables;
           if (data.paramLibrary) state.paramLibrary = data.paramLibrary;
           if (data.targets) state.targets = data.targets;
@@ -3761,9 +3796,9 @@
   }
 
   // ---------- Remarks: quick dated notes from conversations, shown again before the next follow-up ----------
-  // What you sell them: QSRs get the digital product; dine-in, hotels and Big get consultancy and retainer.
+  // What you sell them: QSR Heads (franchisors) get the franchisor system + Guardian retainer; dine-in, hotels and Big get consultancy and retainer.
   function offerOf(p){ return p.category==='qsr' ? 'digital' : 'consult'; }
-  function offerLabel(p){ return offerOf(p)==='digital' ? 'Digital product' : 'Consultancy'; }
+  function offerLabel(p){ return offerOf(p)==='digital' ? 'Franchisor system' : 'Consultancy'; }
   function offerBadgeHtml(p){ return '<span class="badge" style="margin-left:6px;">'+(offerOf(p)==='digital'?'💻 ':'🧭 ')+offerLabel(p)+'</span>'; }
   // ---------- Outreach stage (where each client is in your approach) ----------
   var STAGES = [['','Not contacted'],['called','Called'],['meeting','Meeting set'],['proposal','Proposal sent']];
@@ -3816,7 +3851,7 @@
   var FIT_ORDER = { A:0, B:1, C:2 };
   function fitBadgeHtml(p){ return FIT_ORDER[p.fit]!==undefined ? '<span class="badge" style="margin-left:6px;">Fit '+p.fit+'</span>' : ''; }
   function renderFitRow(p){
-    return '<div class="helper" style="margin:0 0 6px;">Fit for '+(offerOf(p)==='digital'?'the digital product':'consultancy')+' — A = recurring service or process problem in reviews and a reachable owner, B = maybe, C = unlikely.</div>' +
+    return '<div class="helper" style="margin:0 0 6px;">Fit for '+(offerOf(p)==='digital'?'the franchisor system':'consultancy')+' — A = recurring service or process problem in reviews and a reachable owner, B = maybe, C = unlikely.</div>' +
       '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">' +
       ['A','B','C',''].map(function(f){ return '<button type="button" class="btn btn-sm '+((p.fit||'')===f?'btn-primary':'btn-ghost')+'" data-action="set-fit" data-id="'+p.id+'" data-fit="'+f+'">'+(f||'Not rated')+'</button>'; }).join('') +
       '</div>';
@@ -4413,7 +4448,7 @@
       (locs.length || cats.length ? (
         '<div style="display:flex; gap:12px; flex-wrap:wrap; margin:14px 0;">' +
           (locs.length ? '<div class="field" style="flex:1; min-width:150px; margin-bottom:0;"><label>Location</label><select data-prospect-filter="location"><option value="" '+(flRaw?'':'selected')+'>Choose location…</option><option value="all" '+(flRaw==='all'?'selected':'')+'>All locations</option>'+locs.map(function(l){ return '<option value="'+esc(l)+'" '+(fl===l?'selected':'')+'>'+esc(l)+'</option>'; }).join('')+'</select></div>' : '') +
-          '<div class="field" style="flex:1; min-width:150px; margin-bottom:0;"><label>Offer</label><select data-prospect-filter="offer">' + [['all','All offers'],['consult','Consultancy (dine-in, hotels, Big)'],['digital','Digital product (QSR)']].map(function(o){ return '<option value="'+o[0]+'" '+((state.prospectsFilterOffer||'all')===o[0]?'selected':'')+'>'+o[1]+'</option>'; }).join('') + '</select></div>' +
+          '<div class="field" style="flex:1; min-width:150px; margin-bottom:0;"><label>Offer</label><select data-prospect-filter="offer">' + [['all','All offers'],['consult','Consultancy (dine-in, hotels, Big)'],['digital','Franchisor system (QSR Head)']].map(function(o){ return '<option value="'+o[0]+'" '+((state.prospectsFilterOffer||'all')===o[0]?'selected':'')+'>'+o[1]+'</option>'; }).join('') + '</select></div>' +
           (cats.length ? '<div class="field" style="flex:1; min-width:150px; margin-bottom:0;"><label>Category</label><select data-prospect-filter="category"><option value="" '+(fcRaw?'':'selected')+'>Choose type…</option><option value="all" '+(fcRaw==='all'?'selected':'')+'>All categories</option>'+cats.map(function(c){ return '<option value="'+esc(c)+'" '+(fc===c?'selected':'')+'>'+esc(state.templates[c]?state.templates[c].label:c)+'</option>'; }).join('')+'</select></div>' : '') +
         '</div>'
       ) : '') +
@@ -6043,7 +6078,8 @@
       (items.length
         ? items.map(function(e){ return weekRowHtml(e, false); }).join('')
         : '<div class="empty" style="padding:20px 14px;"><div class="big">📅</div>Nothing scheduled for today.</div>') +
-      '<button class="btn btn-ghost btn-sm" style="width:100%;margin:6px 0 20px;" data-action="day-tab" data-tab="week">See the next 7 days ('+g.count+') →</button>';
+      '<button class="btn btn-ghost btn-sm" style="width:100%;margin:6px 0 20px;" data-action="day-tab" data-tab="week">See the next 7 days ('+g.count+') →</button>' +
+      renderNextToCall();
   }
   function renderDayTimeLog(){
     var past = state.workdays.filter(function(x){ return x.checkOutAt; }).slice(0, 14);
