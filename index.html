@@ -3813,7 +3813,7 @@
       return 'merged';
     }
     var now = Date.now();
-    state.prospects.push({ id:'imp'+qsrSlug(rec.name+rec.city)+uid().slice(0,4), name:rec.name, location:rec.city||'', address:rec.address||'', category:rec.category||'qsr', auditId:null,
+    state.prospects.push({ id:'imp'+qsrSlug(rec.name+rec.city)+uid().slice(0,4), name:rec.name, location:rec.city||'', address:rec.address||'', category:rec.category||'dinein', auditId:null,
       plannedAuditDate:'', checkinNote:'', proposed:'', priceMin:'', priceMax:'', converted:false, convertedAt:null, declined:false, declinedAt:null, followUpDate:'', finalPrice:'', timeline:'', createdAt:now, updatedAt:now,
       servicesOffered:'', pricingType:'', proposalStatus:'', proposalMeetingDate:'', auditsPerMonth:'', contactName:'', contactDesignation:'', contactMobile:mob, seats:'',
       inquiry:[], followUps:[], remarks:text ? [{ id:uid(), at:now, text:text }] : [], fit:rec.fit||undefined, qsrChecked:true, imported:true });
@@ -6476,6 +6476,8 @@
     }).catch(function(){ qsrServerAsked = false; setTimeout(qsrFocusRun, 30000); });
   }
   function qsrFocusRun(){
+    // Focus moved to individual dine-in, hotels and Big (Oct 2026): the QSR list is never re-added or re-parked.
+    return;
     if (!fsDb || !state.authUser || !RS.prospects.ready || qsrFocusBusy) return;
     if (state.targets && state.targets.qsrFocus && state.targets.qsrFocus.done) return;
     if (!cfgServer || !RS.prospects._server){ qsrServerCheck(); return; }
