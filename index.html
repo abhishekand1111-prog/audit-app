@@ -908,7 +908,7 @@
         'Table checked back within 2 minutes of food drop'
       ]}
     ]},
-    qsr: { label:'QSR', sections:[
+    qsr: { label:'QSR Head', sections:[
       { id:'delivery', name:'Delivery Management', items:[
         'Delivery schedule posted and followed for every vendor',
         'Received goods checked against the purchase order',
@@ -997,6 +997,8 @@
     if (!state.templates.hotel) state.templates.hotel = seedTemplates(DEFAULT_TEMPLATES).hotel;
     // "Big": one category for the larger sit-down restaurants and hotels. Its checklist starts empty (copy areas in from General).
     if (!state.templates.big){ state.templates.big = { label:'Big', sections:[] }; masterMigrated = true; }
+    // QSR now means the franchisor (head office), not the single franchisee outlet.
+    if (state.templates.qsr && state.templates.qsr.label==='QSR'){ state.templates.qsr.label = 'QSR Head'; masterMigrated = true; }
     // "All Areas" master library: seeded once from every area across the audit checklists, then edited freely.
     // Only when Dine-In still holds real questions: an empty or stale copy must never create (and save) an empty General over real data.
     if (!state.templates.master && state.templates.dinein && state.templates.qsr && state.templates.dinein.sections.some(function(s){ return (s.items||[]).length; })){
@@ -3805,6 +3807,7 @@
     if (p){
       if (text){ p.remarks = p.remarks || []; if (!p.remarks.some(function(r){ return r.text===text; })) p.remarks.unshift({ id:uid(), at:Date.now(), text:text }); }
       if (rec.fit && !p.fit) p.fit = rec.fit;
+      if (rec.contactName && !p.contactName) p.contactName = rec.contactName;
       if (rec.category==='hotel' && p.category==='dinein') p.category = 'hotel';
       if (!p.contactMobile && mob) p.contactMobile = mob;
       if ((!p.address || p.address===p.location) && rec.address) p.address = rec.address;
@@ -3815,7 +3818,7 @@
     var now = Date.now();
     state.prospects.push({ id:'imp'+qsrSlug(rec.name+rec.city)+uid().slice(0,4), name:rec.name, location:rec.city||'', address:rec.address||'', category:rec.category||'dinein', auditId:null,
       plannedAuditDate:'', checkinNote:'', proposed:'', priceMin:'', priceMax:'', converted:false, convertedAt:null, declined:false, declinedAt:null, followUpDate:'', finalPrice:'', timeline:'', createdAt:now, updatedAt:now,
-      servicesOffered:'', pricingType:'', proposalStatus:'', proposalMeetingDate:'', auditsPerMonth:'', contactName:'', contactDesignation:'', contactMobile:mob, seats:'',
+      servicesOffered:'', pricingType:'', proposalStatus:'', proposalMeetingDate:'', auditsPerMonth:'', contactName:rec.contactName||'', contactDesignation:rec.contactDesignation||'', contactMobile:mob, seats:'',
       inquiry:[], followUps:[], remarks:text ? [{ id:uid(), at:now, text:text }] : [], fit:rec.fit||undefined, qsrChecked:true, imported:true });
     return 'new';
   }
