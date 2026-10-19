@@ -843,7 +843,7 @@
 (function(){
   "use strict";
   var OWNER_EMAIL = 'abhishekand.1111@gmail.com';
-  var APP_VERSION = 'v122';
+  var APP_VERSION = 'v123';
   var LS_T = 'diagnosisroom_templates_v1', LS_H = 'diagnosisroom_history_v1', LS_D = 'diagnosisroom_draft_v1', LS_P = 'diagnosisroom_pricing_v1';
   var LS_A = 'diagnosisroom_actions_v1', LS_SCHED = 'diagnosisroom_schedule_v1';
   var LS_PR = 'diagnosisroom_prospects_v1';
@@ -4295,7 +4295,59 @@
     '</div>';
   }
 
-  // The first thing on a client page: what they are, where you are with them, and what happens next.
+  // ---------- Progress map: everything about this client, drawn as the same map (root, heads, steps) ----------
+  function renderProgressMap(p, audits){
+    var cur = state.pricing.currency||'₹', probs = prospectProblems(p), mobileBad = probs.some(function(x){ return /mobile/.test(x); });
+    var nf = openFollowUps(p)[0], overdue = !!(nf && followUpDueAt(nf) < Date.now());
+    var remarks = (p.remarks||[]).length, ev = (p.evidence||[]).length, rated = sysRated(p), costs = clientCostEntries(p).length, inq = (p.inquiry||[]).length;
+    var svc = p.servicesOffered ? findService(p.servicesOffered) : null;
+    var hasPrice = !!(Number(p.finalPrice)||Number(p.priceMin)||Number(p.priceMax));
+    var prog = computeProgressSummary(p, audits), openFix = openActionsForStore(p.name).length;
+    var billed = billedOf(p), paid = (p.invoices||[]).filter(function(i){ return i.paid; }).reduce(function(s,i){ return s+invAmount(i); }, 0), mins = tlMinutes(p);
+    var started = p.converted || audits.length;
+    function L(name, st, text, target){ return { name:name, st:st, text:text, target:target||'' }; }
+    var depts = [
+      { name:'Reach', leaves:[
+        L('Contact', probs.length ? (mobileBad ? 'missing' : 'person') : 'system', probs.length ? 'Missing: '+probs.slice(0,2).join(', ')+(probs.length>2 ? ' +'+(probs.length-2) : '') : 'Complete', 'Point of Contact'),
+        L('Outreach', stageOf(p)==='' ? 'missing' : (stageOf(p)==='called' ? 'person' : 'system'), stageLabel(p), ''),
+        L('Next follow-up', nf && !overdue ? 'system' : 'missing', nf ? (overdue ? 'Overdue · ' : '')+fmtFollowUpWhen(nf) : 'None booked', 'Follow-ups'),
+        L('Remarks', remarks ? 'system' : 'missing', remarks ? remarks+' note'+(remarks===1?'':'s') : 'None yet', 'Remarks'),
+        L('Evidence', ev ? 'system' : 'person', ev ? ev+' logged' : 'None yet', 'Evidence') ] },
+      { name:'Diagnose', leaves:[
+        L('System Map', rated>=13 ? 'system' : (rated ? 'person' : 'missing'), rated ? rated+' of 13 rated' : 'Not mapped', 'System Map'),
+        L('Problems faced', inq ? 'system' : 'missing', inq ? inq+' logged' : 'None yet', 'Inquiry — problems faced'),
+        L('Audit', audits.length ? 'system' : 'missing', audits.length ? audits.length+' done · latest '+audits[0].completionPct+'%' : 'Not audited', audits.length ? 'Timeline' : ''),
+        L('Parameters', costs ? 'system' : 'missing', costs ? costs+' entr'+(costs===1?'y':'ies') : 'None yet', 'Parameters') ] },
+      { name:'Propose', leaves:[
+        L('Package', svc ? 'system' : 'missing', svc ? svc.name : 'Not chosen', 'Package'),
+        L('Price', hasPrice ? 'system' : 'person', hasPrice ? 'Set' : 'Estimate '+cur+fmtCompact(valueOf(p).v), ''),
+        L('Proposal', p.converted ? 'system' : (p.proposalStatus ? 'person' : 'missing'), p.converted ? 'Accepted' : (p.proposalStatus ? String(p.proposalStatus).replace(/_/g,' ') : 'Not sent'), 'Proposal & conversion'),
+        L('Outcome', p.converted ? 'system' : (p.declined ? 'missing' : 'person'), p.converted ? 'Client' : (p.declined ? 'Not converted' : 'Open'), '') ] },
+      { name:'Deliver', leaves:[
+        L('Fixes', !started ? '' : (openFix ? 'person' : 'system'), !started ? 'Starts after the audit' : (openFix ? openFix+' open' : 'All fixed'), 'Recommended Next Actions'),
+        L('Improvement', !prog ? '' : (prog.scoreDelta>=0 ? 'system' : 'missing'), !prog ? 'Needs 2 audits' : (prog.scoreDelta>0 ? '+' : '')+prog.scoreDelta+' pts since the first', 'Timeline') ] },
+      { name:'Money', leaves:[
+        L('Billing', (!p.converted && !billed) ? '' : (!billed ? 'missing' : (billed>paid ? 'person' : 'system')), (!p.converted && !billed) ? 'After conversion' : (!billed ? 'Nothing invoiced' : (billed>paid ? fmtMoney(billed-paid)+' outstanding' : 'All paid')), 'Billing'),
+        L('Time', mins ? 'system' : 'missing', mins ? fmtHours(mins)+(billed ? ' · '+fmtMoney(billed/(mins/60))+'/h' : '') : 'Not logged', 'Time & money') ] }
+    ];
+    var done = 0, total = 0;
+    depts.forEach(function(d){ d.leaves.forEach(function(l){ if (l.st){ total++; if (l.st==='system') done++; } }); });
+    var open = loadJSON('diagnosisroom_progmap_v1', true) !== false;
+    return sh('🗺️','Progress map') +
+      '<div style="margin:-6px 0 10px;"><button type="button" class="btn btn-text btn-sm" style="padding:2px 0;" data-action="progmap-toggle">'+(open ? 'Hide the map' : 'Show the map')+' · '+done+' of '+total+' steps done</button></div>' +
+      (!open ? '' : '<div class="tm-legend"><span><i class="tm-dot"></i>Done</span><span><i class="tm-dot st-person"></i>In progress</span><span><i class="tm-dot st-missing"></i>Not started / needs work</span></div>' +
+      '<div class="tmap"><div class="tm-root"><b>'+esc(p.name||'Client')+'</b><span>'+esc(prospectCategoryLabel(p))+' · '+done+' of '+total+' steps done · '+esc(stageLabel(p))+'</span></div><div class="tm-kids">' +
+        depts.map(function(d){
+          var rank = { missing:3, person:2, system:1, '':0 }, worst = '', nd = 0, nt = 0;
+          d.leaves.forEach(function(l){ if (l.st){ nt++; if (l.st==='system') nd++; if (rank[l.st]>rank[worst]) worst = l.st; } });
+          if (worst==='system') worst = '';
+          return '<div class="tm-node"><div class="tm-dept"><span class="tm-t">'+esc(d.name)+'</span><span class="tm-s st-'+(worst||'none')+'">'+(nt ? nd+' of '+nt+' done' : 'not started')+'</span></div><div class="tm-kids">' +
+            d.leaves.map(function(l){
+              var inner = '<b>'+esc(l.name)+'</b><span>'+esc(l.text)+'</span>', cls = 'tm-area'+(l.st ? ' st-'+l.st : '');
+              return '<div class="tm-node">'+(l.target ? '<button type="button" class="'+cls+'" data-action="jump" data-target="'+esc(l.target)+'">'+inner+'</button>' : '<div class="'+cls+'">'+inner+'</div>')+'</div>';
+            }).join('') + '</div></div>';
+        }).join('') + '</div></div>');
+  }  // The first thing on a client page: what they are, where you are with them, and what happens next.
   function renderStatusCard(p){
     var nf = openFollowUps(p)[0], lr = latestRemark(p);
     return '<div class="card" style="padding:14px 16px;margin-bottom:14px;">' +
@@ -5938,6 +5990,7 @@
           .map(function(j){ return '<button type="button" data-action="jump" data-target="'+esc(j[1])+'">'+j[0]+'</button>'; }).join('') +
       '</div>' +
       renderStatusCard(p) +
+      renderProgressMap(p, audits) +
       ((audits.length || p.converted) ? renderClientHealthCard(p, audits) + renderProcessCard(p, audits) : '') +
       renderProgressSummary(p, audits) +
       '<div class="helper" data-prospect-hint style="margin:0 0 12px;'+(pProblems.length?'color:var(--accent-ink);':'color:var(--good);')+'">'+esc(prospectHintText(pProblems))+'</div>' +
@@ -8377,6 +8430,7 @@
     else if (action==='go-plan'){ if(!state.draft){ state.activeProspectId = null; state.activeCallId = null; state.prospectsTab = 'plan'; state.view = 'prospects'; window.scrollTo(0,0); render(); } }
     else if (action==='go-overdue'){ if(!state.draft){ state.dayTab = 'overdue'; state.view = 'time'; window.scrollTo(0,0); render(); } }
     else if (action==='go-review'){ if(!state.draft){ state.dayTab = 'activity'; state.activitySeg = 'review'; state.activeCallId = null; state.view = 'time'; window.scrollTo(0,0); render(); } }
+    else if (action==='progmap-toggle'){ saveJSON('diagnosisroom_progmap_v1', loadJSON('diagnosisroom_progmap_v1', true) === false); render(); }
     else if (action==='check-update'){ checkUpdate(true); }
     else if (action==='stage-filter'){ state.prospectsFilterStage = t.dataset.val || 'all'; render(); }
     else if (action==='remark-del'){
