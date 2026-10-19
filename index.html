@@ -4439,8 +4439,9 @@
         '<button class="tab '+(pTab==='pipeline'?'on':'')+'" data-action="prospects-tab" data-tab="pipeline">Pipeline</button>' +
         '<button class="tab '+(pTab==='clients'?'on':'')+'" data-action="prospects-tab" data-tab="clients">Converted</button>' +
         '<button class="tab '+(pTab==='daily'?'on':'')+'" data-action="prospects-tab" data-tab="daily">Daily Activity</button>' +
+        '<button class="tab '+(pTab==='plan'?'on':'')+'" data-action="prospects-tab" data-tab="plan">Plan'+(function(){ var n = planPool({ onlyNew:false, fit:'all' }).length; return '<span class="tabcount'+(n?' bad':'')+'">'+n+'</span>'; })()+'</button>' +
       '</div>' +
-      (pTab==='calls' ? renderCallRequestsBody() : pTab==='daily' ? renderProspectsDaily() : (
+      (pTab==='calls' ? renderCallRequestsBody() : pTab==='daily' ? renderProspectsDaily() : pTab==='plan' ? renderClientPlan() : (
       '<div style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 0;">' +
         '<div class="field" style="flex:2;min-width:180px;margin-bottom:0;"><label for="pSearch">Search</label><input id="pSearch" type="search" data-pipeline-search="1" value="'+esc(state.pipelineQuery||'')+'" placeholder="Name, area, contact, phone…" autocomplete="off"></div>' +
         '<div class="field" style="flex:1;min-width:140px;margin-bottom:0;"><label>Sort by</label><select data-pipeline-sort="1">' + [['follow','Next follow-up'],['newest','Newest first'],['name','Name A–Z'],['fit','Fit (A first)'],['trouble','Recent trouble first'],['value','Value (high first)']].map(function(o){ return '<option value="'+o[0]+'" '+(psort===o[0]?'selected':'')+'>'+o[1]+'</option>'; }).join('') + '</select></div>' +
@@ -4996,7 +4997,7 @@
     var cfg = planCfg(), today = todayISO(), items = [];
     state.prospects.forEach(function(p){
       if (p.converted || p.declined || isParked(p)) return;
-      (p.followUps||[]).forEach(function(f){ if (!f.done && !f.serviceRecurring && f.date) items.push({ p:p, f:f }); });
+      (p.followUps||[]).forEach(function(f){ if (!f.done && !f.serviceRecurring && f.kind!=='visit' && f.date) items.push({ p:p, f:f }); });
     });
     function key(x){ return x.f.date+' '+(x.f.time||'99:99'); }
     // A call counts as overdue the moment its time passes — no need to wait for the day to end.
@@ -5024,6 +5025,148 @@
   function renderReplanButton(){
     var n = computeFollowUpPlan().length;
     return '<button type="button" class="btn btn-ghost btn-sm" style="width:100%;margin-top:10px;" data-action="replan-followups">🗓️ Re-plan follow-ups ('+(n ? n+' to move' : 'all within limits')+')</button>';
+  }
+  // ---------- Plan: organise the clients by area, and schedule the unscheduled ones as area days ----------
+  var AREA_KW = ['vip road','baltana','dhakoli','peer muchalla','lohgarh','ambala','airport road','kharar','industrial area','night food street','manimajra','kalka'];
+  function titleCase(s){ return String(s||'').replace(/\b[a-z]/g, function(c){ return c.toUpperCase(); }); }
+  // Which part of town a client is in: city, then Sector / Phase / known stretch, so nearby clients can share a day.
+  function areaOf(p){
+    var s = ((p.address||'')+' '+(p.location||'')).toLowerCase().replace(/\s+/g,' ');
+    var city = impCity(s); if (!city && /delhi|ncr|noida|gurgaon|gurugram/.test(s)) city = 'delhi ncr';
+    var sec = /\b(?:sector|sec)\s*-?\s*(\d+)/.exec(s), ph = /\bphase\s*-?\s*(\d+)/.exec(s), sub = '', ord = 9999;
+    if (sec){ sub = 'Sector '+sec[1]; ord = parseInt(sec[1],10); }
+    else if (ph){ sub = 'Phase '+ph[1]; ord = 200+parseInt(ph[1],10); }
+    else { for (var i=0;i<AREA_KW.length;i++){ if (s.indexOf(AREA_KW[i])>=0){ sub = titleCase(AREA_KW[i]); ord = 5000+i; break; } } }
+    var cityL = city ? titleCase(city) : 'Other area';
+    return { city:cityL, sub:sub, ord:ord, label: cityL+(sub ? ' · '+sub : ''), key: cityL+'|'+sub };
+  }
+  function planOpts(){
+    if (!state.planOpts){ var d = addDaysISO(todayISO(), 1); state.planOpts = { perDay:6, start:d, fit:'all', onlyNew:true, skipSun:true }; }
+    return state.planOpts;
+  }
+  function planPool(o){
+    return state.prospects.filter(function(p){
+      if (p.converted || p.declined || isParked(p) || !(p.name||'').trim()) return false;
+      if (openFollowUps(p).length) return false;
+      if (o.onlyNew && stageOf(p)) return false;
+      if (o.fit==='ab' && p.fit!=='A' && p.fit!=='B') return false;
+      if (o.fit==='a' && p.fit!=='A') return false;
+      return true;
+    });
+  }
+  function fitRank(p){ return FIT_ORDER[p.fit]===undefined ? 3 : FIT_ORDER[p.fit]; }
+  // One city per day (or part of a city), nearby sectors together, A-rated cities first; Sundays skipped.
+  function computeAreaPlan(o){
+    var per = Math.max(1, Math.min(15, parseInt(o.perDay,10)||6)), groups = {};
+    planPool(o).forEach(function(p){ var a = areaOf(p), g = groups[a.city] = groups[a.city] || { city:a.city, items:[] }; g.items.push({ p:p, a:a }); });
+    var list = Object.keys(groups).map(function(k){ return groups[k]; });
+    list.forEach(function(g){ g.score = g.items.filter(function(x){ return x.p.fit==='A'; }).length*100 + g.items.length; });
+    list.sort(function(a,b){ return b.score-a.score; });
+    var days = [];
+    list.forEach(function(g){
+      g.items.sort(function(x,y){ return x.a.ord-y.a.ord || fitRank(x.p)-fitRank(y.p) || (x.p.name||'').localeCompare(y.p.name||''); });
+      for (var i=0;i<g.items.length;i+=per) days.push({ city:g.city, items:g.items.slice(i, i+per) });
+    });
+    var d = o.start || addDaysISO(todayISO(), 1), guard = 0;
+    days.forEach(function(day){
+      while (o.skipSun!==false && new Date(d+'T00:00:00').getDay()===0 && guard++<400) d = addDaysISO(d, 1);
+      day.date = d; d = addDaysISO(d, 1);
+      var subs = []; day.items.forEach(function(x){ if (x.a.sub && subs.indexOf(x.a.sub)<0) subs.push(x.a.sub); });
+      day.label = day.city+(subs.length ? ' · '+subs.slice(0,4).join(', ')+(subs.length>4 ? ' +'+(subs.length-4) : '') : '');
+    });
+    return days;
+  }
+  function planTimes(n){
+    var cfg = planCfg(), st = hhmmToMin(cfg.start); if (st===null) st = 600;
+    var step = Math.max(20, Math.min(cfg.gap, Math.floor((19*60-st)/Math.max(1,n)))), out = [];
+    for (var i=0;i<n;i++) out.push(minToHHMM(Math.min(st+i*step, 22*60)));
+    return out;
+  }
+  // Adds one visit follow-up per client for the given date; marked so a whole plan can be undone.
+  function scheduleVisits(plist, date, planId, areaLabel){
+    var times = planTimes(plist.length), now = Date.now();
+    plist.forEach(function(p, i){
+      p.followUps = p.followUps || [];
+      p.followUps.push({ id:uid(), date:date, time:times[i], kind:'visit', auto:planId, done:false, doneAt:null, createdAt:now,
+        note:'📍 '+(areaLabel||areaOf(p).label)+' — '+(p.contactMobile ? 'visit, or call first' : 'visit (walk in)')+': introduce the audit, offer the free System Map' });
+      p.updatedAt = now;
+    });
+  }
+  function renderClientPlan(){
+    var o = planOpts(), today = todayISO(), now = Date.now(), weekEnd = isoDaysFromNow(7);
+    var open = [];
+    state.prospects.forEach(function(p){ openFollowUps(p).forEach(function(f){ open.push({ p:p, f:f }); }); });
+    var overdue = open.filter(function(x){ return followUpDueAt(x.f) < now; }).length;
+    var todayN = open.filter(function(x){ return x.f.date===today && followUpDueAt(x.f) >= now; }).length;
+    var weekN = open.filter(function(x){ return x.f.date>today && x.f.date<=weekEnd; }).length;
+    var allUn = planPool({ onlyNew:false, fit:'all' }).length;
+    var autoOpen = open.filter(function(x){ return x.f.auto; }).length;
+    var plan = computeAreaPlan(o), planCount = plan.reduce(function(n,d){ return n+d.items.length; }, 0);
+    // This week by area
+    var byDate = {};
+    open.filter(function(x){ return x.f.date <= weekEnd; }).forEach(function(x){ var k = x.f.date < today ? 'overdue' : x.f.date; (byDate[k] = byDate[k] || []).push(x); });
+    var dateKeys = Object.keys(byDate).sort(function(a,b){ return a==='overdue' ? -1 : (b==='overdue' ? 1 : a.localeCompare(b)); });
+    var weekHtml = dateKeys.length ? dateKeys.map(function(k){
+      var rows = byDate[k].sort(function(a,b){ return followUpDueAt(a.f)-followUpDueAt(b.f); });
+      var areas = {}; rows.forEach(function(x){ areas[areaOf(x.p).label] = true; });
+      return '<div class="card" style="padding:12px 14px;margin-bottom:10px;">' +
+        '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:6px;"><b>'+(k==='overdue' ? '⚠️ Overdue' : esc(new Date(k+'T00:00:00').toLocaleDateString(undefined,{weekday:'long', day:'numeric', month:'short'}))+(k===today ? ' · today' : ''))+'</b><span class="histmeta" style="margin:0;">'+rows.length+' stop'+(rows.length===1?'':'s')+'</span></div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">'+Object.keys(areas).slice(0,6).map(function(a){ return '<span class="pill warn">📍 '+esc(a)+'</span>'; }).join('')+'</div>' +
+        rows.slice(0, 12).map(function(x){
+          return '<div class="furow" data-action="goto-prospect" data-id="'+x.p.id+'" role="button" tabindex="0">' +
+            '<div style="display:flex;justify-content:space-between;gap:8px;"><span style="font-weight:700;">'+(x.f.kind==='visit' ? '🚶 ' : '📞 ')+esc(x.p.name)+(x.p.fit ? ' <span class="histmeta" style="margin:0;">· Fit '+esc(x.p.fit)+'</span>' : '')+'</span><span class="histmeta" style="margin:0;">'+esc(x.f.time ? fmtTime12(x.f.time) : '')+'</span></div>' +
+            '<div class="histmeta">'+esc(areaOf(x.p).label)+'</div>' +
+            (x.f.note ? '<div style="font-size:13px;">'+esc(remarkShort(x.f.note, 120))+'</div>' : '') +
+            '<div class="contactrow" style="margin-top:6px;">' +
+              '<button type="button" class="btn btn-ghost btn-sm" data-action="done-followup" data-pid="'+x.p.id+'" data-fid="'+x.f.id+'">✓ Done</button>' +
+              '<button type="button" class="btn btn-ghost btn-sm" data-action="reschedule-followup" data-pid="'+x.p.id+'" data-fid="'+x.f.id+'">📅 Move</button>' + contactButtons(x.p) +
+            '</div></div>';
+        }).join('') + (rows.length>12 ? '<div class="helper" style="margin:6px 0 0;">+'+(rows.length-12)+' more</div>' : '') +
+      '</div>';
+    }).join('') : '<div class="helper">Nothing scheduled in the next 7 days.</div>';
+    // Not scheduled, by area
+    var un = planPool({ onlyNew:false, fit:'all' }), unBy = {};
+    un.forEach(function(p){ var a = areaOf(p), g = unBy[a.city] = unBy[a.city] || {}; (g[a.key] = g[a.key] || { label:a.label, ord:a.ord, items:[] }).items.push(p); });
+    var unHtml = Object.keys(unBy).sort(function(a,b){ return Object.keys(unBy[b]).length - Object.keys(unBy[a]).length; }).map(function(city){
+      var subs = Object.keys(unBy[city]).map(function(k){ return unBy[city][k]; }).sort(function(a,b){ return a.ord-b.ord; });
+      var total = subs.reduce(function(n,s){ return n+s.items.length; }, 0);
+      return '<div class="card" style="padding:12px 14px;margin-bottom:10px;"><div style="font-weight:800;margin-bottom:6px;">📍 '+esc(city)+' <span class="histmeta" style="margin:0;">· '+total+' not scheduled</span></div>' +
+        subs.map(function(s){
+          var key = s.label.replace(/[^a-zA-Z0-9]/g,'');
+          return '<div style="padding:8px 0;border-top:1px solid var(--line);">' +
+            '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;"><b>'+esc(s.label.split(' · ')[1] || 'Area not clear')+'</b><span class="histmeta" style="margin:0;">'+s.items.length+' client'+(s.items.length===1?'':'s')+'</span></div>' +
+            '<div class="histmeta" style="margin:2px 0 6px;">'+esc(s.items.slice(0,6).map(function(p){ return p.name; }).join(', '))+(s.items.length>6 ? ' +'+(s.items.length-6)+' more' : '')+'</div>' +
+            '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><input type="date" data-area-date="'+key+'" value="'+esc(o.start)+'" aria-label="Visit date" style="max-width:170px;">' +
+            '<button type="button" class="btn btn-ghost btn-sm" data-action="plan-area-schedule" data-areakey="'+key+'" data-city="'+esc(city)+'" data-label="'+esc(s.label)+'">Schedule this area</button></div></div>';
+        }).join('') + '</div>';
+    }).join('');
+    var optSel = function(name, vals){ return '<select data-plan-opt="'+name+'">'+vals.map(function(v){ return '<option value="'+v[0]+'" '+(String(o[name])===String(v[0])?'selected':'')+'>'+v[1]+'</option>'; }).join('')+'</select>'; };
+    return '<div class="statgrid" style="margin-top:14px;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));">' +
+        '<div class="stattile'+(overdue?' t-bad':'')+'"><div class="v">'+overdue+'</div><div class="k">Overdue</div></div>' +
+        '<div class="stattile t-accent"><div class="v">'+todayN+'</div><div class="k">Today</div></div>' +
+        '<div class="stattile"><div class="v">'+weekN+'</div><div class="k">Next 7 days</div></div>' +
+        '<div class="stattile'+(allUn?' t-bad':' t-good')+'"><div class="v">'+allUn+'</div><div class="k">Not scheduled</div></div>' +
+      '</div>' +
+      sh('🗺️','Plan by area') +
+      '<div class="card" style="padding:14px 16px;margin-bottom:16px;">' +
+        '<div class="helper" style="margin:0 0 10px;">Groups the clients that have no follow-up yet by city and sector, so nearby places fall on the same day. A-rated areas go first, Sundays are skipped, and every visit gets a time.</div>' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
+          '<div class="field" style="flex:1;min-width:130px;margin-bottom:8px;"><label>Start date</label><input type="date" data-plan-opt="start" value="'+esc(o.start)+'"></div>' +
+          '<div class="field" style="flex:1;min-width:110px;margin-bottom:8px;"><label>Visits per day</label>'+optSel('perDay',[[3,'3'],[4,'4'],[5,'5'],[6,'6'],[8,'8'],[10,'10']])+'</div>' +
+          '<div class="field" style="flex:1;min-width:130px;margin-bottom:8px;"><label>Who</label>'+optSel('fit',[['all','All unscheduled'],['ab','Fit A and B only'],['a','Fit A only']])+'</div>' +
+          '<div class="field" style="flex:1;min-width:130px;margin-bottom:8px;"><label>Already contacted</label>'+optSel('onlyNew',[['true','Leave out'],['false','Include']])+'</div>' +
+        '</div>' +
+        (planCount ? ('<div class="helper" style="margin:0 0 8px;font-weight:700;">Preview: '+planCount+' client'+(planCount===1?'':'s')+' over '+plan.length+' day'+(plan.length===1?'':'s')+', '+fmtDateShort(new Date(plan[0].date+'T00:00:00').getTime())+' to '+fmtDateShort(new Date(plan[plan.length-1].date+'T00:00:00').getTime())+'</div>' +
+          plan.slice(0, 10).map(function(day){
+            return '<div class="sumrow" style="align-items:flex-start;"><span class="k" style="min-width:92px;">'+esc(new Date(day.date+'T00:00:00').toLocaleDateString(undefined,{weekday:'short', day:'numeric', month:'short'}))+'</span><span class="v" style="text-align:left;flex:1;"><b>'+esc(day.label)+'</b><br><span class="histmeta" style="margin:0;">'+day.items.length+': '+esc(day.items.slice(0,5).map(function(x){ return x.p.name; }).join(', '))+(day.items.length>5 ? ' +'+(day.items.length-5) : '')+'</span></span></div>';
+          }).join('') + (plan.length>10 ? '<div class="helper" style="margin:6px 0 0;">+'+(plan.length-10)+' more day'+(plan.length-10===1?'':'s')+'</div>' : '') +
+          '<button type="button" class="btn btn-primary" style="width:100%;margin-top:12px;" data-action="plan-apply">Schedule these '+planCount+' visits</button>')
+          : '<div class="helper" style="margin:0;">Nothing to schedule with these choices — every matching client already has a follow-up.</div>') +
+        (autoOpen ? '<button type="button" class="btn btn-ghost btn-sm" style="width:100%;margin-top:10px;" data-action="plan-undo">↩ Remove the '+autoOpen+' auto-scheduled visit'+(autoOpen===1?'':'s')+' not yet done</button>' : '') +
+      '</div>' +
+      sh('📅','This week by area') + weekHtml +
+      sh('📍','Not scheduled, by area') +
+      (unHtml || '<div class="helper">Every active client has a follow-up. 🎉</div>');
   }
   // Dashboard: the next clients to approach, A-rated first. A client leaves this list as soon as it has an outreach stage.
   function renderNextToCall(){
@@ -7350,6 +7493,7 @@
       var dfF = dfP && (dfP.followUps||[]).filter(function(f){ return f.id===t.dataset.fid; })[0];
       if (dfF){
         dfF.done = true; dfF.doneAt = Date.now(); dfP.updatedAt = Date.now();
+        if (!dfP.stage && !dfF.serviceRecurring && !dfP.converted) dfP.stage = 'called';
         if (dfF.serviceRecurring && dfP.servicesOffered===dfF.serviceId){
           var dfSvc = findService(dfF.serviceId);
           if (dfSvc) scheduleServiceFollowup(dfP, dfSvc);
@@ -7633,6 +7777,28 @@
     else if (action==='evidence-del'){
       var edP = findProspect(t.dataset.id);
       if (edP && window.confirm('Delete this evidence?')){ edP.evidence = (edP.evidence||[]).filter(function(e){ return e.id!==t.dataset.eid; }); edP.updatedAt = Date.now(); persistProspects(); render(); }
+    }
+    else if (action==='plan-apply'){
+      var paO = planOpts(), paPlan = computeAreaPlan(paO), paN = paPlan.reduce(function(n,d){ return n+d.items.length; }, 0);
+      if (paN && window.confirm('Schedule '+paN+' visit'+(paN===1?'':'s')+' over '+paPlan.length+' day'+(paPlan.length===1?'':'s')+', starting '+paPlan[0].date+'?\n\nEach client gets one follow-up with a time. You can remove the whole plan afterwards.')){
+        var paId = 'plan'+Date.now();
+        paPlan.forEach(function(day){ scheduleVisits(day.items.map(function(x){ return x.p; }), day.date, paId); });
+        persistProspects(); render();
+      }
+    }
+    else if (action==='plan-area-schedule'){
+      var aaO = planOpts(), aaKey = t.dataset.areakey, aaDateEl = app.querySelector('[data-area-date="'+aaKey+'"]'), aaDate = (aaDateEl && aaDateEl.value) || aaO.start;
+      var aaList = planPool({ onlyNew:false, fit:'all' }).filter(function(p){ return areaOf(p).label===t.dataset.label; }).sort(function(a,b){ return fitRank(a)-fitRank(b) || (a.name||'').localeCompare(b.name||''); });
+      if (aaList.length && window.confirm('Schedule '+aaList.length+' visit'+(aaList.length===1?'':'s')+' in '+t.dataset.label+' on '+aaDate+'?')){
+        scheduleVisits(aaList.slice(0, 15), aaDate, 'plan'+Date.now(), t.dataset.label); persistProspects(); render();
+      }
+    }
+    else if (action==='plan-undo'){
+      var puN = 0; state.prospects.forEach(function(p){ puN += (p.followUps||[]).filter(function(f){ return f.auto && !f.done; }).length; });
+      if (puN && window.confirm('Remove '+puN+' auto-scheduled visit'+(puN===1?'':'s')+' that are not done yet? Visits you already marked done stay.')){
+        state.prospects.forEach(function(p){ var before = (p.followUps||[]).length; p.followUps = (p.followUps||[]).filter(function(f){ return !(f.auto && !f.done); }); if (p.followUps.length!==before) p.updatedAt = Date.now(); });
+        persistProspects(); render();
+      }
     }
     else if (action==='stage-filter'){ state.prospectsFilterStage = t.dataset.val || 'all'; render(); }
     else if (action==='remark-del'){
@@ -8832,6 +8998,7 @@
     else if (el.dataset.paramsEntry){ state.paramsEntry = el.value; render(); }
     else if (el.dataset.prospectFilter==='location'){ state.prospectsFilterLocation = el.value; render(); }
     else if (el.dataset.prospectFilter==='category'){ state.prospectsFilterCategory = el.value; render(); }
+    else if (el.dataset.planOpt){ var poK = el.dataset.planOpt, poV = el.value; planOpts()[poK] = poK==='onlyNew' ? (poV==='true') : (poK==='perDay' ? (parseInt(poV,10)||6) : poV); render(); }
     else if (el.dataset.prospectFilter==='offer'){ state.prospectsFilterOffer = el.value; render(); }
     else if (el.dataset.schedule){
       var spath = el.dataset.schedule.split('.');
