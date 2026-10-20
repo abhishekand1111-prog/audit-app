@@ -748,7 +748,6 @@
     --accent:#FFFFFF; --accent-ink:#FFFFFF; --accent-soft:#1D1D1D;
     --warn:#E0A63A; --warn-soft:#2C2410; --dot:rgba(255,255,255,.10);
   }
-  body{background-image:radial-gradient(circle, var(--dot) 1px, transparent 1.3px); background-size:18px 18px;}
   h1,h2,h3{font-family:var(--font-d); letter-spacing:-.01em; line-height:1.05;}
   .hl{background:var(--ink); color:var(--paper); padding:0 .22em; -webkit-box-decoration-break:clone; box-decoration-break:clone;}
   .eyebrow{font-family:var(--font-m); font-weight:600; letter-spacing:.14em; font-size:11px; color:var(--ink-600);}
@@ -843,7 +842,7 @@
 (function(){
   "use strict";
   var OWNER_EMAIL = 'abhishekand.1111@gmail.com';
-  var APP_VERSION = 'v123';
+  var APP_VERSION = 'v124';
   var LS_T = 'diagnosisroom_templates_v1', LS_H = 'diagnosisroom_history_v1', LS_D = 'diagnosisroom_draft_v1', LS_P = 'diagnosisroom_pricing_v1';
   var LS_A = 'diagnosisroom_actions_v1', LS_SCHED = 'diagnosisroom_schedule_v1';
   var LS_PR = 'diagnosisroom_prospects_v1';
@@ -3888,6 +3887,7 @@
     return '<h1 style="font-size:20px;margin:0 0 4px;">System health</h1>' +
       '<div class="helper" style="margin-bottom:10px;">A quick check that your work is safe.</div>' +
       '<div class="card" style="padding:4px 16px 12px;margin-bottom:28px;">' +
+        row('Slow moments (this visit)', slowLog.length ? slowLog.length+' · worst '+Math.max.apply(null, slowLog.map(function(x){ return x.ms; }))+' ms · last on '+esc(slowLog[slowLog.length-1].view) : 'None') +
         row('App version', esc(APP_VERSION)+' <button type="button" class="btn btn-text btn-sm" style="padding:2px 6px;" data-action="check-update">Check for update</button>') +
         row('Cloud sync', esc(sync), tone==='bad') +
         row('Last backup download', lb ? esc(fmtRelativeTime(lb)) : 'Never', !lb) +
@@ -3971,12 +3971,14 @@
   }
 
   // ---------- Website inbound (call requests, finished System Maps, inquiries) matched to your clients ----------
+  var tokCache = {}, smDone = {}, smDoneN = -1;
+  function impTokensC(name){ var k = String(name||''); return tokCache[k] || (tokCache[k] = impTokens(k)); }
   function phoneKey(v){ return String(v||'').replace(/\D/g,'').slice(-10); }
   function inboundMatches(e, p){
     var ct = e.contact||{}, pk = phoneKey(ct.phone);
     if (pk.length===10 && pk===phoneKey(p.contactMobile)) return true;
     var nm = e.restaurant || ct.business || '';
-    return !!nm && impSameBrand(impTokens(nm), impTokens(p.name))==='exact';
+    return !!nm && impSameBrand(impTokensC(nm), impTokensC(p.name))==='exact';
   }
   function inboundMatch(e){ for (var i=0;i<state.prospects.length;i++){ if (inboundMatches(e, state.prospects[i])) return state.prospects[i]; } return null; }
   function inboundForClient(p){ return state.systemMaps.filter(function(e){ return inboundMatches(e, p); }).sort(function(a,b){ return b._at-a._at; }); }
@@ -3994,10 +3996,12 @@
   var smSyncBusy = false;
   function smSyncClients(){
     if (smSyncBusy || !fsDb || !state.authUser || !RS.prospects.ready || !RS.prospects._seen || !state.systemMaps.length) return;
+    if (smDoneN !== state.prospects.length){ smDone = {}; smDoneN = state.prospects.length; }
     var cutoff = Date.now() - 60*86400000, changed = false, tests = {};
     smTestEntries().forEach(function(m){ tests[m._id] = true; });
     state.systemMaps.forEach(function(e){
-      if (e._at < cutoff || tests[e._id] || !(e.kind==='call' || e.kind==='inquiry' || e.kind==='map')) return;
+      if (e._at < cutoff || tests[e._id] || smDone[e._id] || !(e.kind==='call' || e.kind==='inquiry' || e.kind==='map')) return;
+      smDone[e._id] = true;
       var p = inboundMatch(e); if (!p) return;
       p.inbound = p.inbound || [];
       if (p.inbound.indexOf(e._id)>=0) return;
@@ -9792,6 +9796,8 @@
   });
 
   // ---------- App version: tells you when a newer version has been published, so you never run an old copy ----------
+  var slowLog = [];
+  try{ new PerformanceObserver(function(l){ l.getEntries().forEach(function(e){ if (e.duration>=200) slowLog.push({ at:Date.now(), ms:Math.round(e.duration), view:state.view }); }); if (slowLog.length>30) slowLog = slowLog.slice(-30); }).observe({ entryTypes:['longtask'] }); }catch(err){}
   var updShown = false;
   function applyUpdate(){
     var go = function(){ location.replace(location.pathname+'?u='+Date.now()); };
