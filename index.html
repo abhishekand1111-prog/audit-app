@@ -842,7 +842,7 @@
 (function(){
   "use strict";
   var OWNER_EMAIL = 'abhishekand.1111@gmail.com';
-  var APP_VERSION = 'v125';
+  var APP_VERSION = 'v126';
   var LS_T = 'diagnosisroom_templates_v1', LS_H = 'diagnosisroom_history_v1', LS_D = 'diagnosisroom_draft_v1', LS_P = 'diagnosisroom_pricing_v1';
   var LS_A = 'diagnosisroom_actions_v1', LS_SCHED = 'diagnosisroom_schedule_v1';
   var LS_PR = 'diagnosisroom_prospects_v1';
@@ -4445,6 +4445,36 @@
     impAddedIds.push(state.prospects[state.prospects.length-1].id);
     return 'new';
   }
+  function applyFocusList(f){
+    var list = f.clients.filter(function(r){ return r && r.name; }), keepRecs = (f.keep || []).filter(function(r){ return r && r.name; });
+    var keepIds = {}, missing = [];
+    // a keeper matches any client whose name contains all its words ("Western Court" keeps "Hotel Western Court")
+    keepRecs.forEach(function(r){
+      var kt = impTokens(r.name), hit = false;
+      if (kt.length) state.prospects.forEach(function(p){ var pt = impTokens(p.name); if (kt.every(function(w){ return pt.indexOf(w)>=0; })){ keepIds[p.id] = 1; hit = true; } });
+      if (!hit) missing.push(r.name);
+    });
+    list.forEach(function(r){ var p = impFindExisting(r); if (p) keepIds[p.id] = 1; });
+    var plan = impDryRun(list);
+    var toArchive = state.prospects.filter(function(p){ return !p.converted && !isArchived(p) && !keepIds[p.id]; });
+    var msg = 'Focus list'+(f.label ? ': '+f.label : '')+'\n\n' +
+      '• Add '+plan.added+' new client'+(plan.added===1?'':'s')+(plan.merged ? ' ('+plan.merged+' already in your list get their details merged)' : '')+'\n' +
+      '• Keep '+Object.keys(keepIds).length+' existing client'+(Object.keys(keepIds).length===1?'':'s')+' from your list\n' +
+      '• Archive the other '+toArchive.length+' unconverted clients (restore any time from Clients > Archive)\n' +
+      '• Converted clients stay as they are\n' +
+      (missing.length ? '\nNot found in your list (added from the file if included there): '+missing.join(', ')+'\n' : '') +
+      '\nA backup file downloads first. Continue?';
+    if (!window.confirm(msg)) return;
+    downloadJSON(buildBackupJSON(), 'diagnosis-room-backup-before-focus-'+todayISO()+'.json');
+    saveJSON(LS_LB, Date.now());
+    impAddedIds = [];
+    list.forEach(function(rec){ impApply(rec); });
+    logBulk({ kind:'import', label:'Focus list: imported '+plan.added+' new clients ('+plan.merged+' merged)', ids:impAddedIds.slice() });
+    if (toArchive.length) archiveClients(toArchive, 'Focus list: archived '+toArchive.length+' other clients');
+    persistProspects(); render();
+    var active = state.prospects.filter(function(p){ return !isArchived(p); }).length;
+    alert('Done. '+plan.added+' added, '+toArchive.length+' archived.\n'+active+' clients are now active (including converted ones).');
+  }
   function impDryRun(list){
     var saved = state.prospects, n = 0, m = 0;
     state.prospects = JSON.parse(JSON.stringify(saved));
@@ -4959,7 +4989,7 @@
     var exportHtml = (pTab!=='calls') ? (
       '<div class="exportrow">' +
         (function(){ var an = state.prospects.filter(isArchived).length; return an ? '<button class="btn btn-ghost btn-sm" data-action="prospects-tab" data-tab="archive">📦 Archive ('+an+')</button>' : ''; })() +
-        '<button class="btn btn-ghost btn-sm" data-action="trigger-import-clients">⬆ Import clients (JSON)</button>' +
+        '<button class="btn btn-ghost btn-sm" data-action="trigger-import-clients">⬆ Import clients / focus list (JSON)</button>' +
         '<input type="file" accept="application/json" id="importClientsInput" data-action="import-clients-file" style="display:none;">' +
         (state.prospects.length ? '<button class="btn btn-ghost btn-sm" data-action="export-prospects-csv">⬇ Export clients CSV</button>' : '') +
         (state.history.length ? '<button class="btn btn-ghost btn-sm" data-action="export-csv">⬇ Export audits CSV</button>' : '') +
@@ -9515,7 +9545,11 @@
       var ireader = new FileReader();
       ireader.onload = function(ev){
         try {
-          var ilist = JSON.parse(ev.target.result);
+          var iparsed = JSON.parse(ev.target.result);
+          // Focus-list file: { focus:true, keep:[{name, city}], clients:[...] } — imports the clients, keeps the
+          // named ones, and archives every other unconverted client (converted clients always stay).
+          if (iparsed && !Array.isArray(iparsed) && iparsed.focus && Array.isArray(iparsed.clients)){ applyFocusList(iparsed); el.value = ''; return; }
+          var ilist = iparsed;
           if (!Array.isArray(ilist)) throw new Error('not a list');
           var plan = impDryRun(ilist);
           if (window.confirm('Import '+ilist.length+' clients?\n\n'+plan.added+' new, '+plan.merged+' already in your list (their details are merged, not duplicated).\nNothing is deleted and no follow-ups are created.')){
