@@ -22,8 +22,8 @@
     --ink:#000000; --ink-600:#4B4B4B; --ink-400:#8A8A8A;
     --line:#E4E4E4; --line-strong:#CFCFCF;
     --accent:#2596E0; --accent-ink:#0F5C8C; --accent-soft:#E1F1FB;
-    --good:#2E7D4F; --good-soft:#DCEEE2;
-    --bad:#C1392B; --bad-soft:#F6DFDA;
+    --good:#15803d; --good-soft:#DCEEE2;
+    --bad:#1e40af; --bad-soft:#dbeafe;
     --shadow:0 1px 2px rgba(0,0,0,.06),0 6px 20px rgba(0,0,0,.06);
     --shadow-sm:0 1px 2px rgba(0,0,0,.05),0 2px 8px rgba(0,0,0,.04);
     --r-s:8px; --r-m:12px; --r-l:18px;
@@ -38,7 +38,7 @@
       --line:#2C2C2C; --line-strong:#3D3D3D;
       --accent:#5CB8F5; --accent-ink:#BEE4FB; --accent-soft:#123349;
       --good:#59B583; --good-soft:#24352B;
-      --bad:#E2645A; --bad-soft:#3A2622;
+      --bad:#60a5fa; --bad-soft:#172554;
       --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35);
       --shadow-sm:0 1px 2px rgba(0,0,0,.25),0 2px 8px rgba(0,0,0,.2);
     }
@@ -49,7 +49,7 @@
     --line:#2C2C2C; --line-strong:#3D3D3D;
     --accent:#5CB8F5; --accent-ink:#BEE4FB; --accent-soft:#123349;
     --good:#59B583; --good-soft:#24352B;
-    --bad:#E2645A; --bad-soft:#3A2622;
+    --bad:#60a5fa; --bad-soft:#172554;
     --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35);
     --shadow-sm:0 1px 2px rgba(0,0,0,.25),0 2px 8px rgba(0,0,0,.2);
   }
@@ -341,7 +341,7 @@
   #printReport .rp-box{border:1px solid #e5e7eb; border-radius:8px; padding:9px 12px; margin-bottom:8px; break-inside:avoid;}
   #printReport .rp-box .t{font-weight:700;}
   #printReport .rp-box .s{color:#4b5563; margin-top:2px;}
-  #printReport .rp-issue{border-left:3px solid #dc2626; background:#fef2f2; padding:7px 12px; margin-bottom:8px; border-radius:0 6px 6px 0; break-inside:avoid;}
+  #printReport .rp-issue{border-left:3px solid #1d4ed8; background:#fef2f2; padding:7px 12px; margin-bottom:8px; border-radius:0 6px 6px 0; break-inside:avoid;}
   #printReport ul{margin:4px 0 8px 18px; padding:0;}
   #printReport li{margin:2px 0;}
   #printReport .rp-remark{white-space:pre-wrap; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:12px 14px;}
@@ -470,6 +470,54 @@
   .smf-step i{ font-style:normal; font-size:11px; color:var(--ink-400); margin-top:1px; }
   .smf-arrow{ color:var(--ink-400); font-size:18px; line-height:1.4; }
   .exportrow{display:flex; gap:8px; flex-wrap:wrap; margin:24px 0 8px; padding-top:16px; border-top:1px solid var(--line);}
+  .homecal{padding:14px 14px 10px; margin-bottom:20px;}
+  .calhead{display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;}
+  .calhead b{font-size:16px;}
+  .calgrid{display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:4px;}
+  .calwd{font-size:11px; font-weight:700; color:var(--ink-400); text-align:center; padding-bottom:2px;}
+  .calcell{aspect-ratio:1; border:0; border-radius:10px; background:none; color:inherit; font:inherit; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; padding:0; min-height:38px;}
+  .calcell span:first-child{font-size:14px; font-weight:600;}
+  .calcell.past span:first-child{opacity:.55;}
+  .calcell.blank{visibility:hidden;}
+  .calcell.today{box-shadow:inset 0 0 0 1.5px var(--accent);}
+  .calcell small{font-size:9.5px; font-weight:700; opacity:.8; line-height:1;}
+  .calcell.fill-call{background:rgba(14,165,233,.2); color:#38bdf8;}
+  .calcell.fill-audit{background:#2563eb; color:#fff;}
+  .calcell.fill-meet{background:rgba(13,148,136,.25); color:#2dd4bf;}
+  .calcell.fill-due{background:rgba(148,163,184,.22); color:var(--ink-600);}
+  .calcell.fill-late{background:var(--ink); color:var(--paper);}
+  .calcell.fill-done{background:rgba(22,163,74,.2); color:#22c55e;}
+  .calcell.fill-other{background:rgba(148,163,184,.15);}
+  .calcell.on{background:var(--accent); color:#fff; box-shadow:0 0 0 2px var(--accent);}
+  .calcell.on span:first-child{opacity:1;}
+  .calsub{font-size:11.5px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-400); margin:10px 0 6px;}
+  .calsub.late{color:var(--bad);}
+  .calsub.good{color:var(--good);}
+  .calacts{margin-top:6px;}
+  .caldots{display:flex; gap:2px; height:6px;}
+  .caldots i, .callegend i{width:6px; height:6px; border-radius:50%; display:inline-block;}
+  .cd-call{background:#38bdf8;} .cd-audit{background:#2563eb;} .cd-meet{background:#0d9488;} .cd-due{background:#94a3b8;} .cd-late{background:var(--ink); box-shadow:0 0 0 1px var(--line-strong);} .cd-done{background:#16a34a;} .cd-other{background:#94a3b8;}
+  .calcell.on .caldots i{box-shadow:0 0 0 1px #fff;}
+  .callegend{display:flex; flex-wrap:wrap; gap:10px; font-size:11px; color:var(--ink-400); margin:10px 2px 4px;}
+  .callegend span{display:flex; align-items:center; gap:4px;}
+  .calday{border-top:1px solid var(--line); margin-top:8px; padding-top:10px;}
+  .caldaytitle{font-weight:700; margin-bottom:6px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;}
+  .personrow, .olrow{padding:12px 0; border-top:1px solid var(--line);}
+  .personrow:first-of-type, .olrow:first-child{border-top:0;}
+  .personadd{margin-top:12px; padding-top:12px; border-top:1px dashed var(--line);}
+  .personadd input, .personadd select{width:100%;}
+  .olbar{height:8px; border-radius:99px; background:var(--line); overflow:hidden; margin-top:10px;}
+  .olbar i{display:block; height:100%; background:var(--good);}
+  .olchip{font-size:11.5px; font-weight:600; padding:2px 8px; border-radius:99px; background:var(--line);}
+  .olchip.good{background:rgba(58,168,118,.18);} .olchip.warn{background:rgba(37,99,235,.2);} .olchip.bad{background:rgba(29,78,216,.2);}
+  .olmetrics{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; margin-top:8px;}
+  .olmetrics label{font-size:12px; display:flex; flex-direction:column; gap:2px;}
+  .olscroll{overflow-x:auto; margin:0 -4px 12px; padding:0 4px;}
+  .oltable{border-collapse:collapse; font-size:13px; min-width:100%;}
+  .oltable th, .oltable td{border-bottom:1px solid var(--line); padding:8px 8px; text-align:center; white-space:nowrap;}
+  .oltable th{font-size:11.5px; color:var(--ink-400); font-weight:700; position:sticky; top:0; background:var(--bg);}
+  .oltable td.olname{text-align:left; font-weight:700; white-space:normal; min-width:120px;}
+  .oltable td.c-good{background:rgba(58,168,118,.16);} .oltable td.c-warn{background:rgba(37,99,235,.18);} .oltable td.c-bad{background:rgba(29,78,216,.18);}
   .toolgrid{display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px; margin-bottom:12px;}
   .toolbtn{display:flex; flex-direction:column; gap:3px; text-align:left; padding:14px 16px; cursor:pointer; border:1px solid var(--line); margin:0;}
   .toolbtn span{font-size:12.5px; color:var(--ink-400);}
@@ -572,7 +620,7 @@
   .sm-status{font-size:10.5px; font-weight:700; padding:4px 9px; border-radius:20px; white-space:nowrap; flex:none; background:var(--surface-2); color:var(--ink-600);}
   .sm-status.st-new{background:var(--ink); color:var(--paper);}
   .sm-btns{display:flex; flex-wrap:wrap; gap:6px; margin-top:12px;}
-  .sm-card{--sm-warn:#B26B00;}
+  .sm-card{--sm-warn:#1d4ed8;}
   .dl-score{font-family:var(--font-m); font-weight:700; font-size:12px; padding:4px 9px; border-radius:20px; white-space:nowrap; flex:none; background:var(--ink); color:var(--paper);}
   .dl-row{font-size:13.5px; margin-top:8px; line-height:1.45;}
   .dl-row b{font-weight:700;}
@@ -595,8 +643,8 @@
   .sm-n.sm-sub{border-width:1px; border-color:var(--line); padding-left:22px;}
   .sm-n.sm-sub .sm-dot{position:absolute; left:8px; top:11px;}
   .sm-n.sm-sub span{color:var(--ink-600); font-weight:400;}
-  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .sm-card{--sm-warn:#E0A63A;} }
-  :root[data-theme="dark"] .sm-card{--sm-warn:#E0A63A;}
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .sm-card{--sm-warn:#60a5fa;} }
+  :root[data-theme="dark"] .sm-card{--sm-warn:#60a5fa;}
   [hidden]{display:none !important;}
 
   /* ===== Visual polish: calmer surfaces, clearer hierarchy, better contrast ===== */
@@ -725,10 +773,10 @@
   .smap-areas{display:flex;flex-wrap:wrap;gap:6px;flex:1;}
   .smap-chip{border:1px solid var(--line);background:var(--surface-2);color:var(--ink-600);border-radius:999px;padding:8px 12px;font-size:12.5px;font-weight:600;cursor:pointer;}
   .smap-chip.st-system{background:rgba(34,166,98,.15);border-color:var(--good);color:var(--ink);}
-  .smap-chip.st-person{background:rgba(217,150,43,.18);border-color:#d9962b;color:var(--ink);}
-  .smap-chip.st-missing{background:rgba(224,70,70,.16);border-color:var(--bad);color:var(--ink);}
+  .smap-chip.st-person{background:rgba(37,99,235,.18);border-color:#2563eb;color:var(--ink);}
+  .smap-chip.st-missing{background:rgba(29,78,216,.16);border-color:var(--bad);color:var(--ink);}
   .smap-sq{display:inline-block;width:11px;height:11px;border-radius:3px;background:var(--line);vertical-align:middle;}
-  .smap-sq.st-system{background:var(--good);} .smap-sq.st-person{background:#d9962b;} .smap-sq.st-missing{background:var(--bad);}
+  .smap-sq.st-system{background:var(--good);} .smap-sq.st-person{background:#2563eb;} .smap-sq.st-missing{background:var(--bad);}
   .smap-strip{display:inline-flex;gap:3px;margin-left:6px;align-items:center;}
   .dashgroup{margin:6px 0 10px;}
   .dashgroup-h{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;text-align:left;border:none;background:var(--surface-2);color:var(--ink);font-weight:800;font-size:15px;padding:12px 14px;border-radius:12px;margin:10px 0 10px;cursor:pointer;}
@@ -740,7 +788,7 @@
     --ink:#000000; --ink-600:#454545; --ink-400:#8A8A8A;
     --line:#E8E8E8; --line-strong:#CFCFCF;
     --accent:#000000; --accent-ink:#000000; --accent-soft:#EFEFEF;
-    --warn:#9A6A00; --warn-soft:#FBF1D7;
+    --warn:#0284c7; --warn-soft:#e0f2fe;
     --font-d:'Barlow Semi Condensed','Inter',"Segoe UI",sans-serif;
     --shadow:none; --shadow-sm:none; --dot:rgba(0,0,0,.10);
   }
@@ -750,7 +798,7 @@
       --ink:#FFFFFF; --ink-600:#B8B8B8; --ink-400:#7C7C7C;
       --line:#242424; --line-strong:#3A3A3A;
       --accent:#FFFFFF; --accent-ink:#FFFFFF; --accent-soft:#1D1D1D;
-      --warn:#E0A63A; --warn-soft:#2C2410; --dot:rgba(255,255,255,.10);
+      --warn:#38bdf8; --warn-soft:#0c2a3d; --dot:rgba(255,255,255,.10);
     }
   }
   :root[data-theme="dark"]{
@@ -758,7 +806,7 @@
     --ink:#FFFFFF; --ink-600:#B8B8B8; --ink-400:#7C7C7C;
     --line:#242424; --line-strong:#3A3A3A;
     --accent:#FFFFFF; --accent-ink:#FFFFFF; --accent-soft:#1D1D1D;
-    --warn:#E0A63A; --warn-soft:#2C2410; --dot:rgba(255,255,255,.10);
+    --warn:#38bdf8; --warn-soft:#0c2a3d; --dot:rgba(255,255,255,.10);
   }
   h1,h2,h3{font-family:var(--font-d); letter-spacing:-.01em; line-height:1.05;}
   .hl{background:var(--ink); color:var(--paper); padding:0 .22em; -webkit-box-decoration-break:clone; box-decoration-break:clone;}
@@ -854,7 +902,7 @@
 (function(){
   "use strict";
   var OWNER_EMAIL = 'abhishekand.1111@gmail.com';
-  var APP_VERSION = 'v127';
+  var APP_VERSION = 'v132';
   var LS_T = 'diagnosisroom_templates_v1', LS_H = 'diagnosisroom_history_v1', LS_D = 'diagnosisroom_draft_v1', LS_P = 'diagnosisroom_pricing_v1';
   var LS_A = 'diagnosisroom_actions_v1', LS_SCHED = 'diagnosisroom_schedule_v1';
   var LS_PR = 'diagnosisroom_prospects_v1';
@@ -2313,6 +2361,7 @@
     return '<main data-setupsig="'+esc(setupSig(s.storeName))+'">' +
       '<div class="eyebrow">New Audit</div>' +
       '<h1 style="font-size:26px;margin-top:6px;">Start a floor check</h1>' +
+      (s.clientId && findProspect(s.clientId) ? '<div class="card" style="padding:10px 14px;margin:10px 0 0;border-color:var(--accent);background:var(--accent-soft);">🏬 Outlet audit for <b>'+esc(findProspect(s.clientId).name)+'</b>'+(function(){ var o = outletsOf(findProspect(s.clientId)).filter(function(x){ return x.id===s.outletId; })[0]; return o ? ' · <b>'+esc(o.name)+'</b>' : ''; })()+'. It will be saved to this outlet and show in the outlet comparison. <button type="button" class="btn btn-text btn-sm" data-action="outlet-audit-cancel">Not an outlet audit</button></div>' : '') +
       '<div class="formstack" style="margin-top:16px;margin-bottom:8px;">' +
         '<div class="field"><label for="contactName">Point of contact — name'+req+'</label><input id="contactName" data-bind="contactName" placeholder="e.g. Priya Sharma" value="'+esc(s.contactName)+'"></div>' +
         '<div style="display:flex; gap:12px;">' +
@@ -2321,7 +2370,8 @@
         '</div>' +
         '<div class="helper" data-mobile-err style="margin-top:-6px;color:var(--bad);">'+esc(mobileErrorText(s.contactMobile))+'</div>' +
       '</div>' +
-      '<div class="field" style="margin-bottom:16px;"><label for="setupService">Service package (optional)</label><select id="setupService" data-bind="serviceId"><option value="">— Not selected — (audit all areas)</option>'+state.services.map(function(sc){ return '<option value="'+sc.id+'" '+(s.serviceId===sc.id?'selected':'')+'>'+esc(sc.name)+'</option>'; }).join('')+'</select>'+(s.serviceId && findService(s.serviceId) ? '<div class="histmeta" style="margin-top:6px;">'+esc(servicePriceLine(findService(s.serviceId)))+'</div><div class="histmeta" style="margin-top:2px;color:var(--accent-ink);">'+esc(serviceAuditLine(findService(s.serviceId)))+(s.type ? ' — matching areas are pre-selected below' : ' — pick the audit type to pre-select them')+'</div>' : '')+'</div>' +
+      // packages are sold to the franchisor's head office, never to a single outlet
+      (s.clientId ? '' : '<div class="field" style="margin-bottom:16px;"><label for="setupService">Service package (optional)</label><select id="setupService" data-bind="serviceId"><option value="">— Not selected — (audit all areas)</option>'+state.services.map(function(sc){ return '<option value="'+sc.id+'" '+(s.serviceId===sc.id?'selected':'')+'>'+esc(sc.name)+'</option>'; }).join('')+'</select>'+(s.serviceId && findService(s.serviceId) ? '<div class="histmeta" style="margin-top:6px;">'+esc(servicePriceLine(findService(s.serviceId)))+'</div><div class="histmeta" style="margin-top:2px;color:var(--accent-ink);">'+esc(serviceAuditLine(findService(s.serviceId)))+(s.type ? ' — matching areas are pre-selected below' : ' — pick the audit type to pre-select them')+'</div>' : '')+'</div>') +
       '<div class="typegrid">' +
         types.map(function(t){
           var tmpl = state.templates[t];
@@ -2672,7 +2722,7 @@
       startedAt:d.startedAt, finishedAt:d.finishedAt, remark:d.remark,
       totalMs:d.overall.accumMs, completionPct:op.pct, checked:op.checked, total:op.total,
       prevScore: prev ? prev.completionPct : null, prevAuditDate: prev ? prev.auditDate : null,
-      serviceId: d.serviceId||'',
+      serviceId: d.serviceId||'', clientId: d.clientId||'', outletId: d.outletId||'',
       metrics: (d.metrics||[]).filter(function(m){ return m.value!=='' && !isNaN(parseFloat(m.value)); }).map(function(m){ return { name:m.name, unit:m.unit||'', value:m.value }; }),
       sections: d.sections.map(function(s){
         var p=sectionProgress(s);
@@ -2761,8 +2811,8 @@
   function buildAuditReportHtml(rec){
     var tmpl = state.templates[rec.type] || { label: rec.type };
     var pct = rec.completionPct;
-    var tone = pct>=85 ? ['#15803d','Excellent'] : (pct>=70 ? ['#16a34a','Good'] : (pct>=40 ? ['#d97706','Needs improvement'] : ['#dc2626','Critical attention needed']));
-    var barColor = function(v){ return v>=70 ? '#16a34a' : (v>=40 ? '#d97706' : '#dc2626'); };
+    var tone = pct>=85 ? ['#15803d','Excellent'] : (pct>=70 ? ['#16a34a','Good'] : (pct>=40 ? ['#2563eb','Needs improvement'] : ['#1d4ed8','Critical attention needed']));
+    var barColor = function(v){ return v>=70 ? '#16a34a' : (v>=40 ? '#2563eb' : '#1d4ed8'); };
     var secs = (rec.sections||[]).filter(sectionWasAudited);
     var client = state.prospects.filter(function(p){ return prospectAudits(p).some(function(h){ return h.id===rec.id; }); })[0];
     var inq = client ? (client.inquiry||[]).filter(function(e){ return e.auditId===rec.id && (e.problem||'').trim(); }) : [];
@@ -2821,7 +2871,7 @@
       var costAvg = costAverage('all').values;
       h += '<h2>Cost structure (% of monthly sales)</h2>' + costR.map(function(r){
         var hasAvg = costAvg[r.id]!==undefined, over = r.target!==null && r.target!==undefined && r.val>r.target;
-        return '<div class="rp-row"><span class="nm">'+esc(r.name)+'</span><span class="bar"><i style="width:'+Math.min(100, r.val)+'%;background:'+(over ? '#dc2626' : '#2563eb')+';"></i></span><span class="pc">'+fmtPct(r.val)+(hasAvg ? ' · avg '+fmtPct(costAvg[r.id]) : '')+(r.target!==null && r.target!==undefined ? ' · target '+fmtPct(r.target) : '')+'</span></div>';
+        return '<div class="rp-row"><span class="nm">'+esc(r.name)+'</span><span class="bar"><i style="width:'+Math.min(100, r.val)+'%;background:'+(over ? '#1d4ed8' : '#2563eb')+';"></i></span><span class="pc">'+fmtPct(r.val)+(hasAvg ? ' · avg '+fmtPct(costAvg[r.id]) : '')+(r.target!==null && r.target!==undefined ? ' · target '+fmtPct(r.target) : '')+'</span></div>';
       }).join('') + (costE.note ? '<div class="rp-box"><div class="s">'+esc(costE.note)+'</div></div>' : '');
     }
     if (recs.length){
@@ -3017,19 +3067,19 @@
       (r.first ? '<span><b>Since:</b> '+esc(fmtDateShort(new Date(r.first.auditDate+'T00:00:00').getTime()))+'</span>' : '') +
       '<span><b>Report date:</b> '+esc(new Date().toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}))+'</span></div>';
     if (r.audits.length){
-      var latest = r.last.completionPct||0, tone = latest>=85 ? '#15803d' : (latest>=70 ? '#16a34a' : (latest>=40 ? '#d97706' : '#dc2626'));
+      var latest = r.last.completionPct||0, tone = latest>=85 ? '#15803d' : (latest>=70 ? '#16a34a' : (latest>=40 ? '#2563eb' : '#1d4ed8'));
       h += '<div class="rp-score"><div class="rp-big" style="background:'+tone+';"><div class="n">'+latest+'%</div><div class="l">Latest audit score</div></div>' +
         '<div class="rp-tile"><div class="n">'+(r.delta===null ? '—' : (r.delta>0?'▲ +':(r.delta<0?'▼ ':''))+r.delta+' pts')+'</div><div class="l">'+(r.delta===null ? 'First audit' : 'since the first audit')+'</div></div>' +
         '<div class="rp-tile"><div class="n">'+r.resolved+' / '+r.acts.length+'</div><div class="l">Issues resolved</div></div></div>';
       h += '<h2>Audit scores over time</h2>' + r.audits.map(function(a){
-        var v = a.completionPct||0, c = v>=70 ? '#16a34a' : (v>=40 ? '#d97706' : '#dc2626');
+        var v = a.completionPct||0, c = v>=70 ? '#16a34a' : (v>=40 ? '#2563eb' : '#1d4ed8');
         return '<div class="rp-row"><span class="nm">'+esc(fmtDateShort(new Date(a.auditDate+'T00:00:00').getTime()))+'</span><span class="bar"><i style="width:'+v+'%;background:'+c+';"></i></span><span class="pc">'+v+'%</span></div>';
       }).join('');
     }
     if (r.params.length){
       h += '<h2>Key numbers</h2><table style="width:100%;border-collapse:collapse;font-size:12.5px;"><tr style="text-align:left;color:#6b7280;"><th style="padding:4px 6px 4px 0;">Metric</th><th>Start</th><th>Now</th><th>Change</th><th>Target</th></tr>' +
         r.params.map(function(x){
-          var m = reportMetricLine(x), col = m.good===null ? '#374151' : (m.good ? '#15803d' : '#b91c1c');
+          var m = reportMetricLine(x), col = m.good===null ? '#374151' : (m.good ? '#15803d' : '#1e40af');
           return '<tr style="border-top:1px solid #e5e7eb;"><td style="padding:6px 6px 6px 0;font-weight:600;">'+esc(m.name)+'</td><td>'+esc(m.start)+'</td><td>'+esc(m.now)+'</td><td style="color:'+col+';">'+esc(m.change)+'</td><td>'+esc(m.target)+'</td></tr>';
         }).join('') + '</table>';
     }
@@ -3774,7 +3824,7 @@
     var key = (p.name||'').trim().toLowerCase();
     if (!key) return [];
     return memo('pa:'+key, function(){
-      return state.history.filter(function(h){ return (h.storeName||'').trim().toLowerCase()===key; })
+      return state.history.filter(function(h){ return (h.storeName||'').trim().toLowerCase()===key || (h.clientId && h.clientId===p.id); })
         .sort(function(a,b){ return b.finishedAt-a.finishedAt; });
     }).slice();
   }
@@ -4601,7 +4651,7 @@
     return FAIL_CAUSES.map(function(c){
       var n = counts[c[0]]||0, pct = Math.round(n/total*100), isTop = c[0]===top[0];
       return forPrint
-        ? '<div class="rp-row"><span class="nm">'+c[1]+'</span><span class="bar"><i style="width:'+pct+'%;background:'+(isTop?'#dc2626':'#2563eb')+';"></i></span><span class="pc">'+n+' · '+pct+'%</span></div>'
+        ? '<div class="rp-row"><span class="nm">'+c[1]+'</span><span class="bar"><i style="width:'+pct+'%;background:'+(isTop?'#1d4ed8':'#2563eb')+';"></i></span><span class="pc">'+n+' · '+pct+'%</span></div>'
         : '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;"><span style="width:110px;font-weight:'+(isTop?'800':'600')+';">'+c[1]+'</span><span style="flex:1;height:8px;background:var(--line);border-radius:6px;overflow:hidden;"><i style="display:block;height:100%;width:'+pct+'%;background:'+(isTop?'var(--bad)':'var(--accent)')+';"></i></span><span class="histmeta" style="margin:0;width:62px;text-align:right;">'+n+' · '+pct+'%</span></div>';
     }).join('') + (forPrint ? '' : '<div class="helper" style="margin:8px 0 0;">Most failures here: <b>'+top[1]+'</b> ('+(counts[top[0]]||0)+' of '+total+').</div>');
   }
@@ -4615,8 +4665,8 @@
   // ---------- Client report: one printable pack for a client ----------
   function buildClientPackHtml(p){
     var audits = prospectAudits(p).slice().sort(function(a,b){ return (b.finishedAt||0)-(a.finishedAt||0); });
-    var latest = audits[0], tone = function(v){ return v>=85 ? ['#15803d','Excellent'] : (v>=70 ? ['#16a34a','Good'] : (v>=40 ? ['#d97706','Needs improvement'] : ['#dc2626','Critical attention needed'])); };
-    var barColor = function(v){ return v>=70 ? '#16a34a' : (v>=40 ? '#d97706' : '#dc2626'); };
+    var latest = audits[0], tone = function(v){ return v>=85 ? ['#15803d','Excellent'] : (v>=70 ? ['#16a34a','Good'] : (v>=40 ? ['#2563eb','Needs improvement'] : ['#1d4ed8','Critical attention needed'])); };
+    var barColor = function(v){ return v>=70 ? '#16a34a' : (v>=40 ? '#2563eb' : '#1d4ed8'); };
     var h = '<div class="rp-top"><div class="rp-brand"><img src="'+LOGO_SRC+'" alt="">Diagnosis Room</div><div class="rp-kind">Client Report</div></div>';
     h += '<h1>'+esc(p.name||'Client')+'</h1>';
     h += '<div class="rp-sub">'+esc(prospectCategoryLabel(p))+(p.location?' · '+esc(p.location):'')+'</div>';
@@ -4641,7 +4691,7 @@
       var avg = costAverage('all').values, oldest = es.length>1 ? es[es.length-1] : null;
       h += '<h2>Cost structure (% of monthly sales) — '+esc(fmtDateShort(new Date((ce.date||todayISO())+'T00:00:00').getTime()))+'</h2>' + cr.map(function(r){
         var over = r.target!==null && r.target!==undefined && r.val>r.target, was = oldest ? costNum((oldest.values||{})[r.id]) : null;
-        return '<div class="rp-row"><span class="nm">'+esc(r.name)+'</span><span class="bar"><i style="width:'+Math.min(100,r.val)+'%;background:'+(over?'#dc2626':'#2563eb')+';"></i></span><span class="pc">'+fmtPct(r.val)+(avg[r.id]!==undefined?' · avg '+fmtPct(avg[r.id]):'')+(r.target!==null&&r.target!==undefined?' · target '+fmtPct(r.target):'')+(was!==null&&was>0&&was!==r.val?' · was '+fmtPct(was):'')+'</span></div>';
+        return '<div class="rp-row"><span class="nm">'+esc(r.name)+'</span><span class="bar"><i style="width:'+Math.min(100,r.val)+'%;background:'+(over?'#1d4ed8':'#2563eb')+';"></i></span><span class="pc">'+fmtPct(r.val)+(avg[r.id]!==undefined?' · avg '+fmtPct(avg[r.id]):'')+(r.target!==null&&r.target!==undefined?' · target '+fmtPct(r.target):'')+(was!==null&&was>0&&was!==r.val?' · was '+fmtPct(was):'')+'</span></div>';
       }).join('') + (ce.note ? '<div class="rp-box"><div class="s">'+esc(ce.note)+'</div></div>' : '');
     }
     var key = norm(p.name);
@@ -4700,7 +4750,7 @@
 
   // ---------- Parameters: each client's monthly cost structure (food cost, wastage, staff, rent, electricity, capex…) ----------
   var COST_DEFAULTS = ['Food cost','Wastage','Staff cost','Rent','Electricity','Capital expenses','Gas & fuel','Packaging','Marketing & commissions','Maintenance','Other expenses'];
-  var COST_COLORS = ['#e8833a','#3b82c4','#3aa876','#c0508a','#8b6ad1','#d4b23a','#2fa5a5','#d1523f','#7a8a9a','#6aa84f','#b07a4a','#9c6ade'];
+  var COST_COLORS = ['#2563eb','#3b82c4','#3aa876','#0ea5e9','#0d9488','#0ea5e9','#0d9488','#1d4ed8','#7a8a9a','#4ade80','#1e3a8a','#94a3b8'];
   function costParams(){
     var t = state.targets || {};
     if (Array.isArray(t.costParams) && t.costParams.length) return t.costParams;
@@ -4940,6 +4990,7 @@
 
   function renderProspects(){
     if (state.costEntry) return renderCostForm();
+    if (state.compareClientId){ var cmpP = findProspect(state.compareClientId); if (cmpP) return renderOutletCompare(cmpP); state.compareClientId = null; }
     if (state.activeProspectId) return renderProspectDetail();
     if (state.activeCallId){
       var openCall = state.systemMaps.filter(function(m){ return m._id===state.activeCallId; })[0];
@@ -5101,6 +5152,8 @@
             '<div class="pcard-name" style="'+(p.declined?'text-decoration:line-through;color:var(--ink-400);':'')+'">'+esc(p.name||'Unnamed client')+'</div>' +
             '<div class="histmeta">📍 '+esc(p.location||'No location')+(p.address?' · '+esc(p.address):'')+'</div>' +
             (who || p.contactMobile ? '<div class="histmeta">👤 '+(who||'Contact')+(p.contactMobile?' · '+esc(p.contactMobile):'')+'</div>' : '') +
+            (decider(p) && decider(p).name!==p.contactName ? '<div class="histmeta">👑 Decides: '+esc(decider(p).name)+(decider(p).title ? ' · '+esc(decider(p).title) : '')+'</div>' : '') +
+            (outletsOf(p).length ? '<div class="histmeta">🏬 '+outletsOf(p).length+' outlets · '+outletsOf(p).filter(function(o){ return outletStatus(p, o).k==='done'; }).length+' audited</div>' : '') +
             (priceStr || p.timeline ? '<div class="histmeta">💰 '+priceStr+(priceStr && p.timeline?' · ':'')+(p.timeline?esc(p.timeline):'')+'</div>' : '') +
             evidenceLineHtml(p) +
             (!priceStr ? '<div class="histmeta">💰 est. '+esc(fmtMoney(valueOf(p).v))+'</div>' : '') +
@@ -5766,7 +5819,8 @@
     if (!pool.length) return '';
     var rank = function(p){ return FIT_ORDER[p.fit]===undefined ? 3 : FIT_ORDER[p.fit]; };
     pool.sort(function(a,b){ return rank(a)-rank(b) || ((recentTrouble(b)?1:0)-(recentTrouble(a)?1:0)) || (b.contactMobile?1:0)-(a.contactMobile?1:0) || (a.name||'').localeCompare(b.name||''); });
-    var shown = pool.slice(0, 5), aLeft = pool.filter(function(p){ return p.fit==='A'; }).length;
+    // three is enough for "who next"; the full list lives in Clients
+    var shown = pool.slice(0, 3), aLeft = pool.filter(function(p){ return p.fit==='A'; }).length;
     return sh('📣','Next to call') +
       '<div class="card" style="padding:14px 16px;margin-bottom:20px;">' +
         '<div class="helper" style="margin:0 0 8px;">'+pool.length+' not contacted yet'+(aLeft ? ' · '+aLeft+' rated A' : '')+'. Set an outreach stage on a client and it leaves this list.</div>' +
@@ -5779,6 +5833,7 @@
             '<div class="contactrow" style="margin-top:6px;">'+contactButtons(p)+'</div>' +
           '</div>';
         }).join('') +
+        (pool.length > shown.length ? '<button type="button" class="btn btn-text btn-sm" style="margin-top:6px;padding-left:0;" data-action="go-prospects">See all '+pool.length+' in Clients ›</button>' : '') +
       '</div>';
   }
 
@@ -6043,6 +6098,181 @@
       '</div>';
   }
 
+  // ---------- People: who's who at a client (franchisors have several decision-makers) ----------
+  // The people Prince deals with at a franchisor: Founder and COO decide, the Ops Manager is the one to call day to day, the GM runs operations.
+  var PERSON_ROLES = [['founder','👑 Founder'],['coo','Chief Operating Officer'],['ops','📞 Ops Manager'],['gm','General Manager'],['other','Other']];
+  var OLD_ROLES = { decides:'founder', influences:'gm', runs:'ops' };
+  function personRole(x){ return OLD_ROLES[x.role] || x.role || 'other'; }
+  function personRoleLabel(k){ k = OLD_ROLES[k] || k; var r = PERSON_ROLES.filter(function(x){ return x[0]===k; })[0]; return r ? r[1] : 'Other'; }
+  function decider(p){ var ppl = p.people||[]; return ppl.filter(function(x){ return personRole(x)==='founder'; })[0] || ppl.filter(function(x){ return personRole(x)==='coo'; })[0] || null; }
+  function personContactBtns(x){
+    var m = isValidMobile(x.phone) ? normalizeMobile(x.phone) : '';
+    return (m ? '<a class="btn btn-ghost btn-sm" href="tel:+91'+m+'">📞 Call</a><a class="btn btn-ghost btn-sm" href="https://wa.me/91'+m+'" target="_blank" rel="noopener">💬 WhatsApp</a>' : '') +
+      (x.linkedin ? '<a class="btn btn-ghost btn-sm" href="'+esc(/^https?:/i.test(x.linkedin) ? x.linkedin : 'https://'+x.linkedin)+'" target="_blank" rel="noopener">in LinkedIn</a>' : '');
+  }
+  function renderPeopleCard(p){
+    var RANK = { founder:0, coo:1, ops:2, gm:3, other:4 }, rk = function(x){ var r = RANK[personRole(x)]; return r===undefined ? 4 : r; };
+    var ppl = (p.people||[]).slice().sort(function(a,b){ return rk(a)-rk(b); });
+    return sh('👥','People') +
+      '<div class="card" style="padding:14px 16px;margin-bottom:20px;">' +
+        '<div class="helper" style="margin:0 0 8px;">Founder, COO, Ops Manager and GM at '+esc(p.name||'this client')+'. The Founder and COO decide; the Ops Manager is usually who you call. Tap ✓ after a conversation so you always know who to call next.</div>' +
+        (ppl.length ? ppl.map(function(x){
+          return '<div class="personrow">' +
+            '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;"><div style="min-width:0;"><b>'+esc(x.name)+'</b>'+(x.title ? ' <span class="histmeta">· '+esc(x.title)+'</span>' : '')+'<br><span class="pill '+(personRole(x)==='founder'||personRole(x)==='coo'?'good':'warn')+'" style="margin-top:4px;">'+personRoleLabel(x.role)+'</span>' +
+            (x.talkedAt ? ' <span class="histmeta">Last spoke '+esc(fmtDateShort(x.talkedAt))+'</span>' : ' <span class="histmeta">Not spoken yet</span>') + '</div>' +
+            '<button type="button" class="iconbtn" data-action="person-del" data-id="'+x.id+'" aria-label="Remove '+esc(x.name)+'">✕</button></div>' +
+            (x.note ? '<div class="histmeta" style="margin-top:4px;">📝 '+esc(x.note)+'</div>' : '') +
+            '<div class="contactrow" style="margin-top:8px;">'+personContactBtns(x) +
+              '<button type="button" class="btn btn-ghost btn-sm" data-action="person-talked" data-id="'+x.id+'">✓ Spoke today</button>' +
+              ((p.contactName||'')!==x.name ? '<button type="button" class="btn btn-text btn-sm" data-action="person-main" data-id="'+x.id+'">Make main contact</button>' : '<span class="histmeta">Main contact</span>') +
+            '</div></div>';
+        }).join('') : '<div class="histmeta" style="margin-bottom:8px;">No one added yet. Start with the person who signs off (founder, CEO, ops or franchise head).</div>') +
+        '<div class="personadd">' +
+          '<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;">' +
+            '<input id="ppName" placeholder="Name *"><select id="ppRole" aria-label="Position">'+PERSON_ROLES.map(function(r){ return '<option value="'+r[0]+'">'+r[1]+'</option>'; }).join('')+'</select>' +
+            '<input id="ppPhone" type="tel" inputmode="tel" placeholder="Mobile"><input id="ppLinkedin" placeholder="LinkedIn URL">' +
+          '</div>' +
+          '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center;"><input id="ppTitle" placeholder="Exact title if different (optional)" style="flex:1;min-width:150px;">' +
+          '<input id="ppNote" placeholder="Note (optional)" style="flex:1;min-width:150px;"><button type="button" class="btn btn-primary btn-sm" data-action="person-add">+ Add person</button></div>' +
+        '</div>' +
+      '</div>';
+  }
+
+  // ---------- Outlets: a franchisor's outlets, an audit round across them, AI review scores, and comparison ----------
+  var OUTLET_METRICS = [{ k:'staff', l:'Staff' }, { k:'hygiene', l:'Hygiene' }, { k:'speed', l:'Speed' }, { k:'food', l:'Food' }, { k:'google', l:'Google ★' }, { k:'zomato', l:'Zomato ★' }];
+  function outletsOf(p){ return p.outlets||[]; }
+  function outletAudits(p, o){ return state.history.filter(function(h){ return h.clientId===p.id && h.outletId===o.id; }).sort(function(a,b){ return (b.finishedAt||0)-(a.finishedAt||0); }); }
+  function inRound(p, h){ var r = p.auditRound; return !r || !r.start || (h.auditDate||'') >= r.start; }
+  function outletStatus(p, o){
+    var last = outletAudits(p, o)[0], today = todayISO();
+    if (last && inRound(p, last)) return { k:'done', tone:last.completionPct>=80?'good':'warn', label:'Audited '+last.completionPct+'% · '+fmtDateShort(new Date(last.auditDate+'T00:00:00').getTime()), last:last };
+    if (o.planned) return { k:o.planned<today?'late':(o.planned===today?'today':'planned'), tone:o.planned<today?'bad':(o.planned===today?'warn':''), label:(o.planned<today?'Missed ':o.planned===today?'Today · ':'Planned ')+fmtDateShort(new Date(o.planned+'T00:00:00').getTime()), last:last };
+    return { k:'none', tone:'', label:'Not planned', last:last };
+  }
+  function secPct(s){ var base = (s.total||0)-(s.na||0); return base>0 ? Math.round((s.checked||0)/base*100) : null; }
+  function toneOfPct(v){ return v===null||v===undefined ? '' : v>=80 ? 'good' : v>=60 ? 'warn' : 'bad'; }
+  function toneOf5(v){ v = parseFloat(v); return isNaN(v) ? '' : v>=4 ? 'good' : v>=3 ? 'warn' : 'bad'; }
+  function workingDays(start, end, skipSun){
+    var out = [], d = new Date(start+'T00:00:00'), e = new Date(end+'T00:00:00');
+    while (d <= e && out.length < 400){ if (!(skipSun && d.getDay()===0)) out.push(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')); d.setDate(d.getDate()+1); }
+    return out;
+  }
+  function outletAiPrompt(p){
+    var list = outletsOf(p).map(function(o){ return '- '+o.name+(o.city ? ' ('+o.city+')' : '')+(o.address ? ' — '+o.address : ''); }).join('\n');
+    return 'You are a research agent helping a restaurant operations consultant audit the outlets of "'+(p.name||'')+'".\n' +
+      'For EACH outlet below, read its recent public reviews (Google Maps, Zomato, Swiggy; last 6 months where possible).\n' +
+      'Score each outlet from 1 to 5 (one decimal) on: staff behaviour, hygiene/cleanliness, speed of service, food quality.\n' +
+      'Also give its current Google rating and Zomato rating, and up to 3 short top complaints.\n' +
+      'If you cannot find an outlet, still include it with null values.\n' +
+      'Return ONLY this JSON, nothing else:\n' +
+      '{"brand":"'+(p.name||'')+'","outlets":[{"name":"<outlet name exactly as listed>","staff":4.1,"hygiene":3.6,"speed":3.9,"food":4.2,"google":4.0,"zomato":3.8,"complaints":["...","..."]}]}\n\n' +
+      'Outlets:\n'+list;
+  }
+  function renderOutletsCard(p){
+    var ol = outletsOf(p), r = p.auditRound || {};
+    var st = ol.map(function(o){ return outletStatus(p, o); });
+    var done = st.filter(function(s){ return s.k==='done'; }).length, planned = st.filter(function(s){ return s.k==='planned' || s.k==='today' || s.k==='late'; }).length;
+    var open = state.outletPanel && state.outletPanel.pid===p.id ? state.outletPanel.panel : '';
+    var panelBtn = function(k, label){ return '<button type="button" class="btn btn-sm '+(open===k?'btn-primary':'btn-ghost')+'" data-action="outlet-panel" data-val="'+k+'">'+label+'</button>'; };
+    var panel = '';
+    if (open==='add') panel = '<div class="field" style="margin:10px 0 0;"><label>Paste outlets, one per line</label><textarea id="olBulk" class="autogrow" rows="5" placeholder="Sector 35 | Chandigarh | Ramesh (manager) | 9876543210&#10;Phase 7 | Mohali&#10;Elante Mall | Chandigarh"></textarea><div class="helper" style="margin-top:4px;">Format: outlet name | city | manager | phone (only the name is needed). Already-listed outlets are skipped.</div><button type="button" class="btn btn-primary btn-sm" style="margin-top:8px;" data-action="outlets-add">Add outlets</button></div>';
+    else if (open==='plan') panel = '<div style="margin:10px 0 0;"><div class="helper" style="margin:0 0 8px;">Spread the visits for every outlet not yet audited in this round evenly across these dates.</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;"><div class="field" style="margin:0;"><label>Start</label><input type="date" id="olStart" value="'+esc(r.start||todayISO())+'"></div><div class="field" style="margin:0;"><label>Finish by</label><input type="date" id="olEnd" value="'+esc(r.end||isoDaysFromNow(13))+'"></div></div>' +
+      '<label style="display:flex;gap:8px;align-items:center;margin:8px 0;"><input type="checkbox" id="olSkipSun" checked> Skip Sundays</label><button type="button" class="btn btn-primary btn-sm" data-action="outlets-plan">📅 Plan the round</button></div>';
+    else if (open==='ai') panel = '<div style="margin:10px 0 0;"><div class="helper" style="margin:0 0 8px;"><b>1.</b> Copy the instructions and give them to your AI agent (Claude, ChatGPT…). <b>2.</b> Paste its JSON answer below. Every outlet\'s scorecard fills in.</div><button type="button" class="btn btn-ghost btn-sm" data-action="outlets-ai-copy">📋 Copy AI instructions</button>' +
+      '<textarea id="olAiPaste" class="autogrow" rows="4" style="margin-top:8px;" placeholder="Paste the AI\'s JSON answer here"></textarea><button type="button" class="btn btn-primary btn-sm" style="margin-top:8px;" data-action="outlets-ai-apply">Fill scorecards</button></div>';
+    return sh('🏬','Outlets & audit round') +
+      '<div class="card" style="padding:14px 16px;margin-bottom:20px;">' +
+        (ol.length ? '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;"><div><b>'+ol.length+' outlet'+(ol.length===1?'':'s')+'</b> · '+done+' audited · '+planned+' planned'+(r.start ? '<div class="histmeta">Round: '+esc(fmtDateShort(new Date(r.start+'T00:00:00').getTime()))+' → '+esc(fmtDateShort(new Date(r.end+'T00:00:00').getTime()))+'</div>' : '')+'</div>' +
+          (done ? '<button type="button" class="btn btn-primary btn-sm" data-action="outlets-compare">📊 Compare outlets</button>' : '') + '</div>' +
+          '<div class="olbar"><i style="width:'+Math.round(done/ol.length*100)+'%"></i></div>'
+          : '<div class="helper" style="margin:0 0 8px;">Add this franchisor\'s outlets, plan an audit round (e.g. 10 outlets in 2 weeks), audit each one, then compare them side by side.</div>') +
+        '<div class="contactrow" style="margin-top:10px;">'+panelBtn('add','+ Add outlets')+(ol.length ? panelBtn('plan','📅 Plan round')+panelBtn('ai','🤖 AI review scores') : '')+'</div>' + panel +
+        (ol.length ? '<div style="margin-top:12px;">' + ol.map(function(o, i){
+          var s = st[i], m = o.metrics||{}, editing = state.outletEdit===o.id;
+          var chips = OUTLET_METRICS.filter(function(x){ return m[x.k]!==undefined && m[x.k]!==null && m[x.k]!==''; }).map(function(x){ return '<span class="olchip '+toneOf5(m[x.k])+'">'+x.l+' '+m[x.k]+'</span>'; }).join('');
+          return '<div class="olrow">' +
+            '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;"><div style="min-width:0;"><b>'+esc(o.name)+'</b>'+(o.city ? ' <span class="histmeta">· '+esc(o.city)+'</span>' : '')+
+              (o.manager || o.phone ? '<div class="histmeta">👤 '+esc(o.manager||'Manager')+(o.phone ? ' · '+esc(o.phone) : '')+'</div>' : '')+'</div>' +
+              '<span class="pill '+s.tone+'" style="flex:none;">'+esc(s.label)+'</span></div>' +
+            (chips ? '<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap;">'+chips+'</div>' : '') +
+            ((o.complaints||[]).length ? '<div class="histmeta" style="margin-top:4px;">😠 '+esc(o.complaints.slice(0,3).join(' · '))+'</div>' : '') +
+            (editing ? '<div class="olmetrics">' + OUTLET_METRICS.map(function(x){ return '<label>'+x.l+'<input type="number" step="0.1" min="0" max="5" data-outlet-metric="'+x.k+'" data-oid="'+o.id+'" value="'+esc(m[x.k]===undefined||m[x.k]===null?'':m[x.k])+'"></label>'; }).join('') + '</div>' : '') +
+            '<div class="contactrow" style="margin-top:8px;align-items:center;">' +
+              '<button type="button" class="btn btn-primary btn-sm" data-action="outlet-audit" data-oid="'+o.id+'">▶ Start audit</button>' +
+              '<label class="histmeta" style="display:flex;gap:4px;align-items:center;">Visit <input type="date" data-outlet-date="'+o.id+'" value="'+esc(o.planned||'')+'" style="padding:4px 6px;width:auto;"></label>' +
+              (s.last ? '<button type="button" class="btn btn-text btn-sm" data-action="view-audit" data-id="'+s.last.id+'">Last audit</button>' : '') +
+              '<button type="button" class="btn btn-text btn-sm" data-action="outlet-edit" data-oid="'+o.id+'">'+(editing?'Done':'✏️ Scores')+'</button>' +
+              '<button type="button" class="iconbtn" data-action="outlet-del" data-oid="'+o.id+'" aria-label="Remove outlet">✕</button>' +
+            '</div></div>';
+        }).join('') + '</div>' : '') +
+      '</div>';
+  }
+  // outlet league table (also used for the printed network report)
+  function outletCompareData(p){
+    var tmpl = state.templates[p.category] || state.templates[templateKeys()[0]];
+    var secs = (tmpl && tmpl.sections || []).map(function(s){ return { id:s.id, name:s.name }; });
+    var rows = outletsOf(p).map(function(o){
+      var last = outletAudits(p, o).filter(function(h){ return inRound(p, h); })[0] || outletAudits(p, o)[0] || null;
+      var sp = {}; if (last) last.sections.forEach(function(s){ sp[s.id] = secPct(s); });
+      var fails = 0; if (last) last.sections.forEach(function(s){ s.items.forEach(function(it){ if (it.state==='fail' && it.critical) fails++; }); });
+      return { o:o, last:last, pct:last ? last.completionPct : null, sp:sp, m:o.metrics||{}, crit:fails };
+    });
+    rows.sort(function(a,b){ if ((a.pct===null)!==(b.pct===null)) return a.pct===null ? 1 : -1; return (b.pct||0)-(a.pct||0); });
+    secs = secs.filter(function(s){ return rows.some(function(r){ return r.sp[s.id]!==undefined && r.sp[s.id]!==null; }); });
+    var audited = rows.filter(function(r){ return r.pct!==null; });
+    var avg = audited.length ? Math.round(audited.reduce(function(n,r){ return n+r.pct; },0)/audited.length) : null;
+    var secAvg = secs.map(function(s){ var v = audited.map(function(r){ return r.sp[s.id]; }).filter(function(x){ return x!==null && x!==undefined; }); return { s:s, avg:v.length ? Math.round(v.reduce(function(a,b){ return a+b; },0)/v.length) : null }; })
+      .filter(function(x){ return x.avg!==null; }).sort(function(a,b){ return a.avg-b.avg; });
+    var compl = {}; rows.forEach(function(r){ (r.o.complaints||[]).forEach(function(c){ var k = String(c).toLowerCase().trim(); if (k) compl[k] = (compl[k]||0)+1; }); });
+    var topCompl = Object.keys(compl).sort(function(a,b){ return compl[b]-compl[a]; }).slice(0,5).map(function(k){ return { c:k, n:compl[k] }; });
+    var mAvg = {}; OUTLET_METRICS.forEach(function(x){ var v = rows.map(function(r){ return parseFloat(r.m[x.k]); }).filter(function(n){ return !isNaN(n); }); mAvg[x.k] = v.length ? Math.round(v.reduce(function(a,b){ return a+b; },0)/v.length*10)/10 : null; });
+    return { secs:secs, rows:rows, audited:audited, avg:avg, weak:secAvg.filter(function(x){ return x.avg < 80; }).slice(0,3), topCompl:topCompl, mAvg:mAvg };
+  }
+  function outletTableHtml(p, D, forPrint){
+    var cell = function(v, tone, suffix){ return '<td class="'+(forPrint ? '' : 'c-'+tone)+'"'+(forPrint && tone ? ' style="background:'+({good:'#dcf5e6',warn:'#dbeafe',bad:'#dbeafe'})[tone]+'"' : '')+'>'+(v===null||v===undefined||v==='' ? '–' : v+(suffix||''))+'</td>'; };
+    var mk = OUTLET_METRICS.filter(function(x){ return D.mAvg[x.k]!==null; });
+    return '<table class="oltable"><thead><tr><th>#</th><th>Outlet</th><th>Audit</th>'+D.secs.map(function(s){ return '<th>'+esc(s.name)+'</th>'; }).join('')+mk.map(function(x){ return '<th>'+esc(x.l)+'</th>'; }).join('')+'<th>Critical fails</th></tr></thead><tbody>' +
+      D.rows.map(function(r, i){
+        return '<tr><td>'+(r.pct===null ? '' : i+1)+'</td><td class="olname">'+esc(r.o.name)+(r.o.city ? '<br><small>'+esc(r.o.city)+'</small>' : '')+'</td>' + cell(r.pct, toneOfPct(r.pct), r.pct===null ? '' : '%') +
+          D.secs.map(function(s){ var v = r.sp[s.id]; return cell(v===undefined ? null : v, toneOfPct(v), v===undefined||v===null ? '' : '%'); }).join('') +
+          mk.map(function(x){ return cell(r.m[x.k], toneOf5(r.m[x.k])); }).join('') + cell(r.last ? r.crit : null, r.crit ? 'bad' : (r.last ? 'good' : '')) + '</tr>';
+      }).join('') + '</tbody></table>';
+  }
+  function renderOutletCompare(p){
+    var D = outletCompareData(p), best = D.audited[0], worst = D.audited[D.audited.length-1];
+    return '<main>' +
+      '<button class="backrow" data-action="outlets-compare-close">← Back to '+esc(p.name||'client')+'</button>' +
+      '<div class="eyebrow">Outlet comparison</div><h1 style="font-size:24px;margin-top:6px;">'+esc(p.name||'')+'</h1>' +
+      '<div class="statgrid" style="margin-top:12px;">' +
+        '<div class="stattile t-accent"><div class="v">'+(D.avg===null?'–':D.avg+'%')+'</div><div class="k">Network average</div></div>' +
+        '<div class="stattile"><div class="v">'+D.audited.length+' / '+D.rows.length+'</div><div class="k">Outlets audited</div></div>' +
+        '<div class="stattile t-bad"><div class="v">'+D.rows.reduce(function(n,r){ return n+r.crit; },0)+'</div><div class="k">Critical fails</div></div>' +
+      '</div>' +
+      (best && worst && best!==worst ? '<div class="card" style="padding:12px 16px;margin-bottom:12px;">🏆 <b>Best:</b> '+esc(best.o.name)+' ('+best.pct+'%) · ⚠️ <b>Needs most help:</b> '+esc(worst.o.name)+' ('+worst.pct+'%)<div class="histmeta" style="margin-top:4px;">Use the best outlet\'s way of working as the standard for the others.</div></div>' : '') +
+      (D.weak.length ? '<div class="card" style="padding:12px 16px;margin-bottom:12px;"><b>Weakest areas across the network</b>'+D.weak.map(function(x){ return '<div class="histmeta" style="margin-top:4px;"><span class="pill '+toneOfPct(x.avg)+'">'+x.avg+'%</span> '+esc(x.s.name)+'</div>'; }).join('')+'<div class="histmeta" style="margin-top:6px;">A gap that shows up at most outlets is a <b>system</b> problem for the franchisor (SOP, training, supply), not one manager\'s.</div></div>' : '') +
+      (D.topCompl.length ? '<div class="card" style="padding:12px 16px;margin-bottom:12px;"><b>What customers complain about most</b>'+D.topCompl.map(function(x){ return '<div class="histmeta" style="margin-top:4px;">'+x.n+'× '+esc(x.c)+'</div>'; }).join('')+'</div>' : '') +
+      '<div class="olscroll">'+outletTableHtml(p, D, false)+'</div>' +
+      '<div class="exportrow"><button type="button" class="btn btn-primary btn-sm" data-action="outlets-report">🖨 Network report (PDF)</button></div>' +
+    '</main>';
+  }
+  function buildOutletReportHtml(p){
+    var D = outletCompareData(p);
+    return '<h1 style="margin:0 0 4px;">'+esc(p.name||'')+' — outlet audit report</h1><p style="margin:0 0 16px;color:#666;">'+esc(new Date().toLocaleDateString(undefined,{day:'numeric',month:'long',year:'numeric'}))+(p.auditRound && p.auditRound.start ? ' · Round '+esc(p.auditRound.start)+' to '+esc(p.auditRound.end) : '')+' · '+D.audited.length+' of '+D.rows.length+' outlets audited · Network average '+(D.avg===null?'–':D.avg+'%')+'</p>' +
+      (D.weak.length ? '<h3>Weakest areas across the network</h3><ul>'+D.weak.map(function(x){ return '<li>'+esc(x.s.name)+': '+x.avg+'%</li>'; }).join('')+'</ul>' : '') +
+      (D.topCompl.length ? '<h3>Top customer complaints</h3><ul>'+D.topCompl.map(function(x){ return '<li>'+esc(x.c)+' ('+x.n+' outlets)</li>'; }).join('')+'</ul>' : '') +
+      '<h3>League table</h3><style>table{border-collapse:collapse;width:100%;font-size:11px}th,td{border:1px solid #ddd;padding:4px 6px;text-align:center}td.olname{text-align:left}</style>' + outletTableHtml(p, D, true);
+  }
+  function renderOutletVisitsToday(){
+    var today = todayISO(), rows = [];
+    state.prospects.forEach(function(p){ if (p.archived) return; outletsOf(p).forEach(function(o){ var s = outletStatus(p, o); if (s.k==='today' || s.k==='late') rows.push({ p:p, o:o, s:s }); }); });
+    if (!rows.length) return '';
+    rows.sort(function(a,b){ return (a.o.planned||'').localeCompare(b.o.planned||''); });
+    return sh('🏬','Outlet audits due') + '<div class="card" style="padding:6px 16px;margin-bottom:20px;">' + rows.map(function(x, i){
+      return '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 0;'+(i?'border-top:1px solid var(--line);':'')+'"><div style="min-width:0;"><b>'+esc(x.p.name)+' · '+esc(x.o.name)+'</b><div class="histmeta">'+esc(x.o.city||'')+(x.o.manager ? ' · '+esc(x.o.manager) : '')+'</div></div>' +
+        '<span style="display:flex;gap:6px;align-items:center;flex:none;"><span class="pill '+x.s.tone+'">'+esc(x.s.label)+'</span><button type="button" class="btn btn-primary btn-sm" data-action="outlet-audit" data-pid="'+x.p.id+'" data-oid="'+x.o.id+'">▶ Start</button></span></div>';
+    }).join('') + '</div>';
+  }
+
   function renderProspectDetail(){
     var p = findProspect(state.activeProspectId);
     if (!p){ state.activeProspectId = null; return renderProspects(); }
@@ -6058,7 +6288,7 @@
       (isParked(p) ? '<div class="card" style="padding:10px 14px;margin-bottom:12px;border-color:var(--accent);">⏸ <b>Parked</b>'+(p.parked.reason ? ' — '+esc(p.parked.reason) : '')+(p.parked.until ? '. Comes back to the pipeline on '+fmtDateShort(new Date(p.parked.until+'T00:00:00').getTime())+'.' : '')+' <button type="button" class="btn btn-ghost btn-sm" style="margin-left:6px;" data-action="unpark-prospect" data-id="'+p.id+'">Un-park now</button></div>' : '') +
       ((audits.length || clientCostEntries(p).length) ? '<div style="margin:0 0 12px;"><button class="btn btn-ghost btn-sm" data-action="print-client-pack" data-id="'+p.id+'">📦 Client pack (PDF)</button></div>' : '') +
       '<div class="jumpbar">' +
-        [['Contact','Point of Contact'],['Follow-ups','Follow-ups'],['Remarks','Remarks'],['Evidence','Evidence'],['Map','System Map'],['Parameters','Parameters']].concat(audits.length ? [['Timeline','Timeline'],['Next actions','Recommended Next Actions'],['Proposal','Proposal & conversion']] : [])
+        [['Contact','Point of Contact'],['People','People']].concat((p.category==='qsr' || outletsOf(p).length) ? [['Outlets','Outlets & audit round']] : []).concat([['Follow-ups','Follow-ups'],['Remarks','Remarks'],['Evidence','Evidence'],['Map','System Map'],['Parameters','Parameters']]).concat(audits.length ? [['Timeline','Timeline'],['Next actions','Recommended Next Actions'],['Proposal','Proposal & conversion']] : [])
           .map(function(j){ return '<button type="button" data-action="jump" data-target="'+esc(j[1])+'">'+j[0]+'</button>'; }).join('') +
       '</div>' +
       renderStatusCard(p) +
@@ -6087,6 +6317,8 @@
         '<div class="helper" data-pmobile-err style="margin-top:-6px;color:var(--bad);">'+esc(mobileErrorText(p.contactMobile))+'</div>' +
         '<div class="contactrow blockrow" data-contact-btns>'+contactButtons(p)+'</div>' +
       '</div>' +
+      renderPeopleCard(p) +
+      ((p.category==='qsr' || outletsOf(p).length) ? renderOutletsCard(p) : '') +
       (state.newClientFlow===p.id ? '<div class="card" style="border-color:var(--accent);background:var(--accent-soft);padding:14px 16px;margin-bottom:18px;"><div style="font-weight:700;">Step 1 of 2 — client details</div><div class="helper" style="margin:4px 0 10px;">Next, add this client\'s monthly parameters (food cost, wastage, staff, rent, electricity…). You can skip and do it later.</div><button class="btn btn-primary" data-action="cost-open" data-id="'+p.id+'" data-flow="new">Next: Parameters →</button></div>' : '') +
       renderFollowUps(p) +
       renderRemarksCard(p) +
@@ -6766,7 +6998,7 @@
   }
   function renderDayToday(g){
     var items = g.days[0].items;
-    return (g.overdue.length ? '<button type="button" class="card dayalert" data-action="day-tab" data-tab="overdue">⚠️ <b>'+g.overdue.length+' overdue</b> from earlier days <span style="margin-left:auto;">View →</span></button>' : '') +
+    return renderOutletVisitsToday() + (g.overdue.length ? '<button type="button" class="card dayalert" data-action="day-tab" data-tab="overdue">⚠️ <b>'+g.overdue.length+' overdue</b> from earlier days <span style="margin-left:auto;">View →</span></button>' : '') +
       sh('📋','Today\'s agenda') +
       (items.length
         ? items.map(function(e){ return weekRowHtml(e, false); }).join('')
@@ -7550,15 +7782,16 @@
   function weekEventsAll(){ return memo('weekEvents', weekEventsAllRaw); }
   function weekEventsAllRaw(){
     var ev = [];
-    function add(date, time, icon, tone, title, sub, action, id, tab){
+    function add(date, time, icon, tone, title, sub, action, id, tab, fid, oid){
       if (!date) return;
-      ev.push({ date:date, time:time||'', icon:icon, tone:tone, title:title, sub:sub, action:action, id:id||'', tab:tab||'' });
+      ev.push({ date:date, time:time||'', icon:icon, tone:tone, title:title, sub:sub, action:action, id:id||'', tab:tab||'', fid:fid||'', oid:oid||'' });
     }
     state.prospects.forEach(function(p){
       var nm = p.name || 'Unnamed client';
-      openFollowUps(p).forEach(function(f){ add(f.date, f.time, '📞', 'accent', f.note||'Follow-up', nm+' · Follow-up'+(latestRemark(p) ? ' · 📝 '+remarkShort(latestRemark(p).text, 70) : ''), 'goto-prospect', p.id); });
+      openFollowUps(p).forEach(function(f){ add(f.date, f.time, '📞', 'accent', f.note||'Follow-up', nm+' · Follow-up'+(latestRemark(p) ? ' · 📝 '+remarkShort(latestRemark(p).text, 70) : ''), 'goto-prospect', p.id, '', f.id); });
       if (p.plannedAuditDate && !p.auditId && !p.declined && !isParked(p)) add(p.plannedAuditDate, p.plannedAuditTime, '⭐', 'warn', 'Scheduled audit', nm, 'goto-prospect', p.id);
       if (p.proposalStatus==='meeting_scheduled' && p.proposalMeetingDate && !p.converted && !p.declined && !isParked(p)) add(p.proposalMeetingDate, '', '🤝', 'warn', 'Proposal meeting', nm, 'goto-prospect', p.id);
+      if (!p.archived) outletsOf(p).forEach(function(o){ if (o.planned && outletStatus(p, o).k!=='done') add(o.planned, '', '🏬', 'warn', 'Outlet audit: '+o.name, nm+(o.city ? ' · '+o.city : ''), 'goto-prospect', p.id, '', '', o.id); });
     });
     allInvoices().forEach(function(x){ if (!x.inv.paid) add(invDue(x.inv), '', '💸', 'bad', 'Payment due: '+fmtMoney(invAmount(x.inv)), (x.p.name||'Client')+(x.inv.note?' · '+x.inv.note:''), 'goto-prospect', x.p.id); });
     state.prospects.forEach(function(p){ var sg = nextInvoiceSuggestion(p); if (sg) add(sg.date, '', '🧾', 'warn', 'Raise invoice: '+fmtMoney(sg.amount), (p.name||'Client')+(sg.retainer?' · monthly':''), 'goto-prospect', p.id); });
@@ -7605,6 +7838,73 @@
       '<div class="wtime">'+when+'</div>' +
       '<div class="wbody"><div class="wtitle">'+e.icon+' '+esc(e.title)+'</div>'+(e.sub ? '<div class="histmeta">'+esc(e.sub)+'</div>' : '')+'</div>' +
     '</div>';
+  }
+  // ---------- Home calendar: every dated thing (calls, audits, outlet visits, meetings, fixes, payments) on one month view ----------
+  var CAL_KIND = { '📞':'call', '☎️':'call', '⭐':'audit', '🏬':'audit', '🗓️':'audit', '🤝':'meet', '🛠️':'due', '💸':'due', '🧾':'due', '✅':'done' };
+  function calendarEvents(){
+    var ev = weekEventsAll().slice();
+    state.history.forEach(function(h){ if (h.auditDate) ev.push({ date:h.auditDate, time:h.auditTime||'', icon:'✅', tone:'good', title:'Audit done · '+(h.completionPct||0)+'%', sub:h.storeName||'', action:'view-audit', id:h.id, tab:'' }); });
+    // follow-ups you've already ticked off stay on their day, under Done
+    state.prospects.forEach(function(p){ (p.followUps||[]).forEach(function(f){ if (f.done && f.date) ev.push({ date:f.date, time:f.time||'', icon:'✅', tone:'good', title:'Called: '+(f.note||'Follow-up'), sub:p.name||'', action:'goto-prospect', id:p.id, tab:'' }); }); });
+    return ev;
+  }
+  function renderHomeCalendar(){
+    var today = todayISO(), month = state.calMonth || today.slice(0,7), pick = state.calDay || '';
+    var y = +month.slice(0,4), mo = +month.slice(5,7) - 1, first = new Date(y, mo, 1), days = new Date(y, mo+1, 0).getDate(), lead = (first.getDay()+6)%7;
+    var all = calendarEvents(), byDay = {}; all.forEach(function(e){ (byDay[e.date] = byDay[e.date] || []).push(e); });
+    // who to call next (not contacted yet), so today is never empty while the pipeline has people to ring
+    var toCall = state.prospects.filter(function(p){ return !p.archived && !p.converted && !p.declined && !isParked(p) && !stageOf(p) && (p.name||'').trim(); })
+      .sort(function(a,b){ var r = function(p){ return FIT_ORDER[p.fit]===undefined ? 3 : FIT_ORDER[p.fit]; }; return r(a)-r(b) || (a.name||'').localeCompare(b.name||''); });
+    // a date is filled with the colour of the most important thing on it
+    var ORDER = ['late','audit','meet','call','due','done','other'];
+    var cells = '';
+    for (var i=0; i<lead; i++) cells += '<span class="calcell blank"></span>';
+    for (var dn=1; dn<=days; dn++){
+      var ds = month+'-'+String(dn).padStart(2,'0'), list = byDay[ds] || [], kinds = {};
+      list.forEach(function(e){ var k = CAL_KIND[e.icon] || 'other'; if (k!=='done' && e.date<today) k = 'late'; kinds[k] = 1; });
+      if (ds===today && toCall.length) kinds.call = 1;
+      var main = ORDER.filter(function(k){ return kinds[k]; })[0] || '';
+      var n = list.length + (ds===today ? Math.min(toCall.length, 3) : 0);
+      cells += '<button type="button" class="calcell'+(main?' fill-'+main:'')+(ds===today?' today':'')+(ds===pick?' on':'')+(ds<today?' past':'')+'" data-action="cal-pick" data-val="'+ds+'"><span>'+dn+'</span>'+(n>1 ? '<small>'+n+'</small>' : '')+'</button>';
+    }
+    if (!pick){
+      return '<div class="card homecal">' + calHeadHtml(first) + '<div class="calgrid">'+['M','T','W','T','F','S','S'].map(function(x){ return '<span class="calwd">'+x+'</span>'; }).join('')+cells+'</div>' + calLegendHtml() +
+        '<div class="histmeta" style="text-align:center;margin:8px 0 2px;">Tap a date to see its plan</div></div>';
+    }
+    var dayList = (byDay[pick] || []).slice().sort(function(a,b){ if (!!a.time !== !!b.time) return a.time ? -1 : 1; return (a.time||'').localeCompare(b.time||''); });
+    var isDone = function(e){ return (CAL_KIND[e.icon]||'other')==='done'; };
+    var todo = dayList.filter(function(e){ return !isDone(e); }), done = dayList.filter(isDone);
+    // today also carries everything still open from earlier days
+    var overdue = pick===today ? all.filter(function(e){ return e.date<today && !isDone(e); }) : [];
+    var label = pick===today ? 'Today' : new Date(pick+'T00:00:00').toLocaleDateString(undefined,{ weekday:'long', day:'numeric', month:'short' });
+    var row = function(e, late){
+      var html = weekRowHtml(e, late), acts = '';
+      if (e.fid) acts = '<button type="button" class="btn btn-ghost btn-sm" data-action="done-followup" data-pid="'+esc(e.id)+'" data-fid="'+esc(e.fid)+'">✓ Done</button><button type="button" class="btn btn-ghost btn-sm" data-action="reschedule-followup" data-pid="'+esc(e.id)+'" data-fid="'+esc(e.fid)+'">📅 Reschedule</button>';
+      else if (e.oid) acts = '<button type="button" class="btn btn-primary btn-sm" data-action="outlet-audit" data-pid="'+esc(e.id)+'" data-oid="'+esc(e.oid)+'">▶ Start audit</button><label class="histmeta" style="display:flex;gap:4px;align-items:center;">Move to <input type="date" data-outlet-date="'+esc(e.oid)+'" data-pid="'+esc(e.id)+'" value="'+esc(e.date)+'" style="padding:4px 6px;width:auto;"></label>';
+      // the buttons go under the title (inside .wbody), not as a third column beside it
+      return acts ? html.replace(/<\/div>\s*<\/div>\s*$/, '<div class="contactrow calacts">'+acts+'</div></div></div>') : html;
+    };
+    var callHtml = (pick===today && toCall.length) ? '<div class="calsub">📣 Next to call</div>' + toCall.slice(0,3).map(function(p){
+        return '<div class="card weekrow" data-action="goto-prospect" data-id="'+p.id+'" style="border-left:3px solid #3b82c4;"><div class="wtime">'+(p.fit ? 'Fit '+esc(p.fit) : 'Call')+'</div><div class="wbody"><div class="wtitle">'+esc(p.name)+'</div><div class="histmeta">'+esc(prospectCategoryLabel(p))+(p.location ? ' · '+esc(p.location) : '')+'</div></div></div>';
+      }).join('') + (toCall.length>3 ? '<button type="button" class="btn btn-text btn-sm" style="padding-left:0;" data-action="go-prospects">See all '+toCall.length+' to call ›</button>' : '') : '';
+    var empty = !overdue.length && !todo.length && !done.length && !callHtml;
+    return '<div class="card homecal">' + calHeadHtml(first) +
+      '<div class="calgrid">'+['M','T','W','T','F','S','S'].map(function(x){ return '<span class="calwd">'+x+'</span>'; }).join('')+cells+'</div>' + calLegendHtml() +
+      '<div class="calday"><div class="caldaytitle"><span style="flex:1;">'+esc(label)+'</span>'+(pick!==today ? '<button type="button" class="btn btn-text btn-sm" data-action="cal-pick" data-val="'+today+'">Today</button>' : '')+'<button type="button" class="iconbtn" data-action="cal-close" aria-label="Close">✕</button></div>' +
+        (overdue.length ? '<div class="calsub late">⚠️ Overdue · '+overdue.length+'</div>' + overdue.map(function(e){ return row(e, true); }).join('') : '') +
+        (todo.length ? '<div class="calsub">📌 To do · '+todo.length+'</div>' + todo.map(function(e){ return row(e, false); }).join('') : '') +
+        callHtml +
+        (done.length ? '<div class="calsub good">✅ Done · '+done.length+'</div>' + done.map(function(e){ return row(e, false); }).join('') : '') +
+        (empty ? '<div class="histmeta" style="padding:6px 0 2px;">Nothing on this day'+(pick>=today ? '. A free day.' : '.')+'</div>' : '') +
+      '</div></div>';
+  }
+  function calHeadHtml(first){
+    return '<div class="calhead"><button type="button" class="iconbtn" data-action="cal-nav" data-val="-1" aria-label="Previous month">‹</button>' +
+      '<b>'+esc(first.toLocaleDateString(undefined,{ month:'long', year:'numeric' }))+'</b>' +
+      '<button type="button" class="iconbtn" data-action="cal-nav" data-val="1" aria-label="Next month">›</button></div>';
+  }
+  function calLegendHtml(){
+    return '<div class="callegend"><span><i class="cd-audit"></i>Audit</span><span><i class="cd-call"></i>Call / follow-up</span><span><i class="cd-meet"></i>Meeting</span><span><i class="cd-due"></i>Due</span><span><i class="cd-late"></i>Overdue</span><span><i class="cd-done"></i>Done</span></div>';
   }
   function weekDayLabel(g){
     if (g.offset===0) return 'Today';
@@ -7720,22 +8020,18 @@
         '<div style="margin:8px 2px 0;font-size:13px;font-weight:600;color:var(--ink-400);">📅 '+esc(new Date().toLocaleDateString(undefined,{weekday:'long', day:'numeric', month:'long', year:'numeric'}))+'</div>' +
         '<h1 style="font-size:30px;">'+(function(){ var gp = greeting.split(' — '); return '<span class="hl">'+esc(gp[0])+'</span>'+(gp[1] ? ' — '+esc(gp[1]) : ''); })()+'</h1>' +
       '</div>' +
-      renderTodayWins() +
-      ((dc.today || dc.overdue || dc.week) ?
-      '<button type="button" class="card dayshort" data-action="go-time">' +
-        '<span class="ds"><b>'+dc.today+'</b><span>Today</span></span>' +
-        '<span class="ds'+(dc.overdue?' bad':'')+'"><b>'+dc.overdue+'</b><span>Overdue</span></span>' +
-        '<span class="ds"><b>'+dc.week+'</b><span>Next 7 days</span></span>' +
-        '<span class="ds-go">Open The Day ›</span>' +
-      '</button>' : '') +
-      renderAlertsBanner() +
+      // Quick actions, then the calendar (today's calls, follow-ups, audits, overdue, next to call), then numbers you can open when you want them.
       '<div class="dashquick">' +
         '<button class="btn btn-primary" data-action="go-setup">+ New audit</button>' +
         '<button class="btn btn-ghost" data-action="go-maps">📞 Calls'+(newCalls?' ('+newCalls+' new)':'')+'</button>' +
         '<button class="btn btn-ghost" data-action="go-review">📋 Weekly review</button>' +
       '</div>' +
-      dashGroup('sell', '🎯', 'Sell', (function(){ var ps = pipelineSummary(); return ps.n ? ps.n+' in pipeline · ₹'+fmtCompact(ps.total) : ''; })(), renderFollowUpBoard() + renderNextToCall() + renderPipelineValueCard() + renderPipelineMap() + renderPortfolioMap()) +
-      dashGroup('deliver', '🛠️', 'Deliver', openActionsNow ? openActionsNow+' open issue'+(openActionsNow===1?'':'s') : '', renderAttentionBoard() + renderWorkBoard() + renderLoopBoard() + renderParamsBoard() + renderWeekSummary() + renderRecentAudits()) +
+      renderHomeCalendar() +
+      renderAlertsBanner() +
+      renderTodayWins() +
+      dashGroup('pipeline', '📈', 'Pipeline', (function(){ var ps = pipelineSummary(); return ps.n ? ps.n+' in pipeline · ₹'+fmtCompact(ps.total) : ''; })(), renderPipelineValueCard()) +
+      dashGroup('pmap', '🗺️', 'Pipeline map', '', renderPipelineMap() + renderPortfolioMap()) +
+      dashGroup('deliver', '🛠️', 'Deliver', openActionsNow ? openActionsNow+' open issue'+(openActionsNow===1?'':'s') : '', renderAttentionBoard() + renderWorkBoard() + renderLoopBoard() + renderParamsBoard()) +
       dashGroup('money', '💰', 'Money', revenueMonth.total ? '₹'+fmtCompact(revenueMonth.total)+' this month' : '', renderTargetCard(monthName, revenueMonth, clientsMonth) + renderInvoicesBoard() + renderTimeMoneyBoard()) +
       dashGroup('me', '🚗', 'Travel', '', renderTravelBoard()) +
     '</main>';
@@ -7852,6 +8148,14 @@
     }
     else if (action==='go-editor'){ if(!state.draft){ state.view='editor'; render(); } }
     else if (action==='go-audits'){ if(!state.draft){ state.view='audits'; state.sidebarOpen=false; window.scrollTo(0,0); render(); } }
+    else if (action==='cal-nav'){
+      var cm = state.calMonth || todayISO().slice(0,7), cd = new Date(+cm.slice(0,4), +cm.slice(5,7)-1 + (+t.dataset.val), 1);
+      state.calMonth = cd.getFullYear()+'-'+String(cd.getMonth()+1).padStart(2,'0');
+      state.calDay = ''; render();
+    }
+    // tap a date to open its plan, tap it again (or ✕) to close it
+    else if (action==='cal-pick'){ state.calDay = (state.calDay===t.dataset.val && !t.closest('.caldaytitle')) ? '' : t.dataset.val; state.calMonth = t.dataset.val.slice(0,7); render(); }
+    else if (action==='cal-close'){ state.calDay = ''; render(); }
     else if (action==='go-pricing'){ if(!state.draft){ state.view='pricing'; render(); } }
     else if (action==='go-services'){ if(!state.draft){ state.view='services'; render(); } }
     else if (action==='go-actions'){ if(!state.draft){ if (t.dataset.tab) state.actionsTab = t.dataset.tab; state.dayTab = 'actions'; state.view='time'; window.scrollTo(0,0); render(); } }
@@ -8207,6 +8511,99 @@
       }
     }
     else if (action==='activity-seg'){ state.activitySeg = t.dataset.seg; render(); }
+    // ---- people ----
+    else if (action==='person-add'){
+      var paP = findProspect(state.activeProspectId), paName = ((document.getElementById('ppName')||{}).value||'').trim();
+      if (paP && paName){
+        paP.people = paP.people || [];
+        paP.people.push({ id:uid(), name:paName, title:((document.getElementById('ppTitle')||{}).value||'').trim(), role:(document.getElementById('ppRole')||{}).value||'other',
+          phone:((document.getElementById('ppPhone')||{}).value||'').trim(), linkedin:((document.getElementById('ppLinkedin')||{}).value||'').trim(), note:((document.getElementById('ppNote')||{}).value||'').trim(), talkedAt:null, addedAt:Date.now() });
+        paP.updatedAt = Date.now(); persistProspects(); render();
+      } else if (!paName){ var ppn = document.getElementById('ppName'); if (ppn) ppn.focus(); }
+    }
+    else if (action==='person-del'){
+      var pdP = findProspect(state.activeProspectId), pdX = pdP && (pdP.people||[]).filter(function(x){ return x.id===t.dataset.id; })[0];
+      if (pdX && window.confirm('Remove '+pdX.name+' from People?')){ pdP.people = pdP.people.filter(function(x){ return x.id!==pdX.id; }); pdP.updatedAt = Date.now(); persistProspects(); render(); }
+    }
+    else if (action==='person-talked'){
+      var ptP = findProspect(state.activeProspectId); (ptP && ptP.people||[]).forEach(function(x){ if (x.id===t.dataset.id) x.talkedAt = Date.now(); });
+      if (ptP){ ptP.updatedAt = Date.now(); persistProspects(); render(); }
+    }
+    else if (action==='person-main'){
+      var pmP = findProspect(state.activeProspectId), pmX = pmP && (pmP.people||[]).filter(function(x){ return x.id===t.dataset.id; })[0];
+      if (pmX){ pmP.contactName = pmX.name; pmP.contactDesignation = pmX.title || personRoleLabel(pmX.role).replace(/^[^A-Za-z]+/, ''); if (isValidMobile(pmX.phone)) pmP.contactMobile = normalizeMobile(pmX.phone); pmP.updatedAt = Date.now(); persistProspects(); render(); }
+    }
+    // ---- outlets ----
+    else if (action==='outlet-panel'){
+      var cur = state.outletPanel && state.outletPanel.pid===state.activeProspectId ? state.outletPanel.panel : '';
+      state.outletPanel = { pid:state.activeProspectId, panel: cur===t.dataset.val ? '' : t.dataset.val }; render();
+    }
+    else if (action==='outlets-add'){
+      var oaP = findProspect(state.activeProspectId), oaTxt = ((document.getElementById('olBulk')||{}).value||'');
+      if (oaP){
+        oaP.outlets = oaP.outlets || [];
+        var have = {}; oaP.outlets.forEach(function(o){ have[(o.name+'|'+(o.city||'')).toLowerCase()] = 1; });
+        var added = 0;
+        oaTxt.split(/\n+/).forEach(function(line){
+          var f = line.split('|').map(function(x){ return x.trim(); }); if (!f[0]) return;
+          var key = (f[0]+'|'+(f[1]||'')).toLowerCase(); if (have[key]) return; have[key] = 1;
+          oaP.outlets.push({ id:uid(), name:f[0], city:f[1]||'', manager:(f[2]||'').replace(/\s*\(manager\)\s*/i,''), phone:f[3]||'', planned:'', metrics:{}, complaints:[] }); added++;
+        });
+        if (added){ oaP.updatedAt = Date.now(); state.outletPanel = null; persistProspects(); render(); alert(added+' outlet'+(added===1?'':'s')+' added.'); }
+      }
+    }
+    else if (action==='outlets-plan'){
+      var opP = findProspect(state.activeProspectId), opS = (document.getElementById('olStart')||{}).value, opE = (document.getElementById('olEnd')||{}).value;
+      if (opP && opS && opE && opE>=opS){
+        opP.auditRound = { start:opS, end:opE };
+        var todo = outletsOf(opP).filter(function(o){ return outletStatus(opP, o).k!=='done'; });
+        var days = workingDays(opS, opE, !!(document.getElementById('olSkipSun')||{}).checked);
+        todo.forEach(function(o, i){ o.planned = days[Math.floor(i * days.length / todo.length)] || opE; });
+        opP.updatedAt = Date.now(); state.outletPanel = null; persistProspects(); render();
+        alert('Planned '+todo.length+' outlet visit'+(todo.length===1?'':'s')+' across '+days.length+' days (about '+Math.max(1, Math.ceil(todo.length/days.length))+' a day). They show on The One each day.');
+      } else alert('Pick a start date and a finish date after it.');
+    }
+    else if (action==='outlets-ai-copy'){
+      var acP = findProspect(state.activeProspectId);
+      if (acP){ var acT = outletAiPrompt(acP), acDone = function(){ t.textContent = '✓ Copied. Paste it to your AI'; };
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(acT).then(acDone).catch(function(){ fallbackCopyText(acT); acDone(); }); else { fallbackCopyText(acT); acDone(); } }
+    }
+    else if (action==='outlets-ai-apply'){
+      var aaP = findProspect(state.activeProspectId), aaRaw = ((document.getElementById('olAiPaste')||{}).value||'').trim();
+      try {
+        var aaJ = JSON.parse(aaRaw.replace(/^```(json)?/i,'').replace(/```$/,'').trim()), aaList = Array.isArray(aaJ) ? aaJ : (aaJ.outlets||[]);
+        var norm = function(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]/g,''); }, hit = 0, miss = [];
+        aaList.forEach(function(r){
+          var n = norm(r.name), o = outletsOf(aaP).filter(function(x){ return norm(x.name)===n; })[0] || outletsOf(aaP).filter(function(x){ var xn = norm(x.name); return n && xn && (xn.indexOf(n)>=0 || n.indexOf(xn)>=0); })[0];
+          if (!o){ if (r.name) miss.push(r.name); return; }
+          o.metrics = o.metrics || {};
+          OUTLET_METRICS.forEach(function(x){ var v = parseFloat(r[x.k]); if (!isNaN(v)) o.metrics[x.k] = Math.round(v*10)/10; });
+          if (Array.isArray(r.complaints)) o.complaints = r.complaints.filter(Boolean).slice(0,5).map(String);
+          o.metricsAt = Date.now(); o.metricsSource = 'ai'; hit++;
+        });
+        aaP.updatedAt = Date.now(); state.outletPanel = null; persistProspects(); render();
+        alert('Filled scorecards for '+hit+' outlet'+(hit===1?'':'s')+'.'+(miss.length ? '\nNot matched: '+miss.join(', ') : ''));
+      } catch(e){ alert('That doesn\'t look like the JSON answer. Paste only the JSON the AI returned.'); }
+    }
+    else if (action==='outlet-audit'){
+      var oaP2 = findProspect(t.dataset.pid || state.activeProspectId), oaO = oaP2 && outletsOf(oaP2).filter(function(o){ return o.id===t.dataset.oid; })[0];
+      if (oaP2 && oaO && !state.draft){
+        var oType = state.templates[oaP2.category] ? oaP2.category : templateKeys()[0];
+        state.setup = Object.assign({}, state.setup, { type:oType, storeName:(oaP2.name||'')+' – '+oaO.name, storeLocation:[oaO.name, oaO.city].filter(Boolean).join(', '),
+          contactName:oaO.manager||'', contactDesignation:oaO.manager ? 'Outlet manager' : '', contactMobile:oaO.phone||'', auditDate:todayISO(), auditTime:nowHHMM(),
+          selectedSections:state.templates[oType].sections.map(function(s){ return s.id; }), clientId:oaP2.id, outletId:oaO.id, mode:'full', serviceId:'' });
+        state.view = 'setup'; window.scrollTo(0,0); render();
+      }
+    }
+    else if (action==='outlet-audit-cancel'){ state.setup.clientId = ''; state.setup.outletId = ''; render(); }
+    else if (action==='outlet-edit'){ state.outletEdit = state.outletEdit===t.dataset.oid ? null : t.dataset.oid; render(); }
+    else if (action==='outlet-del'){
+      var odP = findProspect(state.activeProspectId), odO = odP && outletsOf(odP).filter(function(o){ return o.id===t.dataset.oid; })[0];
+      if (odO && window.confirm('Remove outlet '+odO.name+'? Its past audits stay in Audits.')){ odP.outlets = odP.outlets.filter(function(o){ return o.id!==odO.id; }); odP.updatedAt = Date.now(); persistProspects(); render(); }
+    }
+    else if (action==='outlets-compare'){ state.compareClientId = state.activeProspectId; window.scrollTo(0,0); render(); }
+    else if (action==='outlets-compare-close'){ state.compareClientId = null; render(); }
+    else if (action==='outlets-report'){ var orP = findProspect(state.compareClientId); if (orP) printHtmlReport(buildOutletReportHtml(orP), (orP.name||'Client')+' - Outlet report '+todayISO()); }
     else if (action==='archive-prospect'){
       var arP = findProspect(t.dataset.id);
       if (arP && window.confirm('Archive '+(arP.name||'this client')+'? It leaves the pipeline, plans and reminders. You can restore it from Clients > Archive.')){ archiveClients([arP], 'Archived '+(arP.name||'a client')); state.activeProspectId = null; render(); }
@@ -8514,6 +8911,8 @@
       var startSvc = state.setup.serviceId ? findService(state.setup.serviceId) : null;
       state.draft.serviceId = startSvc ? startSvc.id : '';
       state.draft.metrics = serviceMetricList(startSvc);
+      state.draft.clientId = state.setup.clientId || ''; state.draft.outletId = state.setup.outletId || '';
+      state.setup.clientId = ''; state.setup.outletId = '';
       state.setup.inquiry = [];
       state.setup.mode = 'full';
       persistDraft();
@@ -8694,7 +9093,8 @@
       persistActions();
       clearDraft();
 
-      var linkedP =state.pendingProspectId ? findProspect(state.pendingProspectId) : null;
+      // an outlet audit belongs to its franchisor; it never creates a client of its own
+      var linkedP = d.clientId ? findProspect(d.clientId) : (state.pendingProspectId ? findProspect(state.pendingProspectId) : null);
       var key = (d.storeName||'').trim().toLowerCase();
       if (!linkedP && key){
         linkedP = state.prospects.filter(function(p){ return (p.name||'').trim().toLowerCase()===key; })[0];
@@ -8710,10 +9110,12 @@
       } else if (linkedP){
         linkedP.auditId = rec.id;
         if (!linkedP.category) linkedP.category = d.type;
-        if (!linkedP.location) linkedP.location = d.storeLocation;
-        if (!linkedP.contactName) linkedP.contactName = d.contactName||linkedP.contactName||'';
-        if (!linkedP.contactDesignation) linkedP.contactDesignation = d.contactDesignation||linkedP.contactDesignation||'';
-        if (!linkedP.contactMobile) linkedP.contactMobile = d.contactMobile||linkedP.contactMobile||'';
+        if (!d.clientId){
+          if (!linkedP.location) linkedP.location = d.storeLocation;
+          if (!linkedP.contactName) linkedP.contactName = d.contactName||linkedP.contactName||'';
+          if (!linkedP.contactDesignation) linkedP.contactDesignation = d.contactDesignation||linkedP.contactDesignation||'';
+          if (!linkedP.contactMobile) linkedP.contactMobile = d.contactMobile||linkedP.contactMobile||'';
+        }
         linkedP.nextAction = 'analysis';
         linkedP.nextNote = '';
         linkedP.nextData = {};
@@ -8729,11 +9131,11 @@
         });
       }
       // A finished audit is a visit: log the round trip automatically when the client's one-way distance is known.
-      if (linkedP && travelNum(linkedP.travelKm)>0){
+      if (linkedP && !d.clientId && travelNum(linkedP.travelKm)>0){
         linkedP.trips = linkedP.trips || [];
         if (!linkedP.trips.some(function(x){ return x.auditId===rec.id; })) linkedP.trips.push({ id: uid(), date: d.auditDate||todayISO(), km: travelNum(linkedP.travelKm)*2, min: travelNum(linkedP.travelMin)*2, auditId: rec.id, note:'Audit visit' });
       }
-      if (linkedP && state.setup.serviceId && !linkedP.servicesOffered){
+      if (linkedP && !d.clientId && state.setup.serviceId && !linkedP.servicesOffered){
         linkedP.servicesOffered = state.setup.serviceId;
         scheduleServiceFollowup(linkedP, findService(state.setup.serviceId));
         addServiceMetrics(linkedP, findService(state.setup.serviceId));
@@ -8745,8 +9147,10 @@
         persistProspects();
         if (d.metrics && d.metrics.length) persistReadings();
         state.activeProspectId = linkedP.id;
-        state.costEntry = costBlank(linkedP.id, 'audit', rec.id);
+        // outlet audits go straight back to the franchisor; the business-numbers step is for the head office
+        state.costEntry = d.clientId ? null : costBlank(linkedP.id, 'audit', rec.id);
         state.view = 'prospects'; window.scrollTo(0,0); render();
+        if (d.clientId) setTimeout(function(){ var ol = document.querySelector('.olbar'); if (ol) ol.scrollIntoView({ behavior:'smooth', block:'center' }); }, 120);
       } else {
         state.viewingAuditId = rec.id; state.summaryReturnView='setup';
         state.view='summary'; render();
@@ -9339,6 +9743,14 @@
     else if (el.dataset.tripField){
       var tp = findProspect(el.dataset.pid), tr = tp && (tp.trips||[]).filter(function(x){ return x.id===el.dataset.tid; })[0];
       if (tr){ tr[el.dataset.tripField] = el.dataset.tripField==='km' ? travelNum(el.value) : el.value; tp.updatedAt = Date.now(); persistProspects(); }
+    }
+    else if (el.dataset.outletDate){
+      var odp = findProspect(el.dataset.pid || state.activeProspectId), odo = odp && outletsOf(odp).filter(function(o){ return o.id===el.dataset.outletDate; })[0];
+      if (odo){ odo.planned = el.value || ''; odp.updatedAt = Date.now(); persistProspects(); render(); }
+    }
+    else if (el.dataset.outletMetric){
+      var omp = findProspect(state.activeProspectId), omo = omp && outletsOf(omp).filter(function(o){ return o.id===el.dataset.oid; })[0];
+      if (omo){ omo.metrics = omo.metrics || {}; var omv = parseFloat(el.value); if (isNaN(omv)) delete omo.metrics[el.dataset.outletMetric]; else omo.metrics[el.dataset.outletMetric] = Math.max(0, Math.min(5, omv)); omo.metricsSource = 'manual'; omp.updatedAt = Date.now(); persistProspects(); }
     }
     else if (el.dataset.target){
       var tnum = parseFloat(el.value); if (isNaN(tnum)) tnum = 0;
