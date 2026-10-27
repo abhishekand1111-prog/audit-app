@@ -470,6 +470,18 @@
   .smf-step i{ font-style:normal; font-size:11px; color:var(--ink-400); margin-top:1px; }
   .smf-arrow{ color:var(--ink-400); font-size:18px; line-height:1.4; }
   .exportrow{display:flex; gap:8px; flex-wrap:wrap; margin:24px 0 8px; padding-top:16px; border-top:1px solid var(--line);}
+  .toolgrid{display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px; margin-bottom:12px;}
+  .toolbtn{display:flex; flex-direction:column; gap:3px; text-align:left; padding:14px 16px; cursor:pointer; border:1px solid var(--line); margin:0;}
+  .toolbtn span{font-size:12.5px; color:var(--ink-400);}
+  .backlink{margin:-4px 0 6px; padding-left:0;}
+  .typechips, .stagebar{display:flex; gap:6px; flex-wrap:wrap; margin:0 0 12px;}
+  .stagebar{gap:0; border:1px solid var(--line); border-radius:12px; overflow:hidden; flex-wrap:nowrap;}
+  .stagebar button{flex:1; min-width:0; border:0; border-left:1px solid var(--line); background:none; padding:10px 4px; cursor:pointer; color:inherit; font:inherit; text-align:center;}
+  .stagebar button:first-child{border-left:0;}
+  .stagebar button b{display:block; font-size:20px; line-height:1.1;}
+  .stagebar button span{display:block; font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--ink-400); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .stagebar button.on{background:var(--accent-soft);}
+  .stagebar button.on span{color:inherit;}
   .exportrow .btn{flex:1 1 160px;}
   .sm-tap:hover{border-color:var(--line-strong);}
   .sm-detail .v{font-family:var(--font-b); font-weight:600; font-size:14px; min-width:0; overflow-wrap:anywhere;}
@@ -842,7 +854,7 @@
 (function(){
   "use strict";
   var OWNER_EMAIL = 'abhishekand.1111@gmail.com';
-  var APP_VERSION = 'v126';
+  var APP_VERSION = 'v127';
   var LS_T = 'diagnosisroom_templates_v1', LS_H = 'diagnosisroom_history_v1', LS_D = 'diagnosisroom_draft_v1', LS_P = 'diagnosisroom_pricing_v1';
   var LS_A = 'diagnosisroom_actions_v1', LS_SCHED = 'diagnosisroom_schedule_v1';
   var LS_PR = 'diagnosisroom_prospects_v1';
@@ -1939,6 +1951,12 @@
     else if (v==='week') html = renderWeekView();
     else if (v==='time') html = renderTimeView();
     else if (v==='services') html = renderServicesView();
+    else if (v==='audits') html = renderAuditsView();
+    // set-up screens no longer sit in the sidebar, so they get a way back to Back end (Tasks goes back to The One)
+    if (v==='editor' || v==='params' || v==='services' || v==='lookup'){
+      var back = v==='lookup' ? '<button type="button" class="btn btn-text btn-sm backlink" data-action="go-time">← The One</button>' : '<button type="button" class="btn btn-text btn-sm backlink" data-action="go-pricing">← Back end</button>';
+      html = html.replace('<main>', '<main>'+back);
+    }
     app.innerHTML = topbar() + html;
     var onTabs = app.querySelectorAll('.tabs-scroll .tab.on');
     for (var oti=0; oti<onTabs.length; oti++){
@@ -1985,16 +2003,14 @@
       '<div class="sidebar-overlay '+(state.sidebarOpen?'show':'')+'" data-action="close-sidebar"></div>' +
       '<nav class="sidebar '+(state.sidebarOpen?'open':'')+'">' +
         '<div class="sidebar-brand">'+logoImg()+'<span class="name">Diagnosis Room</span></div>' +
-        item('dashboard','go-dashboard','🏠 Dashboard') +
-        item('time','go-time','⏱️ The One', (function(){
+        // Five places for daily work. Set-up screens (checklist, parameters, packages, tasks) open from Back end / The One.
+        item('dashboard','go-dashboard','🏠 Home') +
+        item('time','go-time','📅 The One', (function(){
           var c=dayCounts(), n=c.today+c.overdue+smNewCount();
           return n ? String(n) : '';
         })()) +
-        item('prospects','go-prospects','👥 Clients') +
-        item('editor','go-editor','✅ Areas') +
-        item('params','go-params','📊 Parameters') +
-        item('lookup','go-lookup','📝 Tasks', (function(){ var n=state.lookups.filter(function(l){ return !l.done; }).length; return n?String(n):''; })()) +
-        item('services','go-services','📦 Packages', state.services.length?String(state.services.length):'') +
+        item('prospects','go-prospects','👥 Clients', (function(){ var n=state.prospects.filter(function(p){ return !p.archived && !p.converted && !p.declined && !isParked(p); }).length; return n?String(n):''; })()) +
+        item('audits','go-audits','📋 Audits', state.history.length?String(state.history.length):'') +
         item('pricing','go-pricing','⚙️ Back end') +
       '</nav>';
   }
@@ -3308,6 +3324,20 @@
       '<div class="card" style="padding:14px 16px;margin:14px 0 24px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">' +
         '<div><div style="font-weight:700;">'+esc(state.authUser?state.authUser.email:'')+'</div><div class="histmeta">Signed in</div></div>' +
         '<button class="btn btn-ghost btn-sm" data-action="auth-signout">Sign out</button>' +
+      '</div>' +
+      '<h1 style="font-size:20px;margin:0 0 4px;">Tools</h1>' +
+      '<div class="helper" style="margin:6px 0 12px;">Set-up screens you open now and then.</div>' +
+      '<div class="toolgrid">' +
+        '<button type="button" class="card toolbtn" data-action="go-editor"><b>✅ Checklist &amp; areas</b><span>Audit questions for each client type</span></button>' +
+        '<button type="button" class="card toolbtn" data-action="go-services"><b>📦 Packages &amp; pricing</b><span>'+state.services.length+' packages you can quote</span></button>' +
+        '<button type="button" class="card toolbtn" data-action="go-params"><b>📊 Parameters</b><span>Client numbers you track (food cost, wastage…)</span></button>' +
+        '<button type="button" class="card toolbtn" data-action="go-lookup"><b>📝 Tasks &amp; lookups</b><span>'+state.lookups.filter(function(l){ return !l.done; }).length+' open</span></button>' +
+      '</div>' +
+      '<div class="exportrow" style="margin:0 0 28px;">' +
+        '<button class="btn btn-ghost btn-sm" data-action="trigger-import-clients">⬆ Import clients / focus list (JSON)</button>' +
+        '<input type="file" accept="application/json" id="importClientsInput" data-action="import-clients-file" style="display:none;">' +
+        (state.prospects.length ? '<button class="btn btn-ghost btn-sm" data-action="export-prospects-csv">⬇ Export clients CSV</button>' : '') +
+        (state.history.length ? '<button class="btn btn-ghost btn-sm" data-action="export-csv">⬇ Export audits CSV</button>' : '') +
       '</div>' +
       '<h1 style="font-size:20px;margin:0 0 4px;">Monthly Targets</h1>' +
       '<div class="helper" style="margin-bottom:14px;margin-top:6px;">Set what you\'re aiming for this month. Revenue is worked out from your clients: the price you enter when you mark a client as converted counts in the month it was converted, and a monthly retainer counts every month while that client stays active.</div>' +
@@ -4924,8 +4954,10 @@
       if (p.category && cats.indexOf(p.category)===-1) cats.push(p.category);
     });
     locs.sort(); cats.sort();
-    var flRaw = state.prospectsFilterLocation||'', fcRaw = state.prospectsFilterCategory||'';
-    var fl = flRaw||'all', fc = fcRaw||'all';
+    // With a short focus list there's no location / offer filter any more: type chips, search and the stage bar are enough.
+    var flRaw = 'all', fcRaw = state.prospectsFilterCategory||'all';
+    var fl = 'all', fc = fcRaw||'all';
+    state.prospectsFilterOffer = 'all';
     var ndMap = {};
     state.prospects.forEach(function(p){ ndMap[p.id] = prospectNextDue(p); });
     var list = state.prospects.filter(function(p){
@@ -4961,7 +4993,7 @@
     var pipelineLeadCount = pipelineList.filter(function(p){ return !!p.leadId && !p.declined; }).length;
     var pf = state.pipelineFilter || 'all';
     // The long list only appears once a location and a type are chosen (or you search, or tap a filter tile).
-    var gateOpen = !state.prospects.length || (!!flRaw && !!fcRaw) || !!pq || (pTab==='pipeline' && pf!=='all');
+    var gateOpen = true;
     var gateHtml = '<div class="empty"><div class="big">📍</div>Choose a <b>location</b> and a <b>type</b> above to see the list.<br><span class="helper">Pick "All locations" and "All categories" to see everyone, or search by name.</span></div>';
     var pipelineShown = pf==='parked' ? parkedList : pipelineList.filter(function(p){ return pf==='audited' ? !!p.auditId : (pf==='declined' ? !!p.declined : (pf==='leads' ? (!!p.leadId && !p.declined) : true)); });
     state.lastPipelineIds = pipelineShown.map(function(p){ return p.id; });
@@ -4986,15 +5018,13 @@
     }
 
     // Exports are occasional — they sit at the bottom instead of above the tabs.
-    var exportHtml = (pTab!=='calls') ? (
-      '<div class="exportrow">' +
-        (function(){ var an = state.prospects.filter(isArchived).length; return an ? '<button class="btn btn-ghost btn-sm" data-action="prospects-tab" data-tab="archive">📦 Archive ('+an+')</button>' : ''; })() +
-        '<button class="btn btn-ghost btn-sm" data-action="trigger-import-clients">⬆ Import clients / focus list (JSON)</button>' +
-        '<input type="file" accept="application/json" id="importClientsInput" data-action="import-clients-file" style="display:none;">' +
-        (state.prospects.length ? '<button class="btn btn-ghost btn-sm" data-action="export-prospects-csv">⬇ Export clients CSV</button>' : '') +
-        (state.history.length ? '<button class="btn btn-ghost btn-sm" data-action="export-csv">⬇ Export audits CSV</button>' : '') +
-      '</div>'
-    ) : '';
+    // Import / export now live in Back end > Tools; only the archive link stays here.
+    var exportHtml = (function(){ var an = state.prospects.filter(isArchived).length; return an ? '<div class="exportrow"><button class="btn btn-ghost btn-sm" data-action="prospects-tab" data-tab="archive">📦 Archived clients ('+an+')</button></div>' : ''; })();
+    var typeCounts = {}, typeBase = state.prospects.filter(function(p){ return !p.archived && (pTab==='clients' ? p.converted : (!p.converted && !isParked(p))); });
+    typeBase.forEach(function(p){ typeCounts[p.category] = (typeCounts[p.category]||0) + 1; });
+    var typeChips = '<div class="typechips">' + [['all','All', typeBase.length]].concat(cats.filter(function(c){ return typeCounts[c]; }).map(function(c){ return [c, state.templates[c] ? state.templates[c].label : c, typeCounts[c]]; })).map(function(t){
+      return '<button type="button" class="btn btn-sm '+(fc===t[0]?'btn-primary':'btn-ghost')+'" data-action="type-filter" data-val="'+esc(t[0])+'">'+esc(t[1])+' '+t[2]+'</button>';
+    }).join('') + '</div>';
     return '<main>' +
       '<div style="display:flex; justify-content:space-between; align-items:flex-end; gap:10px;">' +
         '<div><div class="eyebrow">Sales</div><h1 style="font-size:26px;margin-top:6px;">Clients</h1></div>' +
@@ -5009,14 +5039,11 @@
         '<button class="tab '+(pTab==='plan'?'on':'')+'" data-action="prospects-tab" data-tab="plan">Plan'+(function(){ var n = planPool({ onlyNew:false, fit:'all' }).length; return '<span class="tabcount'+(n?' bad':'')+'">'+n+'</span>'; })()+'</button>' +
       '</div>' +
       (pTab==='plan' ? renderClientPlan() : pTab==='archive' ? renderArchiveTab() : (
-      renderViewsRow() +
-      '<div class="field" style="margin:10px 0 10px;"><label for="pSearch">Search</label><input id="pSearch" type="search" data-pipeline-search="1" value="'+esc(state.pipelineQuery||'')+'" placeholder="Name, area, contact, phone…" autocomplete="off"></div>' +
-      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:0 0 14px;">' +
-        (locs.length ? '<div class="field" style="margin-bottom:0;"><label>Location</label><select data-prospect-filter="location"><option value="" '+(flRaw?'':'selected')+'>Choose location…</option><option value="all" '+(flRaw==='all'?'selected':'')+'>All locations</option>'+locs.map(function(l){ return '<option value="'+esc(l)+'" '+(fl===l?'selected':'')+'>'+esc(l)+'</option>'; }).join('')+'</select></div>' : '') +
-        (cats.length ? '<div class="field" style="margin-bottom:0;"><label>Type</label><select data-prospect-filter="category"><option value="" '+(fcRaw?'':'selected')+'>Choose type…</option><option value="all" '+(fcRaw==='all'?'selected':'')+'>All types</option>'+cats.map(function(c){ return '<option value="'+esc(c)+'" '+(fc===c?'selected':'')+'>'+esc(state.templates[c]?state.templates[c].label:c)+'</option>'; }).join('')+'</select></div>' : '') +
-        '<div class="field" style="margin-bottom:0;"><label>Offer</label><select data-prospect-filter="offer">' + [['all','All offers'],['consult','Consultancy (dine-in, hotels, Big)'],['digital','Franchisor system (QSR Head)']].map(function(o){ return '<option value="'+o[0]+'" '+((state.prospectsFilterOffer||'all')===o[0]?'selected':'')+'>'+o[1]+'</option>'; }).join('') + '</select></div>' +
-        '<div class="field" style="margin-bottom:0;"><label>Sort by</label><select data-pipeline-sort="1">' + [['follow','Next follow-up'],['newest','Newest first'],['name','Name A–Z'],['fit','Fit (A first)'],['trouble','Recent trouble first'],['value','Value (high first)']].map(function(o){ return '<option value="'+o[0]+'" '+(psort===o[0]?'selected':'')+'>'+o[1]+'</option>'; }).join('') + '</select></div>' +
+      '<div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin:12px 0 10px;align-items:end;">' +
+        '<div class="field" style="margin:0;"><input id="pSearch" type="search" data-pipeline-search="1" value="'+esc(state.pipelineQuery||'')+'" placeholder="🔍 Search name, city, contact, phone…" autocomplete="off" aria-label="Search clients"></div>' +
+        '<div class="field" style="margin:0;"><select data-pipeline-sort="1" aria-label="Sort">' + [['follow','Next follow-up'],['fit','Fit (A first)'],['value','Value (high first)'],['name','Name A–Z'],['newest','Newest first']].map(function(o){ return '<option value="'+o[0]+'" '+(psort===o[0]?'selected':'')+'>'+o[1]+'</option>'; }).join('') + '</select></div>' +
       '</div>' +
+      typeChips +
       (pTab==='clients' ? (
         '<div class="statgrid" style="margin-top:0;">' +
           '<div class="stattile t-accent"><div class="v">'+clientsList.length+'</div><div class="k">Total Clients</div></div>' +
@@ -5036,27 +5063,27 @@
               '<div class="histmeta" style="margin-top:4px;">'+next.icon+' '+esc(next.text)+'</div>' +
             '</div>';
           }).join('')
-        ) +
-        histSummaryHtml
+        )
       ) : (
-      '<div class="statgrid tilebtns" style="margin-top:0;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));">' +
-        '<button type="button" class="stattile t-accent'+(pf==='all'?' on':'')+'" data-action="pipeline-filter" data-val="all"><div class="v">'+pipelineList.length+'</div><div class="k">In Pipeline</div></button>' +
-        '<button type="button" class="stattile'+(pf==='audited'?' on':'')+'" data-action="pipeline-filter" data-val="audited"><div class="v">'+pipelineAuditedCount+'</div><div class="k">Audited</div></button>' +
-        '<button type="button" class="stattile t-good" data-action="prospects-tab" data-tab="clients"><div class="v">'+clientsList.length+'</div><div class="k">Converted ›</div></button>' +
-        '<button type="button" class="stattile'+(pipelineDeclinedCount?' t-bad':'')+(pf==='declined'?' on':'')+'" data-action="pipeline-filter" data-val="declined"><div class="v">'+pipelineDeclinedCount+'</div><div class="k">Not Converted</div></button>' +
-        '<button type="button" class="stattile'+(pf==='leads'?' on':'')+'" data-action="pipeline-filter" data-val="leads"><div class="v">'+pipelineLeadCount+'</div><div class="k">From lead finder</div></button>' +
-        (parkedList.length ? '<button type="button" class="stattile'+(pf==='parked'?' on':'')+'" data-action="pipeline-filter" data-val="parked"><div class="v">'+parkedList.length+'</div><div class="k">Parked</div></button>' : '') +
-      '</div>' +
-      qsrFocusNoteHtml() +
+      // One bar for where each client is in your sales process. Tap a step to see only those; tap again for everyone.
       (function(){
         var cnt = { none:0, called:0, meeting:0, proposal:0 };
-        state.prospects.forEach(function(p){ if (p.converted || p.declined || isParked(p)) return; cnt[stageOf(p)||'none']++; });
+        state.prospects.forEach(function(p){ if (p.archived || p.converted || p.declined || isParked(p)) return; if (fc!=='all' && p.category!==fc) return; cnt[stageOf(p)||'none']++; });
         var cur = state.prospectsFilterStage||'all';
-        var chip = function(val, label, n){ return '<button type="button" class="btn btn-sm '+(cur===val?'btn-primary':'btn-ghost')+'" data-action="stage-filter" data-val="'+val+'">'+label+' '+n+'</button>'; };
-        return '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px;align-items:center;"><span class="helper" style="margin:0 6px 0 0;">Outreach:</span>' +
-          chip('all','All', cnt.none+cnt.called+cnt.meeting+cnt.proposal) + chip('none','Not contacted', cnt.none) + chip('called','Called', cnt.called) + chip('meeting','Meeting set', cnt.meeting) + chip('proposal','Proposal sent', cnt.proposal) + '</div>';
+        var step = function(val, label, n){ return '<button type="button" class="'+(cur===val?'on':'')+'" data-action="stage-filter" data-val="'+val+'"><b>'+n+'</b><span>'+label+'</span></button>'; };
+        var won = state.prospects.filter(function(p){ return !p.archived && p.converted && (fc==='all' || p.category===fc); }).length;
+        return '<div class="stagebar" role="group" aria-label="Sales stage">' + step('none','To call', cnt.none) + step('called','Called', cnt.called) + step('meeting','Meeting', cnt.meeting) + step('proposal','Proposal', cnt.proposal) +
+          '<button type="button" data-action="prospects-tab" data-tab="clients"><b>'+won+'</b><span>Won ›</span></button></div>';
       })() +
-      ((gateOpen && pf==='all' && pipelineShown.length && (fl!=='all' || fc!=='all' || (state.prospectsFilterOffer||'all')!=='all' || (state.prospectsFilterStage||'all')!=='all')) ? '<div style="margin:0 0 12px;"><button type="button" class="btn btn-ghost btn-sm" data-action="archive-filtered">📦 Archive these '+pipelineShown.length+'</button></div>' : '') +
+      // extra filters only appear once there's something in them
+      (function(){
+        var extra = [];
+        if (pipelineAuditedCount) extra.push(['audited','Audited', pipelineAuditedCount]);
+        if (pipelineDeclinedCount) extra.push(['declined','Not converted', pipelineDeclinedCount]);
+        if (parkedList.length) extra.push(['parked','Parked', parkedList.length]);
+        if (pipelineLeadCount) extra.push(['leads','From lead finder', pipelineLeadCount]);
+        return extra.length ? '<div class="typechips">' + extra.map(function(x){ return '<button type="button" class="btn btn-sm '+(pf===x[0]?'btn-primary':'btn-ghost')+'" data-action="pipeline-filter" data-val="'+x[0]+'">'+x[1]+' '+x[2]+'</button>'; }).join('') + '</div>' : '';
+      })() +
       (pf==='parked' ? '<div class="helper" style="margin:-6px 0 12px;">Set aside for now. Each one comes back to the pipeline on its own on the date shown, or tap Un-park to bring it back now.</div>'
         : (pf!=='all' ? '<div class="helper" style="margin:-6px 0 12px;">Showing '+(pf==='audited'?'audited':(pf==='leads'?'lead-finder':'not converted'))+' only — tap the tile again to see everyone.</div>' : '')) +
       (!gateOpen ? gateHtml : pipelineShown.length===0 ? (pf!=='all' ? '<div class="empty"><div class="big">🔎</div>Nothing here yet.</div>' : '<div class="empty"><div class="big">🎯</div>No clients yet.<br>Add one to start tracking your pipeline.</div>') :
@@ -5066,7 +5093,7 @@
           var stColor = { good:'var(--good)', bad:'var(--bad)', warn:'var(--accent)' }[st.tone] || 'var(--line)';
           var nextFu = openFollowUps(p)[0];
           // A fresh lead from the finder never has a contact person yet, so the "Missing" nag waits until it is audited.
-          var missing = ((p.leadId || p.qsrImport) && !p.auditId) ? [] : prospectProblems(p);
+          var missing = ((p.leadId || p.qsrImport || p.imported) && !p.auditId) ? [] : prospectProblems(p);
           var who = [p.contactName, p.contactDesignation].filter(function(x){ return (x||'').trim(); }).map(esc).join(' · ');
           var btns = contactButtons(p);
           return '<div class="card histcard pcard" style="border-left:3px solid '+stColor+';" data-action="open-prospect" data-id="'+p.id+'">' +
@@ -5827,6 +5854,33 @@
           '</div>';
         }).join('') +
       '</div>';
+  }
+  // Audits: start a new one, see every past audit, and the overall numbers (used to sit inside Clients > Converted).
+  function renderAuditsView(){
+    var all = state.history.slice().sort(function(a,b){ return (b.finishedAt||0)-(a.finishedAt||0); });
+    var head = '<main><div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;">' +
+      '<div><div class="eyebrow">Delivery</div><h1 style="font-size:26px;margin-top:6px;">Audits</h1></div>' +
+      '<button class="btn btn-primary btn-sm" data-action="go-setup">+ New audit</button></div>';
+    if (!all.length) return head + '<div class="empty" style="margin-top:18px;"><div class="big">📋</div>No audits yet.<br>Tap <b>+ New audit</b> when you\'re at a client.</div></main>';
+    var avgMs = Math.round(all.reduce(function(n,h){ return n+(h.totalMs||0); },0)/all.length);
+    var avgPct = Math.round(all.reduce(function(n,h){ return n+(h.completionPct||0); },0)/all.length);
+    var sorted = all.slice().reverse();
+    return head +
+      '<div class="statgrid" style="margin-top:16px;">' +
+        '<div class="stattile t-accent"><div class="v">'+all.length+'</div><div class="k">Audits</div></div>' +
+        '<div class="stattile"><div class="v">'+fmtTime(avgMs)+'</div><div class="k">Avg. duration</div></div>' +
+        '<div class="stattile t-good"><div class="v">'+avgPct+'%</div><div class="k">Avg. score</div></div>' +
+      '</div>' + (all.length>1 ? renderTrend(sorted) : '') +
+      sh('🧾','All audits') +
+      '<div class="card" style="padding:6px 16px;margin-bottom:16px;">' +
+        all.map(function(h, i){
+          var pct = h.completionPct||0;
+          return '<div data-action="view-audit" data-id="'+h.id+'" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;cursor:pointer;'+(i?'border-top:1px solid var(--line);':'')+'">' +
+            '<div style="min-width:0;"><div style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(h.storeName||'Unnamed store')+'</div><div class="histmeta">'+esc(fmtAuditWhen(h.auditDate,h.auditTime))+'</div></div>' +
+            '<span class="pill '+(pct>=80?'good':'warn')+'">'+pct+'%</span></div>';
+        }).join('') +
+      '</div>' +
+      '<div class="exportrow"><button class="btn btn-ghost btn-sm" data-action="export-csv">⬇ Export audits CSV</button></div></main>';
   }
   function renderParamsBoard(){
     var rows = [];
@@ -6717,8 +6771,7 @@
       (items.length
         ? items.map(function(e){ return weekRowHtml(e, false); }).join('')
         : '<div class="empty" style="padding:20px 14px;"><div class="big">📅</div>Nothing scheduled for today.</div>') +
-      '<button class="btn btn-ghost btn-sm" style="width:100%;margin:6px 0 20px;" data-action="day-tab" data-tab="week">See the next 7 days ('+g.count+') →</button>' +
-      renderNextToCall();
+      '<button class="btn btn-ghost btn-sm" style="width:100%;margin:6px 0 20px;" data-action="day-tab" data-tab="week">See the next 7 days ('+g.count+') →</button>';
   }
   // ---- System Map call requests (from the public System Map page) ----
   var SM_FORMAT = { dinein:'Dine-in', qsr:'QSR', cloud:'Cloud kitchen' };
@@ -7798,6 +7851,7 @@
       }
     }
     else if (action==='go-editor'){ if(!state.draft){ state.view='editor'; render(); } }
+    else if (action==='go-audits'){ if(!state.draft){ state.view='audits'; state.sidebarOpen=false; window.scrollTo(0,0); render(); } }
     else if (action==='go-pricing'){ if(!state.draft){ state.view='pricing'; render(); } }
     else if (action==='go-services'){ if(!state.draft){ state.view='services'; render(); } }
     else if (action==='go-actions'){ if(!state.draft){ if (t.dataset.tab) state.actionsTab = t.dataset.tab; state.dayTab = 'actions'; state.view='time'; window.scrollTo(0,0); render(); } }
@@ -8222,7 +8276,8 @@
     else if (action==='go-review'){ if(!state.draft){ state.dayTab = 'activity'; state.activitySeg = 'review'; state.activeCallId = null; state.view = 'time'; window.scrollTo(0,0); render(); } }
     else if (action==='progmap-toggle'){ saveJSON('diagnosisroom_progmap_v1', loadJSON('diagnosisroom_progmap_v1', true) === false); render(); }
     else if (action==='check-update'){ checkUpdate(true); }
-    else if (action==='stage-filter'){ state.prospectsFilterStage = t.dataset.val || 'all'; render(); }
+    else if (action==='stage-filter'){ var sfv = t.dataset.val || 'all'; state.prospectsFilterStage = (state.prospectsFilterStage===sfv) ? 'all' : sfv; state.pipelineFilter = 'all'; render(); }
+    else if (action==='type-filter'){ state.prospectsFilterCategory = t.dataset.val || 'all'; render(); }
     else if (action==='remark-del'){
       var rdP = findProspect(t.dataset.id);
       if (rdP && window.confirm('Delete this remark?')){ rdP.remarks = (rdP.remarks||[]).filter(function(r){ return r.id!==t.dataset.rid; }); rdP.updatedAt = Date.now(); persistProspects(); render(); }
