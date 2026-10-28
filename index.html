@@ -518,6 +518,9 @@
   .oltable th{font-size:11.5px; color:var(--ink-400); font-weight:700; position:sticky; top:0; background:var(--bg);}
   .oltable td.olname{text-align:left; font-weight:700; white-space:normal; min-width:120px;}
   .oltable td.c-good{background:rgba(58,168,118,.16);} .oltable td.c-warn{background:rgba(37,99,235,.18);} .oltable td.c-bad{background:rgba(29,78,216,.18);}
+  .clearsearch{position:absolute; right:4px; top:50%; transform:translateY(-50%); padding:6px 10px;}
+  .moresecs{margin:0 0 20px; border:1px dashed var(--line-strong); border-radius:var(--r-m); padding:0 14px;}
+  .moresum{display:flex; flex-wrap:wrap; gap:6px; align-items:baseline; width:100%; text-align:left; background:none; border:0; color:inherit; font:inherit; font-weight:700; padding:12px 0; cursor:pointer;}
   .toolgrid{display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px; margin-bottom:12px;}
   .toolbtn{display:flex; flex-direction:column; gap:3px; text-align:left; padding:14px 16px; cursor:pointer; border:1px solid var(--line); margin:0;}
   .toolbtn span{font-size:12.5px; color:var(--ink-400);}
@@ -902,7 +905,7 @@
 (function(){
   "use strict";
   var OWNER_EMAIL = 'abhishekand.1111@gmail.com';
-  var APP_VERSION = 'v132';
+  var APP_VERSION = 'v133';
   var LS_T = 'diagnosisroom_templates_v1', LS_H = 'diagnosisroom_history_v1', LS_D = 'diagnosisroom_draft_v1', LS_P = 'diagnosisroom_pricing_v1';
   var LS_A = 'diagnosisroom_actions_v1', LS_SCHED = 'diagnosisroom_schedule_v1';
   var LS_PR = 'diagnosisroom_prospects_v1';
@@ -1984,6 +1987,8 @@
     if (state.summaryReturnView==='maps') state.summaryReturnView = 'prospects';
     var v = state.view;
     if (v!=='prospects') state.costEntry = null;
+    // a search typed in Clients shouldn't still be hiding people next time you open it
+    if (v!=='prospects' && state.pipelineQuery) state.pipelineQuery = '';
     var html = '';
     if (v==='setup') html = renderSetup();
     else if (v==='audit') html = state.draft ? renderAudit(state.draft) : renderSetup();
@@ -2117,7 +2122,8 @@
     else if (!s.selectedSections.length) p.push('at least one area');
     if (!(s.contactName||'').trim()) p.push('contact name');
     if (!(s.contactDesignation||'').trim()) p.push('designation');
-    if (!(s.contactMobile||'').trim()) p.push('mobile number');
+    // an outlet manager's number is often unknown on the day, so it's optional for outlet audits (still checked if typed)
+    if (!(s.contactMobile||'').trim()){ if (!s.clientId) p.push('mobile number'); }
     else if (!isValidMobile(s.contactMobile)) p.push('a valid mobile number');
     if (!(s.storeName||'').trim()) p.push('store name');
     if (!(s.storeLocation||'').trim()) p.push('store location');
@@ -2366,7 +2372,7 @@
         '<div class="field"><label for="contactName">Point of contact — name'+req+'</label><input id="contactName" data-bind="contactName" placeholder="e.g. Priya Sharma" value="'+esc(s.contactName)+'"></div>' +
         '<div style="display:flex; gap:12px;">' +
           '<div class="field" style="flex:1;"><label for="contactDesignation">Designation'+req+'</label><input id="contactDesignation" data-bind="contactDesignation" placeholder="e.g. Store Manager" value="'+esc(s.contactDesignation)+'"></div>' +
-          '<div class="field" style="flex:1;"><label for="contactMobile">Mobile number'+req+'</label><input id="contactMobile" type="tel" inputmode="tel" data-bind="contactMobile" placeholder="e.g. 98765 43210" value="'+esc(s.contactMobile)+'"></div>' +
+          '<div class="field" style="flex:1;"><label for="contactMobile">Mobile number'+(s.clientId ? ' <span class="histmeta">(optional)</span>' : req)+'</label><input id="contactMobile" type="tel" inputmode="tel" data-bind="contactMobile" placeholder="e.g. 98765 43210" value="'+esc(s.contactMobile)+'"></div>' +
         '</div>' +
         '<div class="helper" data-mobile-err style="margin-top:-6px;color:var(--bad);">'+esc(mobileErrorText(s.contactMobile))+'</div>' +
       '</div>' +
@@ -5087,11 +5093,12 @@
       '<div class="tabs tabs-scroll" style="margin-top:14px;">' +
         '<button class="tab '+(pTab==='pipeline'?'on':'')+'" data-action="prospects-tab" data-tab="pipeline">Pipeline</button>' +
         '<button class="tab '+(pTab==='clients'?'on':'')+'" data-action="prospects-tab" data-tab="clients">Converted</button>' +
-        '<button class="tab '+(pTab==='plan'?'on':'')+'" data-action="prospects-tab" data-tab="plan">Plan'+(function(){ var n = planPool({ onlyNew:false, fit:'all' }).length; return '<span class="tabcount'+(n?' bad':'')+'">'+n+'</span>'; })()+'</button>' +
+        '<button class="tab '+(pTab==='plan'?'on':'')+'" data-action="prospects-tab" data-tab="plan">Call plan'+(function(){ var n = planPool({ onlyNew:false, fit:'all' }).length; return n ? '<span class="tabcount" title="Clients with no call planned yet">'+n+'</span>' : ''; })()+'</button>' +
       '</div>' +
       (pTab==='plan' ? renderClientPlan() : pTab==='archive' ? renderArchiveTab() : (
       '<div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin:12px 0 10px;align-items:end;">' +
-        '<div class="field" style="margin:0;"><input id="pSearch" type="search" data-pipeline-search="1" value="'+esc(state.pipelineQuery||'')+'" placeholder="🔍 Search name, city, contact, phone…" autocomplete="off" aria-label="Search clients"></div>' +
+        '<div class="field" style="margin:0;position:relative;"><input id="pSearch" type="search" data-pipeline-search="1" value="'+esc(state.pipelineQuery||'')+'" placeholder="🔍 Search name, city, contact, phone…" autocomplete="off" aria-label="Search clients"'+(pq ? ' style="padding-right:80px;"' : '')+'>' +
+          (pq ? '<button type="button" class="btn btn-text btn-sm clearsearch" data-action="clear-search">✕ Clear</button>' : '') + '</div>' +
         '<div class="field" style="margin:0;"><select data-pipeline-sort="1" aria-label="Sort">' + [['follow','Next follow-up'],['fit','Fit (A first)'],['value','Value (high first)'],['name','Name A–Z'],['newest','Newest first']].map(function(o){ return '<option value="'+o[0]+'" '+(psort===o[0]?'selected':'')+'>'+o[1]+'</option>'; }).join('') + '</select></div>' +
       '</div>' +
       typeChips +
@@ -6322,20 +6329,15 @@
       (state.newClientFlow===p.id ? '<div class="card" style="border-color:var(--accent);background:var(--accent-soft);padding:14px 16px;margin-bottom:18px;"><div style="font-weight:700;">Step 1 of 2 — client details</div><div class="helper" style="margin:4px 0 10px;">Next, add this client\'s monthly parameters (food cost, wastage, staff, rent, electricity…). You can skip and do it later.</div><button class="btn btn-primary" data-action="cost-open" data-id="'+p.id+'" data-flow="new">Next: Parameters →</button></div>' : '') +
       renderFollowUps(p) +
       renderRemarksCard(p) +
-      renderEvidenceCard(p) +
-      renderSysMapCard(p) +
-      renderPackageDetailsCard(p) +
-      renderInquiryEditor('client', p.inquiry||[], inquiryAreaOptions(p.category)) +
-      renderTravelCard(p) +
-      renderCostCard(p) +
-      renderCauseCard(audits) +
-      renderBillingCard(p) +
-      renderTimeMoneyCard(p) +
-      renderMeetingTimerCard(p) +
-      renderRepeatProblems(p) +
-      renderParametersCard(p) +
-      renderProgressReportCard(p) +
-      renderExtraItemsCard(p) +
+      // A prospect you haven't audited or won yet doesn't need billing, travel, parameters… so those fold away until you want them.
+      (function(){
+        var extra = renderEvidenceCard(p) + renderSysMapCard(p) + renderPackageDetailsCard(p) + renderInquiryEditor('client', p.inquiry||[], inquiryAreaOptions(p.category)) +
+          renderTravelCard(p) + renderCostCard(p) + renderCauseCard(audits) + renderBillingCard(p) + renderTimeMoneyCard(p) + renderMeetingTimerCard(p) +
+          renderRepeatProblems(p) + renderParametersCard(p) + renderProgressReportCard(p) + renderExtraItemsCard(p);
+        if (audits.length || p.converted) return extra;
+        var open = !!(state.moreSecs && state.moreSecs[p.id]);
+        return '<div class="moresecs"><button type="button" class="moresum" data-action="more-secs" aria-expanded="'+open+'">'+(open ? '➖ Fewer sections' : '➕ More sections')+' <span class="histmeta">evidence, system map, travel, billing, parameters…</span></button>'+(open ? '<div style="margin-top:14px;">'+extra+'</div>' : '')+'</div>';
+      })() +
       (audits.length ? (
         '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:6px;">' +
           '<div class="sechead2" style="margin:0;"><span class="ic">🕒</span><h2>Timeline</h2></div>' +
@@ -7586,14 +7588,7 @@
     var nowMs = Date.now();
     var due = computeDueList();
     var alerts = [];
-    due.forEach(function(x){
-      if (x.dueAt < nowMs){
-        alerts.push({ tone:'bad', icon:'⏰', text: (x.storeName||'Unnamed store')+' — re-audit overdue', action:'go-actions', tab:'schedule' });
-      } else {
-        var dd = new Date(x.dueAt); var diso = dd.getFullYear()+'-'+String(dd.getMonth()+1).padStart(2,'0')+'-'+String(dd.getDate()).padStart(2,'0');
-        if (diso===todayStr) alerts.push({ tone:'warn', icon:'🗓️', text: (x.storeName||'Unnamed store')+' — re-audit due today', action:'go-actions', tab:'schedule' });
-      }
-    });
+    // dated things (re-audits, scheduled audits, meetings, booked calls, invoices) live in the Home calendar, not here
     state.prospects.forEach(function(p){
       if (isLiveClient(p)){
         var stuckDays = loopDaysOnStep(p);
@@ -7602,25 +7597,13 @@
           alerts.push({ tone: stuckDays>=stuckLimit*2?'bad':'warn', icon:'⏳', text: (p.name||'Unnamed client')+' — '+stuckDays+' days on "'+LOOP_STEPS[loopTypeOf(p)].label+'", needs a nudge', action:'goto-prospect', id:p.id });
         }
       }
-      if (p.plannedAuditDate && p.plannedAuditDate<=todayStr && !p.auditId && !p.declined && !isParked(p)){
-        var overdue = p.plannedAuditDate < todayStr;
-        alerts.push({ tone: overdue?'bad':'warn', icon:'⭐', text: (p.name||'Unnamed client')+' — scheduled audit '+(overdue?'was due '+fmtDateShort(new Date(p.plannedAuditDate+'T00:00:00').getTime()):'due today'+plannedTimeSuffix(p))+', needs check-in', action:'goto-prospect', id:p.id });
-      }
-      if (p.proposalStatus==='meeting_scheduled' && p.proposalMeetingDate && p.proposalMeetingDate<=todayStr && !p.converted && !p.declined && !isParked(p)){
-        var mOverdue = p.proposalMeetingDate < todayStr;
-        alerts.push({ tone: mOverdue?'bad':'warn', icon:'🤝', text: (p.name||'Unnamed client')+' — proposal meeting '+(mOverdue?'was due '+fmtDateShort(new Date(p.proposalMeetingDate+'T00:00:00').getTime()):'due today')+', follow up', action:'goto-prospect', id:p.id });
-      }
     });
-    var overInv = allInvoices().filter(function(x){ return !x.inv.paid && invDue(x.inv)<todayStr; });
-    if (overInv.length) alerts.push({ tone:'bad', icon:'💸', text: overInv.length+' invoice'+(overInv.length===1?'':'s')+' overdue — '+fmtMoney(overInv.reduce(function(s,x){ return s+invAmount(x.inv); },0))+' to collect', action:'go-time' });
     smCalls().forEach(function(c){
       var ct = c.contact, s = c.status||'new';
       if (!smOpen(c)) return;
       var who = (ct.name||'Someone')+(smBiz(c)?' ('+smBiz(c)+')':'');
       if (c.kind==='inquiry'){ if (s==='new') alerts.push({ tone:'good', icon:'✉️', text: who+' sent an inquiry from your website', action:'sm-open', id:c._id }); return; }
-      if (ct.date && ct.date<todayStr) alerts.push({ tone:'bad', icon:'📞', text: who+' — '+smCallWord(c)+' was due '+fmtDateShort(new Date(ct.date+'T00:00:00').getTime())+', '+(s==='new'?'not contacted yet':'not marked done'), action:'sm-open', id:c._id });
-      else if (ct.date===todayStr) alerts.push({ tone:'warn', icon:'📞', text: who+' — '+smCallWord(c)+' today, '+(ct.slot||''), action:'sm-open', id:c._id });
-      else if (s==='new') alerts.push({ tone:'good', icon:'📞', text: who+(smIsSys(c) ? ' asked for a call back about the one-time system' : ' booked a Snapshot Call for '+smWhenLabel(c)), action:'sm-open', id:c._id });
+      if (s==='new' && !(ct.date && ct.date<=todayStr)) alerts.push({ tone:'good', icon:'📞', text: who+(smIsSys(c) ? ' asked for a call back about the one-time system' : ' booked a Snapshot Call for '+smWhenLabel(c)), action:'sm-open', id:c._id });
     });
     var noPrice = clientsMissingPrice();
     if (noPrice.length){
@@ -8185,9 +8168,13 @@
     else if (action==='sm-ics'){ var icsC = state.systemMaps.filter(function(m){ return m._id===t.dataset.id; })[0]; if (icsC) smIcs(icsC); }
     else if (action==='alerts-toggle'){ state.alertsAll = !state.alertsAll; render(); }
     else if (action==='jump'){
-      var jh = [].filter.call(app.querySelectorAll('main .sechead2 h2'), function(h){ return h.textContent===t.dataset.target; })[0];
+      var findH = function(){ return [].filter.call(app.querySelectorAll('main .sechead2 h2'), function(h){ return h.textContent===t.dataset.target; })[0]; };
+      var jh = findH();
+      // the section may be folded under "More sections": open it first
+      if (!jh && state.activeProspectId && app.querySelector('.moresecs')){ state.moreSecs = state.moreSecs || {}; state.moreSecs[state.activeProspectId] = true; render(); jh = findH(); }
       if (jh) window.scrollTo({ top: jh.getBoundingClientRect().top + window.pageYOffset - 124, behavior:'smooth' });
     }
+    else if (action==='more-secs'){ state.moreSecs = state.moreSecs || {}; state.moreSecs[state.activeProspectId] = !state.moreSecs[state.activeProspectId]; render(); }
     else if (action==='sm-toggle'){ state.mapsOpen[t.dataset.id] = !state.mapsOpen[t.dataset.id]; render(); }
     else if (action==='sm-delete'){
       if (!fsDb || !confirm('Delete this entry for good? This can\'t be undone.')) return;
@@ -8589,8 +8576,11 @@
       var oaP2 = findProspect(t.dataset.pid || state.activeProspectId), oaO = oaP2 && outletsOf(oaP2).filter(function(o){ return o.id===t.dataset.oid; })[0];
       if (oaP2 && oaO && !state.draft){
         var oType = state.templates[oaP2.category] ? oaP2.category : templateKeys()[0];
+        // same brand = same menu, so reuse the menu count from this franchisor's last outlet audit
+        var prevOut = state.history.filter(function(h){ return h.clientId===oaP2.id && h.menuItemCount; }).sort(function(a,b){ return (b.finishedAt||0)-(a.finishedAt||0); })[0];
         state.setup = Object.assign({}, state.setup, { type:oType, storeName:(oaP2.name||'')+' – '+oaO.name, storeLocation:[oaO.name, oaO.city].filter(Boolean).join(', '),
-          contactName:oaO.manager||'', contactDesignation:oaO.manager ? 'Outlet manager' : '', contactMobile:oaO.phone||'', auditDate:todayISO(), auditTime:nowHHMM(),
+          contactName:oaO.manager||'', contactDesignation:'Outlet manager', contactMobile:oaO.phone||'', auditDate:todayISO(), auditTime:nowHHMM(),
+          menuItemCount: prevOut ? String(prevOut.menuItemCount) : (state.setup.menuItemCount||''),
           selectedSections:state.templates[oType].sections.map(function(s){ return s.id; }), clientId:oaP2.id, outletId:oaO.id, mode:'full', serviceId:'' });
         state.view = 'setup'; window.scrollTo(0,0); render();
       }
@@ -8675,6 +8665,7 @@
     else if (action==='check-update'){ checkUpdate(true); }
     else if (action==='stage-filter'){ var sfv = t.dataset.val || 'all'; state.prospectsFilterStage = (state.prospectsFilterStage===sfv) ? 'all' : sfv; state.pipelineFilter = 'all'; render(); }
     else if (action==='type-filter'){ state.prospectsFilterCategory = t.dataset.val || 'all'; render(); }
+    else if (action==='clear-search'){ state.pipelineQuery = ''; render(); var cs = document.getElementById('pSearch'); if (cs) cs.focus(); }
     else if (action==='remark-del'){
       var rdP = findProspect(t.dataset.id);
       if (rdP && window.confirm('Delete this remark?')){ rdP.remarks = (rdP.remarks||[]).filter(function(r){ return r.id!==t.dataset.rid; }); rdP.updatedAt = Date.now(); persistProspects(); render(); }
@@ -9746,7 +9737,12 @@
     }
     else if (el.dataset.outletDate){
       var odp = findProspect(el.dataset.pid || state.activeProspectId), odo = odp && outletsOf(odp).filter(function(o){ return o.id===el.dataset.outletDate; })[0];
-      if (odo){ odo.planned = el.value || ''; odp.updatedAt = Date.now(); persistProspects(); render(); }
+      if (odo){
+        odo.planned = el.value || ''; odp.updatedAt = Date.now(); persistProspects();
+        // moved from the Home calendar: show the visit on its new day straight away
+        if (el.dataset.pid && el.value){ state.calDay = el.value; state.calMonth = el.value.slice(0,7); dateEditing = false; el.blur(); }
+        render();
+      }
     }
     else if (el.dataset.outletMetric){
       var omp = findProspect(state.activeProspectId), omo = omp && outletsOf(omp).filter(function(o){ return o.id===el.dataset.oid; })[0];
